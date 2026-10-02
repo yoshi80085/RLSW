@@ -7,7 +7,7 @@
 //   SANDBOX_SEAT_TAKEN — "play as": the chosen Spirit becomes the acting one,
 //                        mid-turn, without anybody's turn ENDING.
 //   SANDBOX_REFILLED   — free play: the acting Spirit's AP, action token,
-//                        cooldowns, Db and kit are topped back up.
+//                        cooldowns and kit are topped back up.
 //
 // ⚠️ NEITHER IS A GAME RULE. Nothing outside the Testing Grounds may dispatch
 // them — the client gates both on `testMode`, which is itself hard-off online
@@ -15,7 +15,6 @@
 
 import { SLIDE_STEPS_PER_TURN } from "../../data/gameConstants.js";
 import { abilitiesFor } from "../../data/loadouts.js";
-import { ABILITY_CD, dbCostOf } from "./cooldowns.js";
 
 /**
  * How much AP free play keeps the acting Spirit topped up to.
@@ -80,7 +79,6 @@ export function applySandboxSeatTaken(state, { spiritId }) {
  *   · AP to `SANDBOX_AP`, slide steps to a full turn's worth
  *   · the action token (Sonic / Swing / Smash every click)
  *   · every ability cooldown to 0
- *   · Db to at least the dearest ability in the kit, so any one can fire
  *   · the FULL kit unlocked — not just the two-ability loadout
  *
  * 📌 Writes nothing when nothing is short, so an idle sandbox does not spam
@@ -96,13 +94,11 @@ export function applySandboxRefilled(state, { spiritId, ap = SANDBOX_AP }) {
   const missing = kit.filter(id => !unlocked.includes(id));
   const cd = ns.abilityCd ?? {};
   const cooling = Object.values(cd).some(left => left > 0);
-  const needDb = Math.max(0, ...kit.filter(id => ABILITY_CD[id]).map(dbCostOf));
-  const db = ns.dbPoints ?? 0;
 
   const t = state.turn;
   const turnShort = t.moveStepsLeft < ap || t.actionTokenUsed
     || (t.slideStepsLeft ?? 0) < SLIDE_STEPS_PER_TURN;
-  const sheetShort = missing.length > 0 || cooling || db < needDb;
+  const sheetShort = missing.length > 0 || cooling;
   if (!turnShort && !sheetShort) return state;
 
   return {
@@ -119,7 +115,6 @@ export function applySandboxRefilled(state, { spiritId, ap = SANDBOX_AP }) {
         ...ns,
         unlockedSkills: [...unlocked, ...missing],
         abilityCd: Object.fromEntries(Object.keys(cd).map(id => [id, 0])),
-        dbPoints: Math.max(db, needDb),
       },
     } : state.noteStates,
   };

@@ -6,9 +6,12 @@
 // file turns that play into the two things a beginner actually sees:
 //
 //   🎤 crowdAsks  — the MELODY step. The acting player's own fans say, in speech
-//                   bubbles, what line they want next: the fans play first (what
-//                   pays the crowd), the Db ending second. Alex, 2026-09-16:
-//                   own crowd only · the crowd picks, no goal menu.
+//                   bubbles, what line they want next. Alex, 2026-09-16: own
+//                   crowd only · the crowd picks, no goal menu. 🪦 A second
+//                   bubble asked for the Db ending ("End on G! 🤘") and a third
+//                   nudged "Stay in key!" for clean-note Db; both went with Db,
+//                   2026-10-02 — the ending pays nothing now, and a coach must
+//                   never ask for something the game does not pay.
 //   🔴🔵 chordGlow — the CHORD step. The fans cannot sensibly ask for a Dominant
 //                   7, so the suggested stack notes glow red (Drive) or blue
 //                   (Sustain) in the Note Stock instead. Alex, 2026-09-16: glow,
@@ -53,10 +56,6 @@ export const CROWD_VOICES = Object.freeze({
     craft_down:        'Keep falling!',
     lead_up:           'Take it up — we want MORE!',
     lead_down:         'Take it down — we want MORE!',
-    ending_fifth:      'End on {n}! 🤘',
-    ending_fourth:     'Land it on {n}!',
-    ending_tonic:      'Bring it home to {n}!',
-    in_key:            'Stay in key!',
   }),
   plain: Object.freeze({
     scalar_shred_up:   'Step up through the letters',
@@ -69,10 +68,6 @@ export const CROWD_VOICES = Object.freeze({
     craft_down:        'A long run down pays extra',
     lead_up:           'Start here — it builds to a crowd-pleaser',
     lead_down:         'Start here — it builds to a crowd-pleaser',
-    ending_fifth:      'Finish on {n} — the fifth',
-    ending_fourth:     'Finish on {n} — the fourth',
-    ending_tonic:      'Finish on {n} — home',
-    in_key:            'Keep your notes in key',
   }),
 });
 
@@ -106,18 +101,12 @@ function directionFrom(line, from) {
  *
  * @param {string} spiritId
  * @param {object} ns     the acting Spirit's note sheet (for the line so far)
- * @param {object} plays  `findBestPlays(spiritId, ns, { goals: ['fans', 'db'] })`
+ * @param {object} plays  `findBestPlays(spiritId, ns, { goals: ['fans'] })`
  * @param {object} [opts]
  * @param {'hype'|'plain'} [opts.voice='hype']
  * @param {number}  [opts.chips=4]   the most notes one bubble may carry
- * @param {boolean} [opts.dbBubble=true]  whether the ending gets its own bubble
- * @param {'same-line'|'best-db'} [opts.ending='same-line']
- *   · `same-line` — the ending bubble names the FANS line's own last note, so the
- *     two bubbles are one plan. Quiet when that line does not resolve.
- *   · `best-db` — the ending of the best-Db line, which may be a different line
- *     from the one the fans bubble is walking the player through.
- * @returns {Array<{ kind:'fans'|'db', key:string, text:string, notes:string[],
- *   idx:number[], payoff:{fans:number, db:number}, goal:'fans'|'db' }>}
+ * @returns {Array<{ kind:'fans', key:string, text:string, notes:string[],
+ *   idx:number[], payoff:{fans:number}, goal:'fans' }>}
  *   Ordered: the bubble to show first is first. Empty when there is nothing
  *   worth asking for — the crowd stays quiet rather than cheering noise.
  */
@@ -133,7 +122,7 @@ export function crowdAsks(spiritId, ns = {}, plays = {}, opts = {}) {
   // whether the finder's line adds anything the notes already placed would not
   // pay on their own (if not, the crowd has nothing new to ask for). Read through
   // the finder's own referee so both are scored the same way.
-  const sofar = prefix.length ? scorePlay(spiritId, ns, { line: prefix }) : { fans: 0, db: 0 };
+  const sofar = prefix.length ? scorePlay(spiritId, ns, { line: prefix }) : { fans: 0 };
 
   // ── 🎤 THE FANS BUBBLE ───────────────────────────────────────────────────
   const fans = plays.fans;
@@ -175,36 +164,10 @@ export function crowdAsks(spiritId, ns = {}, plays = {}, opts = {}) {
       text: fill(voice[key], vars),
       notes: window.map(m => m.note),
       idx: window.map(m => m.idx),
-      payoff: { fans: fans.result.fans, db: fans.result.db },
+      payoff: { fans: fans.result.fans },
     });
   }
 
-  // ── 💰 THE ENDING BUBBLE ─────────────────────────────────────────────────
-  const source = (opts.ending ?? 'same-line') === 'best-db' ? plays.db : (asks.length ? fans : plays.db);
-  if ((opts.dbBubble ?? true) && source && source.melody.length && source.result.ending && source.result.ending !== 'normal') {
-    const last = source.melody.at(-1);
-    const key = `ending_${source.result.ending}`;
-    asks.push({
-      kind: 'db', goal: source.goal, key,
-      text: fill(voice[key], { n: last.note }),
-      notes: [last.note],
-      idx: [last.idx],
-      payoff: { fans: source.result.fans, db: source.result.db },
-    });
-  }
-
-  // Nothing shaped to ask for, but clean notes still pay: a gentle nudge.
-  const db = plays.db;
-  if (!asks.length && db && db.melody.length && db.result.db > sofar.db) {
-    const window = db.melody.slice(0, maxChips);
-    asks.push({
-      kind: 'db', goal: 'db', key: 'in_key',
-      text: fill(voice.in_key, {}),
-      notes: window.map(m => m.note),
-      idx: window.map(m => m.idx),
-      payoff: { fans: db.result.fans, db: db.result.db },
-    });
-  }
   return asks;
 }
 
@@ -261,7 +224,7 @@ export function chordGlow(plays = {}, source = 'both', dials = {}) {
 // =============================================================================
 export const CROWD_BUBBLE = Object.freeze({
   // Words
-  voice: 'hype', chips: 4, payoff: 'fans', dbBubble: true, ending: 'same-line',
+  voice: 'hype', chips: 4, payoff: 'fans',
   // Bubble look
   style: 'neon', colour: 'spirit', font: 15, maxw: 220,
   rad: 12,          // ★ default 8
@@ -329,7 +292,7 @@ export function crowdBubbleFrame(elapsed, count, B = CROWD_BUBBLE) {
 /**
  * 🎯 Which stock slots the melody-step highlight marks for the bubble on screen.
  * `hlWhich: 'next'` → only the first chip; `'window'` → every chip in the bubble.
- * @returns {Map<number, 'fans'|'db'>}
+ * @returns {Map<number, 'fans'>}
  */
 export function crowdStockMarks(ask, B = CROWD_BUBBLE) {
   const marks = new Map();

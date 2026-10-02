@@ -1,5 +1,10 @@
 # Rock Legends: Spirit Wars — design brief
 
+> 🪦 **2026-10-02 — Db IS CUT FROM THE GAME.** Every mention of Db below (earning it,
+> spending it, unlocking with it) is history. Abilities are drafted two per seat and
+> gated by cooldowns + their own sacrifices; a melody pays fans and the red/blue
+> carrot. Current truth: `STATE_OF_PLAY.md` §4.
+
 **A self-contained description of the game and every number you can turn.**
 Written 2026-08-21 from the code, not from memory. You are reading this because
 you are helping think through balance and design changes away from the codebase.

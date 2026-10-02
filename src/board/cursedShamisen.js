@@ -4,9 +4,9 @@
 //   · TUNING — a third chord-step destination: three strings, one IWATO note
 //     (1 ♭2 4 ♭5 ♭7 on the RONIN'S root) each, one string a turn, kept between
 //     turns.
-//   · THE CAST spends the three strings (plus Db and cooldown).
+//   · THE CAST spends the three strings (plus the Action Token and cooldown).
 //   · THE CURSE — the rival's Scale Wheel becomes Iwato for their next 2 turns;
-//     their other notes are discord (no Db, no fans — the existing rule).
+//     their other notes are discord (no fans — the existing rule).
 //   · EXORCISM — on their very next turn, a melody with 3 DIFFERENT Iwato notes
 //     lifts it.
 // And Alex on the look: *"The animation of it is really what captures the hearts

@@ -1,5 +1,12 @@
 # 💰 THE UPGRADE SHOP — what Db is FOR
 
+> 🪦 **SUPERSEDED 2026-10-02 — Db IS CUT FROM THE GAME.** Alex: *"Lets cut Db
+> entirely - no more shops, no more Db, the cooldowns and 'sacrifices' are the
+> gate, not another economy over what is already doing quite a bit."* Abilities are
+> drafted two per seat, ready from turn one; a melody pays fans and the red/blue
+> carrot only; the ending ladder is dormant (`ENDING_WEIGHT`). Read this doc as
+> history. Current truth: `STATE_OF_PLAY.md` §4.
+
 > ⛔ **READ §0⃣ FIRST — THE PRICING PREMISE CHANGED 2026-09-04.** Flat base cost
 > for every ability, one ability free at setup, and rising per-ability upgrade
 > prices. **R2 and R3 of §2 are superseded and §3.1's price column is void.** The

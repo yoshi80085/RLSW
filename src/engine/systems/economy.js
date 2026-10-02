@@ -178,7 +178,6 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     scaleMode:       initMode,
     paletteMode:     initMode,
     melodyDifficulty: 'beginner',
-    pivotPending:    false,
     modeReason:      'spirit',
     modeChordName:   null,
     diceTier:        0,
@@ -258,12 +257,9 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // per stack per round (`music/stackSlots.js`).
     driveSeatOpenedThisTurn:   false,
     sustainSeatOpenedThisTurn: false,
-    dbPoints:        0,
-    totalDB:         0,
-    // Every Spirit chooses one basic signature ability before turn one. The
-    // existing skill-picker modal consumes this pending choice immediately;
-    // later upgrades continue to use the same modal after a Db threshold.
-    upgradesPending: 0,
+    // 🪦 `dbPoints`, `totalDB`, `upgradesPending` and `targetSkillId` went with
+    // Db, 2026-10-02. The draft writes `unlockedSkills` (engine/state.js) and
+    // nothing earns or targets an ability after that.
     skillRoute:      null,
     // 🔊 Amp I is the starting Main Amp — 2d6 from turn 1.
     // ── 🪦 B10's FREE RUNG IS GONE, AND NOBODY LOST ANYTHING ─────────────────
@@ -294,7 +290,6 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     // fired because `amp_1` made the list non-empty, and the client's initial-skill
     // effect that inherited the same shape. Do not write a third.
     unlockedSkills:  [],
-    targetSkillId:   null,
     diceLevel:       0,
     ampOwned:        false,
     roadies:         [],

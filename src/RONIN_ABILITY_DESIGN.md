@@ -432,6 +432,15 @@ a 3-player match — which pulls the other way and may cover it.
 
 #### 2.3.00 ⭐ THE IWATO CURSE — Alex, 2026-10-02
 
+> ⁉️ **OPEN, 2026-10-02 — THE CURSE LOST HALF ITS BITE.** Its punishment was
+> "every other note is discord: **no Db**, no fans". Db was cut the same day, so a
+> cursed rival now loses only fans (and the red/blue carrot, which needs a clean
+> final). Alex flagged it for a rewrite. Options on the table, none chosen:
+> cursed off-palette notes also cannot be committed to the Drive/Sustain stacks;
+> or they buy no movement; or it stays fans-only. 🧊 Not compensated in code.
+> The cast also no longer costs 5 Db — its price is the strings, the Action Token
+> and the 2-round cooldown.
+
 The conversation, in his words: *"I thought it could affect the Rival's notes in
 some way … the Rival's note wheel becomes 'infected' - Db is not earned and fans
 are confused. Ronin loses 3-4 notes for a turn to 'cast' the curse … I'm also

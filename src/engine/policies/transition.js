@@ -787,18 +787,11 @@ export function applyBotAction(state, action, ctx = {}) {
         view, ok: true, reason: null, logs: [],
       };
 
-    // 🎯 CHOOSING WHAT TO SAVE FOR — free, and it does NOT grant the skill.
-    //
-    // ⚠️ THIS CASE USED TO BE A SHOP (`skillUnlock`): subtract the cost, push the
-    // id into `unlockedSkills`. That is not how this game unlocks anything, and
-    // it is exactly the invented rule this file's header says is worse than a
-    // declared gap — the searcher was "confidently wrong" rather than blind. The
-    // real award happens inside `commitMelodyEconomy` when the Db bar fills, and
-    // its state half is already modelled there, so nothing needs granting here.
-    //
-    // ⚠️ `upgradesPending` AND `pendingAwardSkillId` ARE CLEARED, mirroring the
-    // client's own target-pick patch. Leaving a stale pending award behind would
-    // let a searcher re-collect a skill it already banked by re-aiming.
+    // 🪦 THERE IS NOTHING TO SAVE FOR (2026-10-02). This kind once picked the
+    // skill a Db bar filled toward; the draft now hands every seat its two
+    // abilities, ready, and Db itself is gone. The case stays as a REFUSAL so an
+    // old replay or a stale bot that still emits the kind fails loudly here
+    // instead of silently changing nothing.
     case 'skillTarget':
       return fail(state, view, 'illegal', 'Abilities are chosen before the match.');
 

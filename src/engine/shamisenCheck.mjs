@@ -12,8 +12,8 @@ import assert from 'node:assert';
 import { readFileSync } from 'node:fs';
 import * as cooldowns from './systems/cooldowns.js';
 import * as constants from '../data/gameConstants.js';
-import { ABILITY_CD, ABILITY_DB_COST } from './systems/cooldowns.js';
-import { CURSED_SHAMISEN_CD, CURSED_SHAMISEN_DB_COST, SONIC_BEAM_REACH } from '../data/gameConstants.js';
+import { ABILITY_CD } from './systems/cooldowns.js';
+import { CURSED_SHAMISEN_CD, SONIC_BEAM_REACH } from '../data/gameConstants.js';
 import { SKILL_BY_ID } from '../data/skillTree.js';
 import {
   SHAMISEN_SKILL, CAST_RANGE, STRINGS, CURSE_TURNS, EXORCISE_NOTES,
@@ -33,7 +33,7 @@ const section = t => console.log(`\n${t}`);
 
 const RONIN = 'cosmic_ronin';
 // The Ronin on D: Iwato on D is D Eb G Ab C.
-const ronin = (over = {}) => ({ rootNote: 'D', unlockedSkills: [SHAMISEN_SKILL], dbPoints: 10, abilityCd: {},
+const ronin = (over = {}) => ({ rootNote: 'D', unlockedSkills: [SHAMISEN_SKILL], abilityCd: {},
   noteStock: ['D', 'Eb', 'E', 'G', 'Ab', 'A', 'C', 'F'], usedStockIdx: [], ...over });
 
 // ═══ 1. the numbers ══════════════════════════════════════════════════════════
@@ -43,7 +43,6 @@ eq(CURSE_TURNS, 2, 'the curse holds their next two turns');
 eq(EXORCISE_NOTES, 3, 'three different Iwato notes exorcise it');
 eq(CAST_RANGE, SONIC_BEAM_REACH, '⁉️ the cast reaches as far as the Sonic beam (default until Alex rules)');
 eq(ABILITY_CD[SHAMISEN_SKILL], CURSED_SHAMISEN_CD, 'the quoted cooldown is the real one');
-eq(ABILITY_DB_COST[SHAMISEN_SKILL], CURSED_SHAMISEN_DB_COST, 'the quoted Db is the real one');
 
 // ═══ 2. take up → tune from the next turn ═══════════════════════════════════
 section('§2 take up, and the strings open on the NEXT turn');
@@ -54,7 +53,6 @@ ok(!canTakeUp(ronin({ abilityCd: { [SHAMISEN_SKILL]: 1 } })), '⚠️ not while 
 ok(!canTakeUp(ronin({ shamisen: { strings: [], ready: false } })), 'not twice');
 const up = { ...ronin(), ...takeUpPatch(ronin()) };
 eq(up.shamisen, { strings: [], ready: false, root: 'D' }, 'the take-up is free and writes an untuned instrument in his key');
-eq(up.dbPoints, 10, '…and costs no Db (the cast pays)');
 ok(!tuningOpen(up), '⭐ Alex: "from the next turn" — no tuning in the turn he takes it up');
 eq(tuneCheck(up, 'Eb').ok, false, '…and the check refuses it');
 const next = { ...up, ...startTurnNotes(up, { spiritId: RONIN }).patch };
@@ -89,14 +87,14 @@ eq(pcs(next, tunableIdx(next, new Set([1]))), [2, 7, 8, 0], '…minus the ones a
 section('§4 the cast');
 const here = { q: 0, r: 0 }, three = { q: 3, r: 0 }, four = { q: 2, r: 2 };
 eq(castCheck({ ns: next }).ok, false, 'not before three strings');
-eq(castCheck({ ns: s, from: here, to: three }).ok, true, 'three strings, in reach, Db, token → it casts');
+eq(castCheck({ ns: s, from: here, to: three }).ok, true, 'three strings, in reach, token → it casts');
 eq(castCheck({ ns: s, from: here, to: four }).ok, false, `⚠️ 4 hexes is out of reach (${CAST_RANGE})`);
 eq(castCheck({ ns: s, tokenUsed: true }).ok, false, 'the Action Token is the cast\'s');
-eq(castCheck({ ns: { ...s, dbPoints: 4 } }).ok, false, `skint (< ${CURSED_SHAMISEN_DB_COST} Db) → no cast`);
+eq(castCheck({ ns: { ...s, abilityCd: { [SHAMISEN_SKILL]: 1 } } }).ok, false, 'recharging → no cast (🪦 the Db refusal went with Db, 2026-10-02)');
 eq(castCheck({ ns: s, rivalNs: { iwatoCurse: { turnsLeft: 1 } } }).ok, false, 'one curse per rival at a time');
 const cast = castPatches(s, RONIN, 'K1');
 eq(cast.ronin.shamisen, null, 'the strings are spent and the instrument put away');
-eq(cast.ronin.dbPoints, 10 - CURSED_SHAMISEN_DB_COST, 'he pays the Db');
+eq(cast.ronin.dbPoints, undefined, '🪦 he pays no Db — there is none');
 eq(cast.ronin.abilityCd[SHAMISEN_SKILL], CURSED_SHAMISEN_CD, '…and the cooldown');
 eq(cast.rival.iwatoCurse, { key: 'K1', by: RONIN, roninRoot: 'D', strings: ['Eb', 'Eb', 'Ab'], turnsLeft: CURSE_TURNS }, 'the rival carries the curse on HIS root');
 ok(!canTakeUp({ ...s, ...cast.ronin }), 'he cannot take it straight back up — the cooldown runs first');
@@ -179,7 +177,7 @@ for (const dead of ['payShamisenDebt', 'checkShamisenCursePenalty', 'tickCursedS
 section('§7 the skill text quotes the real numbers');
 const desc = SKILL_BY_ID[SHAMISEN_SKILL].desc;
 ok(desc.includes(`${CAST_RANGE} hexes`), 'the reach');
-ok(desc.includes(`${CURSED_SHAMISEN_DB_COST} Db`) && desc.includes(`${CURSED_SHAMISEN_CD}-round cooldown`), 'the price');
+ok(desc.includes(`${CURSED_SHAMISEN_CD}-round cooldown`) && !/\bDb\b/.test(desc), 'the price — a cooldown, and no Db anywhere in the text');
 ok(desc.includes(`${STRINGS} strings`) && desc.includes(`next ${CURSE_TURNS} turns`) && desc.includes(`${EXORCISE_NOTES} different Iwato notes`), 'the three rule numbers');
 ok(/NEXT turn/.test(desc), 'the next-turn rule is stated');
 

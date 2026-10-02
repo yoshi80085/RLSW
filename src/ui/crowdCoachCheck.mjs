@@ -53,13 +53,15 @@ console.log('§1 every voice can say everything the logic can reach');
   const src = read('./crowdCoach.js');
   const reachable = new Set([
     ...Object.keys(GESTURE_KEYS), 'craft_up', 'craft_down', 'lead_up', 'lead_down',
-    'ending_fifth', 'ending_fourth', 'ending_tonic', 'in_key',
   ]);
+  // 🪦 'ending_fifth' / 'ending_fourth' / 'ending_tonic' / 'in_key' went with Db
+  // (2026-10-02): the ending pays nothing now, and a coach must never ask for
+  // what the game does not pay.
   for (const [name, voice] of Object.entries(CROWD_VOICES)) {
     ok(same(Object.keys(voice).sort(), [...reachable].sort()), `voice "${name}" has exactly the reachable keys`);
     ok(Object.values(voice).every(t => typeof t === 'string' && t.length > 0 && t.length <= 44), `voice "${name}": every line fits a bubble (≤ 44 chars)`);
   }
-  ok(/'in_key'/.test(src) && /`ending_\$\{/.test(src) && /lead_down/.test(src), 'the keys the suite lists are the keys the logic builds');
+  ok(!/'in_key'/.test(src) && !/`ending_\$\{/.test(src) && /lead_down/.test(src), 'the keys the suite lists are the keys the logic builds — and no Db asks remain');
   ok(prettyNote('Bb') === 'B♭' && prettyNote('F#') === 'F♯' && prettyNote('B') === 'B', 'chips spell ♭ and ♯');
 }
 
@@ -81,10 +83,10 @@ console.log('§2 words and chips agree · §3 following the crowd keeps its prom
   let bubbles = 0, gestureBubbles = 0, steps = 0, spoke = 0;
   for (const { seed, spiritId, ns: start } of walks) {
     let ns = start;
-    const first = findBestPlays(spiritId, ns, { goals: ['fans', 'db'] });
+    const first = findBestPlays(spiritId, ns, { goals: ['fans'] });
     const promised = first.fans.result.fans;
     for (let step = 0; step < 8; step += 1) {
-      const plays = findBestPlays(spiritId, ns, { goals: ['fans', 'db'] });
+      const plays = findBestPlays(spiritId, ns, { goals: ['fans'] });
       const asks = crowdAsks(spiritId, ns, plays);
       const prefix = ns.melodyLine;
       steps += 1;
@@ -95,14 +97,8 @@ console.log('§2 words and chips agree · §3 following the crowd keeps its prom
         const play = plays[ask.goal];
         ok(ask.notes.length >= 1 && ask.notes.length === ask.idx.length, `${tag}: notes and slots pair up`);
         ok(ask.idx.every((i, k) => ns.noteStock[i] === ask.notes[k] && !ns.usedStockIdx.includes(i)), `${tag}: every chip is a live slot holding that note`);
-        if (ask.kind === 'fans' || ask.key === 'in_key') {
-          ok(same(ask.notes, play.melody.slice(0, ask.notes.length).map(m => m.note)), `${tag}: the chips are the finder's next notes, in order`);
-        } else {
-          if (asks[0].kind === 'fans') ok(ask.goal === 'fans' && ask.idx[0] === plays.fans.melody.at(-1).idx, `${tag}: same-line (the default) — the ending belongs to the line the fans bubble is walking`);
-          ok(ask.notes[0] === play.melody.at(-1).note && ask.idx[0] === play.melody.at(-1).idx, `${tag}: the ending chip is the finder line's last note`);
-          ok(ask.key === `ending_${play.result.ending}`, `${tag}: the ending named is the one the line pays`);
-          ok(ask.text.includes(prettyNote(ask.notes[0])), `${tag}: the ending's words name its chip`);
-        }
+        ok(ask.kind === 'fans', `${tag}: every bubble is a fans bubble (🪦 the Db ending bubble is gone)`);
+        ok(same(ask.notes, play.melody.slice(0, ask.notes.length).map(m => m.note)), `${tag}: the chips are the finder's next notes, in order`);
         const gesture = GESTURE_KEYS[ask.key];
         if (gesture) {
           gestureBubbles += 1;
@@ -120,12 +116,12 @@ console.log('§2 words and chips agree · §3 following the crowd keeps its prom
             ok(a === c && ask.text.includes(prettyNote(a)) && ask.text.includes(prettyNote(b)), `${tag}: the return phrase names the chips' own ${a}–${b}–${a}`);
           }
         }
-        ok(ask.payoff.fans === play.result.fans && ask.payoff.db === play.result.db, `${tag}: the payoff is the whole line's (nothing pays before commit)`);
+        ok(ask.payoff.fans === play.result.fans && ask.payoff.db === undefined, `${tag}: the payoff is the whole line's fans (nothing pays before commit, and no Db)`);
       }
       // Obey the crowd: play the first chip of the first bubble.
       const lead = asks[0];
       if (!lead) break;
-      const idx = lead.kind === 'fans' || lead.key === 'in_key' ? lead.idx[0] : plays[lead.goal].melody[0].idx;
+      const idx = lead.idx[0];
       ns = { ...ns, melodyLine: [...ns.melodyLine, ns.noteStock[idx]], usedStockIdx: [...ns.usedStockIdx, idx] };
     }
     const final = scorePlay(spiritId, start, { line: ns.melodyLine });
@@ -142,21 +138,16 @@ console.log('§4 quiet when it should be, and the glow is the finder’s');
   const base = { rootNote: 'C', paletteMode: 'hirajoshi' };
   // A confirmed turn: silence.
   const done = sheet({ ...base, noteStock: ['C', 'D', 'Eb'], hasConfirmed: true });
-  ok(crowdAsks(ronin, done, findBestPlays(ronin, done, { goals: ['fans', 'db'] })).length === 0, 'a confirmed turn: the crowd is quiet');
+  ok(crowdAsks(ronin, done, findBestPlays(ronin, done, { goals: ['fans'] })).length === 0, 'a confirmed turn: the crowd is quiet');
   // An all-discord hand pays nothing: silence rather than noise.
   const junk = sheet({ ...base, noteStock: ['B', 'E', 'A', 'Db'] });
-  ok(crowdAsks(ronin, junk, findBestPlays(ronin, junk, { goals: ['fans', 'db'] })).length === 0, 'nothing worth playing: the crowd is quiet');
-  // dbBubble off.
+  ok(crowdAsks(ronin, junk, findBestPlays(ronin, junk, { goals: ['fans'] })).length === 0, 'nothing worth playing: the crowd is quiet');
+  // 🪦 The Db ending bubble and its `dbBubble` / `ending` levers are gone (2026-10-02).
   const hand = sheet({ ...base, noteStock: ['C', 'D', 'Eb', 'F', 'G'] });
-  const plays = findBestPlays(ronin, hand, { goals: ['fans', 'db'] });
-  const on = crowdAsks(ronin, hand, plays), off = crowdAsks(ronin, hand, plays, { dbBubble: false });
-  ok(on.some(a => a.kind === 'db') && !off.some(a => a.kind === 'db'), 'dbBubble: false removes the ending bubble');
-  ok(on[0].kind === 'fans', 'the fans bubble comes first');
-  // same-line vs best-db.
-  const same_ = on.find(a => a.kind === 'db');
-  ok(same_ && same_.idx[0] === plays.fans.melody.at(-1).idx, "same-line: the ending names the fans line's own last note");
-  const best = crowdAsks(ronin, hand, plays, { ending: 'best-db' }).find(a => a.kind === 'db');
-  ok(best && best.idx[0] === plays.db.melody.at(-1).idx, 'best-db: the ending names the best-Db line\'s last note');
+  const plays = findBestPlays(ronin, hand, { goals: ['fans'] });
+  const on = crowdAsks(ronin, hand, plays);
+  ok(on.length > 0 && on.every(a => a.kind === 'fans'), 'a playable hand gets fans bubbles — and only fans bubbles');
+  ok(!on.some(a => /^ending_|^in_key$/.test(a.key)), '…no Db ending or in-key nudge, whatever the hand');
   // Plain voice changes words, never notes.
   const plain = crowdAsks(ronin, hand, plays, { voice: 'plain' });
   ok(same(plain.map(a => a.notes), on.map(a => a.notes)) && !same(plain.map(a => a.text), on.map(a => a.text)), 'the voice lever changes the words and never the notes');

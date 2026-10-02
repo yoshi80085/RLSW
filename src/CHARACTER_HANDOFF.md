@@ -1,5 +1,10 @@
 # RLSW — Character Build Handoff
 
+> 🪦 **2026-10-02 — Db IS CUT FROM THE GAME.** Every mention of Db below (earning it,
+> spending it, unlocking with it) is history. Abilities are drafted two per seat and
+> gated by cooldowns + their own sacrifices; a melody pays fans and the red/blue
+> carrot. Current truth: `STATE_OF_PLAY.md` §4.
+
 Pick-up notes for continuing the Spirit-identity work. Read this + `DESIGN_AUDIT_v2.md`
 (design thesis) + `ARCHITECTURE.md` (where things live) and you're caught up.
 

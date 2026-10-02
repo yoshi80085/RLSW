@@ -29,10 +29,9 @@ import Bracket from './Bracket.jsx';
 import { playableScale, pitchIndex, ENHARMONIC_RESPELL } from '../music/notes.js';
 import { melodyModeFor } from '../music/melodyIdentity.js';
 import { characterId } from '../data/spiritIdentity.js';
-import { ENDING_DB } from '../music/melodyPayout.js';
 import { WHEEL_DEFAULTS, MODE_NAME, lookFor, pretty, wheelModel, describeSlot } from './scaleWheelModel.js';
 
-const MELODY_C = '#aa88ff', GOLD = '#ffd24a';
+const MELODY_C = '#aa88ff';
 
 // ── geometry (viewBox units) ─────────────────────────────────────────────────
 const VB = 360, C = VB / 2, R = 118, R_IN = R - 46, CHIP = 38;
@@ -169,14 +168,14 @@ export function ScaleWheel({ spiritId, root, hand = [], available, line = [], op
               {opts.degrees && <text x={lx} y={ly + 3.5 * ts} textAnchor="middle" fontSize={10.5 * ts}
                 fill={s.inPal ? accent : '#5c5c70'} fontFamily="Share Tech Mono, monospace" fontWeight={s.inPal ? 700 : 400}>
                 {s.sig ? '★' : ''}{s.degree}
-                {opts.dbBadges && s.ending && <tspan fill={GOLD} dx="3">+{ENDING_DB[s.ending]}</tspan>}</text>}
+                </text>}
             </g>
           );
         })}
       </svg>
       <div className="sw-readout">
         {m.payout
-          ? <span className="sw-pay">this line: +{m.payout.db} Db{fans ? ` · +${fans} fan${fans > 1 ? 's' : ''}` : ''}{m.payout.ending !== 'normal' ? ` · ${m.payout.ending} ending` : ''}</span>
+          ? <span className="sw-pay">this line: {fans ? `+${fans} fan${fans > 1 ? 's' : ''}` : 'no fans yet'}</span>
           : <span className="sw-dim">click a note you hold — or type it</span>}
         {ghost && <span className="sw-ghost">end on {pretty(focusNote)} → next turn in {pretty(ghost.nextRoot)} {MODE_NAME[mode] ?? mode}</span>}
       </div>

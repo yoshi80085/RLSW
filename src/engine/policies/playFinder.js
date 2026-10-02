@@ -9,7 +9,6 @@ import { characterId } from "../../data/spiritIdentity.js";
 //
 //   🔴 drive    — the Drive stat after the turn (Drive-stack chord + temp boost)
 //   🔵 sustain  — the Sustain stat after the turn (Sustain-stack chord + temp boost)
-//   💰 db       — the Db the melody commit pays
 //   🎤 fans     — the fans the melody commit wins (Spirit structure + craft run)
 //
 // A PLAY is the whole build for the turn: which notes go to which stack (up to the
@@ -57,7 +56,8 @@ import { livePalette } from "../systems/iwatoCurse.js";
 import { melodyPayoutFor, craftFansFromRun } from "../../music/melodyPayout.js";
 import { styleCoachFor } from "../../music/spiritStyle.js";
 
-export const FINDER_GOALS = Object.freeze(['drive', 'sustain', 'db', 'fans']);
+// 🪦 The `db` goal went with Db, 2026-10-02 — the melody commit pays fans only.
+export const FINDER_GOALS = Object.freeze(['drive', 'sustain', 'fans']);
 
 /** The melody track's seat count — the client refuses a ninth note
  *  (`melodyLine.length >= 8` in `rlsw-simulator-v3_8_1.jsx`'s note click). */
@@ -80,10 +80,9 @@ export const FINDER_NODE_BUDGET = 250_000;
 // only up to `STOCK_REFILL_RATE` (turnFlow.js), so between two plays that pay the
 // same, the one that spends fewer notes is strictly the better turn.
 const GOAL_KEYS = Object.freeze({
-  drive:   ['drive', 'db', 'fans', 'sustain'],
-  sustain: ['sustain', 'db', 'fans', 'drive'],
-  db:      ['db', 'fans', 'drive', 'sustain'],
-  fans:    ['fans', 'db', 'drive', 'sustain'],
+  drive:   ['drive', 'fans', 'sustain'],
+  sustain: ['sustain', 'fans', 'drive'],
+  fans:    ['fans', 'drive', 'sustain'],
 });
 
 const lexCompare = (a, b) => {
@@ -91,10 +90,13 @@ const lexCompare = (a, b) => {
   return 0;
 };
 
-// 📌 The two melody-only orders are the CEILINGS every goal is clamped by — see
-// `melodyCeilings`. Their `-spent` is the line's own length: a shorter line
-// that pays the same leaves more of the hand for the stacks and next turn.
-const CEILING_KEYS = Object.freeze({ dbFans: ['db', 'fans'], fansDb: ['fans', 'db'] });
+// 📌 The melody-only order is the CEILING every goal is clamped by — see
+// `melodyCeilings`. Its `-spent` is the line's own length: a shorter line that
+// pays the same leaves more of the hand for the stacks and next turn.
+// 🪦 There were two (`dbFans` and `fansDb`) until Db was cut, 2026-10-02.
+// ⚠️ Named `fansLine`, not `fans`: `vectorFor` reads GOAL_KEYS first, and the
+// `fans` GOAL is the joint stack search — the ceiling must stay melody-only.
+const CEILING_KEYS = Object.freeze({ fansLine: ['fans'] });
 
 const vectorFor = (goal, v) => [...(GOAL_KEYS[goal] ?? CEILING_KEYS[goal]).map(k => v[k]), -v.spent];
 
@@ -382,7 +384,6 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
     return {
       drive: p.dChord.drive + Math.max(hand.tempDrive, carrot === 'drive' ? 1 : 0),
       sustain: p.sChord.sustain + Math.max(hand.tempSustain, carrot === 'sustain' ? 1 : 0),
-      db: line.length ? payout.db : 0,
       fans: line.length ? payout.style.score + payout.craftFans : 0,
       spent: p.spentStack + (line.length - hand.prefix.length),
       carrot,
@@ -398,20 +399,17 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
   // Comparing a bound vector key by key IS a lexicographic compare, so laziness
   // changes the cost, never the answer.
   const scanFor = (p, line, payout, slots) => {
-    let cleanLeft = 0, endBest = line.length ? payout.endingDb : 0;
     let carrotD = !hand.mojoDrained && line.length > 0 && payout.chordRootCarrot === 'drive';
     let carrotS = !hand.mojoDrained && line.length > 0 && payout.chordRootCarrot === 'sustain';
     if (slots > 0) {
       for (const [n, c] of p.counts) {
         if (!c) continue;
-        if (hand.info.get(n).clean) cleanLeft += c;
         const one = p.lastNote.get(n);
-        if (one.endingDb > endBest) endBest = one.endingDb;
         if (!hand.mojoDrained && one.chordRootCarrot === 'drive') carrotD = true;
         if (!hand.mojoDrained && one.chordRootCarrot === 'sustain') carrotS = true;
       }
     }
-    return { cleanLeft, endBest, carrotD, carrotS };
+    return { carrotD, carrotS };
   };
 
   const componentFor = (key, p, line, payout, slots, memo) => {
@@ -419,25 +417,6 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
     switch (key) {
       case 'drive': return p.dChord.drive + Math.max(hand.tempDrive, scan().carrotD ? 1 : 0);
       case 'sustain': return p.sChord.sustain + Math.max(hand.tempSustain, scan().carrotS ? 1 : 0);
-      case 'db': {
-        const { cleanLeft, endBest } = scan();
-        const cleanNow = line.length ? payout.cleanCount : 0;
-        const cleanMax = cleanNow + Math.min(slots, cleanLeft);
-        // ⚠️ Streak and ending are bounded by their caps, not their current values:
-        // appending can open a streak, and the ending is whatever note lands LAST.
-        // Two streaks need a NON-clean note between them, and that note takes a
-        // seat a clean note could have had — so "every seat clean" and "two
-        // streaks" are bounded as the two separate cases they are.
-        const oneStreak = cleanMax * 0.5 + (cleanMax >= 3 ? 0.5 : 0);
-        // ⚠️ Only subtract the separator's seat when the line has NO non-clean
-        // note yet. Once one is on the track it may already be the separator —
-        // found by `playFinderCheck` §3's brute force, which caught this bound
-        // pruning the winning "clean run · discord · clean run" line.
-        const hasSeparator = line.some(n => !hand.info.get(n)?.clean);
-        const twoClean = cleanNow + Math.min(hasSeparator ? slots : Math.max(0, slots - 1), cleanLeft);
-        const twoStreaks = twoClean >= 6 ? twoClean * 0.5 + 1 : 0;
-        return Math.max(oneStreak, twoStreaks) + endBest;
-      }
       case 'fans': {
         let trailingClean = 0;
         for (let i = line.length - 1; i >= 0 && hand.info.get(line[i])?.clean; i -= 1) trailingClean += 1;
@@ -450,18 +429,19 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
     }
   };
 
-  // 🎯 THE CLAMP. Db and fans never depend on the stacks — only on which notes
-  // are left for the line — and a line from fewer notes is a line from more. So
-  // the best (db, then fans) the WHOLE hand can play is a ceiling on every plan's
-  // melody, and likewise (fans, then db). Clamping the loose per-node bound down
-  // to those exact ceilings is what lets one proof serve every plan instead of
-  // re-proving the melody under each of them. ⚠️ Only valid when the ceiling was
-  // PROVEN — a ceiling that hit its budget is null and does not clamp.
+  // 🎯 THE CLAMP. Fans never depend on the stacks — only on which notes are left
+  // for the line — and a line from fewer notes is a line from more. So the best
+  // fans the WHOLE hand can play is a ceiling on every plan's melody. Clamping
+  // the loose per-node bound down to that exact ceiling is what lets one proof
+  // serve every plan instead of re-proving the melody under each of them.
+  // ⚠️ Only valid when the ceiling was PROVEN — a ceiling that hit its budget is
+  // null and does not clamp. ⚠️ ONE key now, so it clamps one key: the ceiling
+  // vector's second entry is the line's `-spent`, NOT a melody payout, and must
+  // never be applied to the key after `fans`.
   const keys = GOAL_KEYS[goal] ?? CEILING_KEYS[goal];
   const pairCeiling = (first, second) => {
     if (!ceilings || !GOAL_KEYS[goal]) return null;
-    if (first === 'db' && second === 'fans') return ceilings.dbFans;
-    if (first === 'fans' && second === 'db') return ceilings.fansDb;
+    if (first === 'fans' && ceilings.fansLine) return [ceilings.fansLine[0]];
     return null;
   };
 
@@ -489,8 +469,7 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
   // values object for a new incumbent (most candidates lose on the first key).
   const consider = (p, line, payout) => {
     const carrot = hand.mojoDrained || line.length === 0 ? null : payout.chordRootCarrot;
-    const read = k => k === 'db' ? (line.length ? payout.db : 0)
-      : k === 'fans' ? (line.length ? payout.style.score + payout.craftFans : 0)
+    const read = k => k === 'fans' ? (line.length ? payout.style.score + payout.craftFans : 0)
       : k === 'drive' ? p.dChord.drive + Math.max(hand.tempDrive, carrot === 'drive' ? 1 : 0)
       : p.sChord.sustain + Math.max(hand.tempSustain, carrot === 'sustain' ? 1 : 0);
     if (best) {
@@ -503,7 +482,7 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
     best = { vec: vectorFor(goal, values), values, prep: p, line: [...line], payout };
   };
 
-  const emptyPayout = hand.prefix.length ? null : { db: 0, style: { score: 0 }, craftFans: 0, chordRootCarrot: null, endingDb: 0, cleanCount: 0, craftRun: 0 };
+  const emptyPayout = hand.prefix.length ? null : { style: { score: 0 }, craftFans: 0, chordRootCarrot: null, cleanCount: 0, craftRun: 0 };
 
   // Plans best-first by their optimistic bound.
   const ranked = prepared.map(p => {
@@ -568,7 +547,6 @@ function describe(hand, goal, found, ceilings) {
     result: {
       drive: best.values.drive,
       sustain: best.values.sustain,
-      db: best.values.db,
       fans: best.values.fans,
       spent: best.values.spent,
       moves: Math.min(best.line.length, hand.speed),
@@ -582,8 +560,8 @@ function describe(hand, goal, found, ceilings) {
       craftFans: pay?.craftFans ?? 0,
       cleanCount: pay?.cleanCount ?? 0,
     },
-    // Exact only if the goal's own search AND both ceilings it leaned on were proven.
-    exact: found.exact && !!ceilings?.dbFans && !!ceilings?.fansDb,
+    // Exact only if the goal's own search AND the ceiling it leaned on were proven.
+    exact: found.exact && !!ceilings?.fansLine,
     searched: { plans: found.plans, lines: found.nodes, ceilingLines: ceilings?.lines ?? 0 },
   };
 }
@@ -593,29 +571,29 @@ function describe(hand, goal, found, ceilings) {
  *
  * @param {string} spiritId
  * @param {object} ns      the Spirit's note sheet (never mutated)
- * @param {'drive'|'sustain'|'db'|'fans'} goal
+ * @param {'drive'|'sustain'|'fans'} goal
  * @param {object} [opts]
  * @param {number[]} [opts.unavailable]  stock indices that cannot be played this
  *   turn (the client's `staggeredSlots`)
  * @param {number}   [opts.nodeBudget]   see `FINDER_NODE_BUDGET`
  */
-export function findBestPlay(spiritId, ns = {}, goal = 'db', opts = {}) {
+export function findBestPlay(spiritId, ns = {}, goal = 'fans', opts = {}) {
   if (!GOAL_KEYS[goal]) throw new RangeError(`findBestPlay: unknown goal "${goal}" — one of ${FINDER_GOALS.join(', ')}`);
   const hand = readHand(spiritId, ns ?? {}, opts);
   const budget = opts.nodeBudget ?? FINDER_NODE_BUDGET;
   const ceilings = opts._ceilings ?? melodyCeilings(hand, budget);
 
-  // 💰🎤 Db AND FANS: THE LINE FIRST, THEN THE STACKS FROM WHAT IT LEAVES.
+  // 🎤 FANS: THE LINE FIRST, THEN THE STACKS FROM WHAT IT LEAVES.
   // ⚠️ Deliberately sequential, and it is a DEFINITION, not an approximation of
-  // the joint search. Db and fans do not depend on the stacks at all, so the
+  // the joint search. Fans do not depend on the stacks at all, so the
   // line's payout is proven over the whole hand; the stacks then take the best
   // chord the leftovers can make. Searched jointly, every stack plan re-proved
   // the melody under it and a full hand cost seconds (measured 2026-09-16,
   // `SEQUENCING.md` handoff). What the definition gives up: when two lines pay
   // the same, it keeps the SHORTER one, not the one whose leftovers voice the
   // better chord.
-  if (goal === 'db' || goal === 'fans') {
-    const lineFound = ceilings[goal === 'db' ? 'dbFansFound' : 'fansDbFound'];
+  if (goal === 'fans') {
+    const lineFound = ceilings.fansLineFound;
     const found = stacksAfterLine(hand, goal, lineFound);
     return describe(hand, goal, found, ceilings);
   }
@@ -623,7 +601,7 @@ export function findBestPlay(spiritId, ns = {}, goal = 'db', opts = {}) {
   return describe(hand, goal, found, ceilings);
 }
 
-/** The best stacks the leftovers of a fixed line can build (Db / fans goals). */
+/** The best stacks the leftovers of a fixed line can build (the fans goal). */
 function stacksAfterLine(hand, goal, lineFound) {
   const line = lineFound.best.line;
   const groups = groupBySpelling(hand.free);
@@ -645,11 +623,11 @@ function stacksAfterLine(hand, goal, lineFound) {
   return { best, nodes: 0, exact: lineFound.exact, plans: plans.length };
 }
 
-/** Proven melody ceilings for a hand, or null per order when a proof ran out of
- *  budget (a null ceiling simply does not clamp). The winning lines ride along:
- *  they ARE the Db and fans goals' melodies. */
+/** The proven melody ceiling for a hand, or null when the proof ran out of
+ *  budget (a null ceiling simply does not clamp). The winning line rides along:
+ *  it IS the fans goal's melody. */
 function melodyCeilings(hand, budget) {
-  const out = { dbFans: null, fansDb: null, lines: 0 };
+  const out = { fansLine: null, lines: 0 };
   for (const name of Object.keys(CEILING_KEYS)) {
     const found = searchGoal(hand, name, budget, null);
     out.lines += found.nodes;
@@ -660,8 +638,8 @@ function melodyCeilings(hand, budget) {
 }
 
 /** The best play for every goal — what the crowd (and the stacks) can ask for.
- *  The two melody ceilings are proven ONCE and shared by all four goals.
- *  `opts.goals` narrows the set: the melody step only needs `['fans', 'db']`,
+ *  The melody ceiling is proven ONCE and shared by all three goals.
+ *  `opts.goals` narrows the set: the melody step only needs `['fans']`,
  *  which skips the two joint stack searches — the dear half of the cost. */
 export function findBestPlays(spiritId, ns = {}, opts = {}) {
   const goals = opts.goals ?? FINDER_GOALS;
@@ -690,7 +668,6 @@ export function scorePlay(spiritId, ns = {}, play = {}, _pre = null) {
   return {
     drive: chordOf(spiritId, driveStack).drive + Math.max(hand.tempDrive, carrot === 'drive' ? 1 : 0),
     sustain: chordOf(spiritId, sustainStack).sustain + Math.max(hand.tempSustain, carrot === 'sustain' ? 1 : 0),
-    db: line.length ? payout.db : 0,
     fans: line.length ? payout.style.score + payout.craftFans : 0,
     spent: spentStack + Math.max(0, line.length - hand.prefix.length),
     carrot,

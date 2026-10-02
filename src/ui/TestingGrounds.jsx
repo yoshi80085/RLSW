@@ -75,10 +75,10 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
               {/* 🆓 FREE PLAY + the turn-step jump. */}
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,margin:'12px 0 4px'}}>🆓 FREE PLAY</div>
               <button onClick={()=>setDevFreePlay?.(v=>!v)} data-tg-freeplay={devFreePlay ? 'on' : 'off'}
-                title="Keep the acting Spirit topped up: AP, action token, cooldowns, Db, and every ability in its kit"
+                title="Keep the acting Spirit topped up: AP, action token, cooldowns, and every ability in its kit"
                 style={{...smallBtn,width:'100%',textAlign:'left',padding:'6px 8px',
                   ...(devFreePlay ? {background:'#16331e',border:'1px solid #44cc66',color:'#88ffaa'} : {})}}>
-                {devFreePlay ? '✓ ON' : '○ OFF'} — no AP, cooldown or Db limits · full kit
+                {devFreePlay ? '✓ ON' : '○ OFF'} — no AP or cooldown limits · full kit
               </button>
               <div style={{fontSize:7,color:'#6a5a85',margin:'4px 0 5px',lineHeight:1.4}}>Jump the acting Spirit to a turn step:</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:2}}>
@@ -101,7 +101,7 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>GRANT TO ACTING SPIRIT</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5}}>
-                {[['hc','+3 DB'],['cas','+5 Casuals'],['die','+1 Diehard'],['uns','+5 Unsure'],['vup','+1 Vibe'],['vdn','−1 Vibe'],['fp','+3 FP'],['card','+1 🃏 Card'],['mqk','🎤 Flip marquees']].map(([k,lbl])=>(
+                {[['cas','+5 Casuals'],['die','+1 Diehard'],['uns','+5 Unsure'],['vup','+1 Vibe'],['vdn','−1 Vibe'],['fp','+3 FP'],['card','+1 🃏 Card'],['mqk','🎤 Flip marquees']].map(([k,lbl])=>(
                   <button key={k} onClick={()=>devGrant(k)}
                     style={{background:'#0a0814',border:'1px solid #4a2a60',color:'#d0c0e0',borderRadius:5,fontSize:9,padding:'5px 8px',cursor:'pointer',fontFamily:'inherit'}}>{lbl}</button>
                 ))}

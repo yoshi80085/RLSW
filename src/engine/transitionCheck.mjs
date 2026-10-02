@@ -138,7 +138,7 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   // behind it would be the worst of both.
   // ⚠️ The key is pinned. `makeInitialNoteState` seeds a RANDOM root and mode,
   // so an unpinned fixture can hand the Ronin a track that is entirely discord —
-  // which earns 0 Db for a legitimate reason and would make this assertion flap.
+  // which wins nothing for a legitimate reason and would make this assertion flap.
   const track = withNs(baseState(), RONIN, {
     melodyLine: ['C', 'D', 'E', 'G'], rootNote: 'C', scaleMode: 'major',
     driveStack: [], sustainStack: [], discordUnlocks: [], unlockedSkills: [],
@@ -148,8 +148,8 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   eq(conf.partial, undefined, '...and declares no gap');
   deep(PARTIAL_KINDS, {}, 'nothing in this file is partial any more');
   ok(conf.report, 'the economy report comes back for a searcher to read');
-  ok((conf.state.noteStates[RONIN].totalDB ?? 0) > 0,
-     '...and the Db it used to skip actually reaches the sheet — see melodyCommitCheck for the rest');
+  ok(conf.state.noteStates[RONIN].hasConfirmed === true && (conf.state.noteStates[RONIN].committedMelody ?? []).length === 4,
+     '...and the economy visibly lands on the sheet — see melodyCommitCheck for the rest (🪦 proven by `totalDB` until Db was cut)');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -508,8 +508,8 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   ok(new Set(scored.map(s => s.score)).size > 1,
      'the scores actually DIFFER — a searcher with one flat score is a random-move bot');
 
-  // Other kinds of stuck: skill unlocks are Db, not AP, so a 0-AP position is
-  // not a dead one.
+  // Other kinds of stuck: a 0-AP position is not a dead one (ending the turn is
+  // always there).
   const broke = { ...st, turn: { ...st.turn, moveStepsLeft: 0 } };
   const acts = legalActions(broke, RONIN);
   ok(acts.length > 0, 'a Spirit with no AP still has something to do');

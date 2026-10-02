@@ -1,5 +1,8 @@
 # PROGRESSION REWRITE — the Theory branch comes off the tree
 
+> 🪦 **§5 (the Db sink: per-ability upgrade streams) is CANCELLED 2026-10-02** — Db was
+> cut from the game. The rest of this doc (the Theory branch coming off the tree) stands as history.
+
 > **Design sketch, 2026-09-01. Alex's call, out of a long conversation.**
 >
 > ✅ **🅰️ §2 AND THE FIRST HALF OF 🅱️ §3 ARE BUILT — 2026-09-02.** The Theory

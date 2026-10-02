@@ -337,6 +337,10 @@ export function countPardonedByStack(classified = []) {
 }
 
 // ── B5: HARMONIC LOCK (the Db escalation) ────────────────────────────────────
+// 🪦 UNPLUGGED, AND NOW WITHOUT A CURRENCY: the commit had already pinned its
+// bonus to 0, and Db itself was cut 2026-10-02. Nothing in the game calls this;
+// `b0check` still does. Kept as the documented rule should resolution ever pay
+// again — read the rest as history.
 // B2 cut the ending bonus roughly in half (5th end +3, 4th +2, octave +1) so that
 // Db income came from playing well rather than from turning up. Harmonic Lock is
 // where the other half comes back — but only for a player who built something and

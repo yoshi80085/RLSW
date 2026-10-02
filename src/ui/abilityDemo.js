@@ -56,8 +56,8 @@ import { bushidoUpgrade } from '../engine/systems/bushido.js';
 import { keepBest } from '../engine/systems/dicePool.js';
 import { SPIRIT_DEFS } from '../data/spirits.js';
 import {
-  SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS, SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
-  PSYCHO_BUSHIDO_CD, PSYCHO_BUSHIDO_DB_COST, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_STACK_COST,
+  SHUKUCHI_CD, SHUKUCHI_MAX_HOPS, SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
+  PSYCHO_BUSHIDO_CD, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_STACK_COST,
   PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE, psychoBushidoD8s,
 } from '../data/gameConstants.js';
 import { createLandingSfx } from '../audio/landingSfx.js';
@@ -66,7 +66,7 @@ import { getRiffAudio, getSfxBus } from '../audio/riffSfx.js';
 import { createCursedShamisenVisuals } from '../board/cursedShamisenVisuals.js';
 import { CURSED_SHAMISEN, planCast, stringIv, stringOctaves, iwatoDegree, STRINGS, CURSE_TURNS, EXORCISE_NOTES } from '../board/cursedShamisen.js';
 import { createShamisenCurseSfx, scheduleCast, midiHz } from '../audio/shamisenCurseSfx.js';
-import { CURSED_SHAMISEN_DB_COST, CURSED_SHAMISEN_CD, SONIC_BEAM_REACH } from '../data/gameConstants.js';
+import { CURSED_SHAMISEN_CD, SONIC_BEAM_REACH } from '../data/gameConstants.js';
 
 // ── the levers ── ⭐ ONE COPY, and Alex's dial-in (untouched defaults, 2026-10-01).
 // The preview page reads its defaults from here.
@@ -231,13 +231,13 @@ export function bushidoCaptions(sc, plan) {
 }
 export const captionAt = (caps, t) => caps.filter(c => t >= c.at).at(-1)?.text ?? '';
 export function bushidoEndCard() {
-  return { title:'⚡ Psycho Bushido', lines:[`${PSYCHO_BUSHIDO_AP_COST} AP · ${PSYCHO_BUSHIDO_DB_COST} Db · burns ${PSYCHO_BUSHIDO_STACK_COST} Drive notes`,
+  return { title:'⚡ Psycho Bushido', lines:[`${PSYCHO_BUSHIDO_AP_COST} AP · burns ${PSYCHO_BUSHIDO_STACK_COST} Drive notes`,
     `Range ${PSYCHO_BUSHIDO_MIN_RANGE} / 4 / ${PSYCHO_BUSHIDO_MAX_RANGE} → ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} / ${psychoBushidoD8s(4)} / ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} d8s`,
     `${PSYCHO_BUSHIDO_CD}-round cooldown · you land with your guard down`] };
 }
 export function shukuchiEndCard() {
   return { title:'🌀 Shukuchi Arpeggio', lines:[`Up to ${SHUKUCHI_MAX_HOPS} leaps of ${SHUKUCHI_HOP_RINGS} hexes · ${SHUKUCHI_AP_PER_HOP} AP each`,
-    `${SHUKUCHI_DB_COST} Db once · ${SHUKUCHI_CD}-round cooldown from the first leap`, 'You end facing your last leap'] };
+    `${SHUKUCHI_CD}-round cooldown from the first leap`, 'You end facing your last leap'] };
 }
 
 // ── 🎸 CURSED SHAMISEN: the script ──────────────────────────────────────────
@@ -270,7 +270,7 @@ export function shamisenCaptions(sc, ending = 'exorcised', S = SHAMISEN_DEMO) {
     { at:S.castAt, text:`Three strings: cast on a rival within ${SONIC_BEAM_REACH} hexes` },
     { at:cast(sc.plan.launchAt), text:'Three ghost-fires leave the strings…' },
     { at:cast(sc.plan.slapAt), text:'呪 — the charm strikes' },
-    { at:sc.landed, text:`Their scale IS Iwato for ${CURSE_TURNS} turns — every other note is discord: no Db, no fans` },
+    { at:sc.landed, text:`Their scale IS Iwato for ${CURSE_TURNS} turns — every other note is discord: no fans` },
     { at:sc.burnAt, text:'Each cursed turn burns a wisp' },
     { at:sc.endAt, text:ending === 'exorcised'
       ? `EXORCISED — ${EXORCISE_NOTES} different Iwato notes on their very next turn lift it`
@@ -279,7 +279,7 @@ export function shamisenCaptions(sc, ending = 'exorcised', S = SHAMISEN_DEMO) {
 }
 export function shamisenEndCard() {
   return { title:'🎸 Cursed Shamisen', lines:[`Take it up · next turn tune ${STRINGS} Iwato strings (up to 3 a turn)`,
-    `Cast within ${SONIC_BEAM_REACH} hexes · ${CURSED_SHAMISEN_DB_COST} Db · your Action · ${CURSED_SHAMISEN_CD}-round cooldown`,
+    `Cast within ${SONIC_BEAM_REACH} hexes · your Action · ${CURSED_SHAMISEN_CD}-round cooldown`,
     `Their scale = Iwato for ${CURSE_TURNS} turns · exorcise with ${EXORCISE_NOTES} Iwato notes`] };
 }
 
@@ -484,7 +484,7 @@ export function createAbilityDemo({ look = {}, reduced = () => globalThis.matchM
         st.aim(t);
         return {
           caption:caption.text, card:phase === 'card' ? shukuchiEndCard() : null,
-          chips:[{ label:'AP', pips:3, left:ap }, { label:`${SHUKUCHI_DB_COST} Db`, on:i >= 0 && phase !== 'intro' }, ...(picked ? [{ label:'+1 note 🎵', on:true }] : [])],
+          chips:[{ label:'AP', pips:3, left:ap }, { label:`${SHUKUCHI_CD}-round CD`, on:i >= 0 && phase !== 'intro' }, ...(picked ? [{ label:'+1 note 🎵', on:true }] : [])],
           over:phase === 'card' && now - cardAt > L.endMs,
         };
       },
@@ -665,7 +665,7 @@ export function createAbilityDemo({ look = {}, reduced = () => globalThis.matchM
         const cast = d >= D.castAt;
         return {
           caption:captionAt(caps, d), exposure:1 - 0.6 * Math.min(1, last.dim ?? 0),
-          chips:[{ label:'Strings', pips:STRINGS, left:cast ? 0 : tuned }, { label:`${CURSED_SHAMISEN_DB_COST} Db`, on:cast }, { label:'Action', on:cast },
+          chips:[{ label:'Strings', pips:STRINGS, left:cast ? 0 : tuned }, { label:`${CURSED_SHAMISEN_CD}-round CD`, on:cast }, { label:'Action', on:cast },
             ...(d >= sc.landed && d < sc.endAt + 0.4 ? [{ label:`呪 cursed · ${d >= sc.burnAt ? 1 : 2} turn${d >= sc.burnAt ? '' : 's'}`, on:true }] : [])],
           card:d >= sc.total - 1.6 && L.endCard === 'on' ? shamisenEndCard() : null,
           over:d >= sc.total - 1.6 + (L.endCard === 'on' ? L.endMs : 300) / 1000,

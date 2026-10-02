@@ -1,5 +1,10 @@
 # MELODY IDENTITY DESIGN — 🎼 what each Spirit's fans came to hear
 
+> 🪦 **2026-10-02 — Db IS CUT FROM THE GAME.** Every mention of Db below (earning it,
+> spending it, unlocking with it) is history. Abilities are drafted two per seat and
+> gated by cooldowns + their own sacrifices; a melody pays fans and the red/blue
+> carrot. Current truth: `STATE_OF_PLAY.md` §4.
+
 > **Design conversation, 2026-09-02. Alex's material, audited against source.**
 >
 > The home for `PROGRESSION_REWRITE_DESIGN.md` §3's one open line — *"the

@@ -1106,15 +1106,6 @@ export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns =
         (state.noteStates?.[s.id]?.assignments ?? []).length),
     }])),
     unsure: crowd.unsure,
-    // 💰 UNSPENT Db AND WHAT IT BOUGHT, per seat — added 2026-08-20 with the
-    // tree deletion. MARQUEE_QUIZ_DESIGN.md §7 parks a known hole: the rig branch
-    // was the largest sink in the game and nothing replaced it yet, so Db is
-    // expected to pile up. This is the number that says how badly, instead of
-    // leaving it as a worry in a doc.
-    db: Object.fromEntries((state.spirits ?? []).map(s => [s.id, {
-      unspent: state.noteStates?.[s.id]?.dbPoints ?? 0,
-      bought:  (state.noteStates?.[s.id]?.unlockedSkills ?? []).length,
-    }])),
     anomaly: null,
   };
 }

@@ -34,7 +34,7 @@ import { characterId } from "../../data/spiritIdentity.js";
 // row as +1.0 was not a considered distinction, it was drift.
 
 import {
-  STOCK_REFILL_RATE, DB_UPGRADE_THRESHOLD, stackCapFor,
+  STOCK_REFILL_RATE, stackCapFor,
   fpPerLife, POSE_FP_STEP, POSE_FP_MAX,
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
   FAN_MULT_MAX, FAN_DIEHARD_START, SONIC_BEAM_REACH, LIMELIGHT_HEX,
@@ -49,7 +49,6 @@ import { usedHas } from "../systems/economy.js";
 import { rigFor } from "../systems/attackParams.js";
 import { handOf } from "../systems/marqueeCards.js";
 import { posePayout, posingMap, poseRounds, isPosing } from "../systems/limelight.js";
-import { SKILL_BY_ID } from "../../data/skillTree.js";
 // 🔊 The beam geometry, BORROWED FROM THE GENERATOR RATHER THAN RE-DERIVED. A
 // second copy of "which hexes does a Sonic reach" is a second thing to retune,
 // and the whole point of the `beamSetup` term is that it agrees with the action
@@ -96,26 +95,10 @@ export const MAX_EDGE_DIST = ALL_HEXES.reduce((mx, h) => {
   return Number.isFinite(d) ? Math.max(mx, d) : mx;
 }, 0) || 1;
 
-// 🎓 The starting kit — what a Spirit is BORN with, which must not be scored as
-// investment or the Ronin looks richer than everybody else from turn one.
-//
-// 📌 `amp_1` left this set on 2026-08-20 with the rig branch, and the Ronin's
-// `theory_minor` left it on 2026-09-02 with the Theory branch. Neither departure
-// took anything from a Spirit: every Spirit still opens at `RIG_POOL_FLOOR`, and
-// the Chord Tone Pardon the Ronin was born holding is now free for everybody
-// (`music/context.js`) — so there is nothing left that is a SKILL and free.
-//
-// ⚠️ THE SET STAYS, EMPTY, RATHER THAN THE LOGIC BEING DELETED. `kit` subtracts
-// it from `unlockedSkills` before pricing investment, and §5's per-ability
-// upgrade streams will hand somebody a free first rung the moment they exist.
-// An empty set is a correct answer; a missing subtraction is a Spirit who looks
-// richer than everybody else from turn one.
-export const STARTING_SKILLS = new Set();
-
-// 🎓 How much Db invested in the kit counts as "fully equipped". Not a rule —
-// a normaliser, chosen as roughly two mid-tier unlocks, which is what a Spirit
-// can realistically land inside one match at the Db rates in §2.
-export const KIT_DB_HORIZON = 20;
+// 🪦 `STARTING_SKILLS` and `KIT_DB_HORIZON` are GONE (2026-10-02), with the
+// `kit` and `dbHorizon` terms they normalised. Db was cut from the game, so
+// there is nothing banked to score and nothing invested to price; the two
+// abilities a seat drafts are simply ready, on their cooldowns.
 
 // 💢 HOW MUCH OF A WOUND SURVIVES BEING OUT OF REACH.
 //
@@ -156,7 +139,7 @@ export const PRESSURE_REACH_FLOOR = 0.35;
 //
 // for the largest Vibe pool on the roster (M) rearranges to the bound below.
 // ⚠️ DERIVED FROM THE ROSTER, NOT PINNED AT A NUMBER, for the same reason
-// `dbHorizon` divides by the skill you are saving for rather than a flat 4: a
+// the old `dbHorizon` divided by the skill being saved for rather than a flat 4: a
 // Spirit with a deeper Vibe pool makes the ratio tighter, and a hard-coded 0.35
 // would silently go back to paying the bot for missing. `evalCheck` §16 sweeps
 // the whole roster against the property itself, so this cannot drift quietly.
@@ -574,7 +557,7 @@ export const DEFAULT_WEIGHTS = {
   survival: 1.0, fame: 2.0, fanMult: 1.0, perfCliff: 1.0,
   drive: 0.6, sustain: 0.5, apBanked: 1.0, inRig: 1.0,
   charge: 1.2, refillDenied: 1.0, edgeSafety: 1.0,
-  dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 2.5,
+  rivalPose: 1.0, targetUpside: 1.0, pressure: 2.5,
   centreStage: 0.8, chargeSeek: 0.6, stock: 1.0, beamSetup: 0.7, marqueeSeek: 0.7, loud: 3.0,
   posePlay: 0.4, facing: 1.0,
 };
@@ -588,7 +571,7 @@ export const EVAL_WEIGHTS = {
     survival: 1.4, fame: 2.2, fanMult: 1.3, perfCliff: 2.0,
     drive: 0.6, sustain: 0.4, apBanked: 0.9, inRig: 1.0,
     charge: 0.9, refillDenied: 0.3, edgeSafety: 1.3,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 2.5,
+    rivalPose: 1.0, targetUpside: 1.0, pressure: 2.5,
     // 🎵 `stock` runs high for him alone — an 11-slot reservoir and a Lost Chord
     // innate that finds a second note make notes the currency he is richest in,
     // and a long track is what the Performance cliff is bought with.
@@ -623,7 +606,7 @@ export const EVAL_WEIGHTS = {
     // 📌 A 12-match probe preferred 2.5 (94 turns, 10/12). Twelve matches cannot
     // settle a 0.5, and 2.5 would erase the ordering that IS his character, so
     // this takes the smaller step and leaves the question for the bench.
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 2.0,
+    rivalPose: 1.0, targetUpside: 1.0, pressure: 2.0,
     // ⚡ HIS HIGHEST SEEK BY A DISTANCE, and it is the same claim `charge: 2.2`
     // makes, finally expressed as a plan instead of a state. Charged, he goes
     // from stranded 2d6 to portable 2d8+2d6 anywhere on the board and defends on
@@ -649,7 +632,7 @@ export const EVAL_WEIGHTS = {
     survival: 0.7, fame: 2.0, fanMult: 0.6, perfCliff: 0.3,
     drive: 0.7, sustain: 0.55, apBanked: 0.5, inRig: 0.8,
     charge: 0.8, refillDenied: 0.4, edgeSafety: 0.6,
-    dbHorizon: 1.0, rivalPose: 1.0, targetUpside: 1.0, kit: 1.6, pressure: 3.6,
+    rivalPose: 1.0, targetUpside: 1.0, pressure: 3.6,
     // 🔊 His lowest beam weight, and the reason is his kit rather than his
     // temperament: the Tentacle and the Slam are melee, the trail is his
     // approach, and a Spirit who wants to be in contact has less use for a
@@ -906,7 +889,7 @@ export function evaluate(state, spiritId, view = {}) {
   const myFame = ns.fame ?? 0;
   const fameFrac = clamp01(myFame / target);
 
-  // ── §3.6 investment horizon. Compounding terms (fans, banked Db) are worth
+  // ── §3.6 investment horizon. Compounding terms (fans) are worth
   // more the further the finish line is: a fan multiplier bought at 20/24 has
   // almost no payouts left to multiply. Decays linearly to nothing at the win.
   const horizon = 1 - fameFrac;
@@ -1003,47 +986,12 @@ export function evaluate(state, spiritId, view = {}) {
   //     standing room is defensive value the hex scorers already priced.
   terms.edgeSafety = clamp01(distFromEdge(self.num) / MAX_EDGE_DIST);
 
-  // 13. Db BANKED vs. MATCH REMAINING (§3.2) — the sharpest tension in the game
-  //     and the one the current bot has no concept of. Banked Db is only worth
-  //     something if there is enough match left to fire what it buys; a 14–16 Db
-  //     capstone bought at 20/24 never pays for itself.
-  //     ⚠️ DIVIDED BY WHAT YOU ARE SAVING FOR, NOT BY A FLAT CONSTANT. This read
-  //     `/ DB_UPGRADE_THRESHOLD` until 2026-08-16, which is the FALLBACK cost
-  //     used when no skill is targeted (4) — not a ceiling on banking. Skills
-  //     cost 6–16, so the term saturated at 4 and scored 4 Db and 16 Db as
-  //     identically good, which is precisely the "saving toward a capstone"
-  //     tension §3.2 calls the sharpest in the game, flattened away. §5 already
-  //     states this discipline for the stacks — "divide by `stackCapFor()`,
-  //     never a flat 5" — and it applies here for the same reason.
-  //     `melodyCommit.js` and the client both derive the target cost this exact
-  //     way, so this is now one rule with three consumers rather than two
-  //     different readings of one pool.
-  const targetCost = SKILL_BY_ID[ns.targetSkillId]?.dbCost ?? DB_UPGRADE_THRESHOLD;
-  terms.dbHorizon = clamp01((ns.dbPoints ?? 0) / targetCost) * horizon;
-
-  // 13b. 🎓 KIT — Db that has been CONVERTED INTO CAPABILITY. The other half of
-  //     §3.2, and it was missing.
-  //
-  //     ⚠️ WITHOUT THIS THE BOT CAN NEVER BUY ANYTHING, and the failure is
-  //     structural rather than a tuning miss. `dbHorizon` scores Db BANKED, so
-  //     an unlock is a pure loss to it — the Db leaves the bank and nothing in
-  //     the table records what arrived in its place. A greedy searcher therefore
-  //     refuses every purchase in the game, forever. Found 2026-08-16, the first
-  //     time the §6.6 bench was handed a real SKILL_TREE: across 60 turns of a
-  //     three-handed match, not one skill was bought by anybody.
-  //
-  //     📌 It is measured in Db INVESTED rather than skills COUNTED, which makes
-  //     it the exact mirror of `dbHorizon` — one pool, two states — and means a
-  //     12 Db capstone is not scored the same as a 6 Db rung. Starting kit is
-  //     excluded; being wired in is not an investment.
-  //
-  //     ⚠️ AND IT IS MULTIPLIED BY THE HORIZON, which is §3.2's actual verdict:
-  //     "a capstone bought at fame 20/24 never pays for itself." Late in a match
-  //     an unlock is worth less because there is less match left to fire it.
-  const invested = (ns.unlockedSkills ?? [])
-    .filter(id => !STARTING_SKILLS.has(id))
-    .reduce((sum, id) => sum + (SKILL_BY_ID[id]?.dbCost ?? 0), 0);
-  terms.kit = clamp01(invested / KIT_DB_HORIZON) * horizon;
+  // 13. 🪦 Db BANKED (`dbHorizon`) and 13b. KIT (`kit`) are GONE (2026-10-02).
+  //     Db was cut from the game — the draft hands each seat two abilities,
+  //     ready, gated only by cooldown and their own sacrifices — so there is no
+  //     pool to bank and no unlock to price. ⚠️ Do not reintroduce a term that
+  //     scores owned abilities: every seat owns exactly two from turn one, so it
+  //     would be a constant that only moves the bot's absolute numbers.
 
   // 14. RIVAL POSE THREAT (NEW — no equivalent in `botHexScore`). A maxed poser
   //     earns a full turn's FP ceiling standing still, which makes them the
@@ -1145,7 +1093,7 @@ export function evaluate(state, spiritId, view = {}) {
   //     reached, shaped on `FAN_GAIN_BY_RING`) plus a RAMP (how far you still
   //     are), because the shelf alone is flat across the whole Backstage.
   //
-  //     ⚠️ NOT MULTIPLIED BY THE HORIZON, unlike `fanMult` and `dbHorizon`.
+  //     ⚠️ NOT MULTIPLIED BY THE HORIZON, unlike `fanMult`.
   //     §3.6's decay argument is about the fan MULTIPLIER being an investment
   //     that needs payouts left to multiply. Board control is not an investment:
   //     the Limelight is the Pose hex and the contested square right up to the

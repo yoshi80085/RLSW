@@ -46,14 +46,14 @@ import { makeInitialState } from "./state.js";
 import { legalActions } from "./policies/legalActions.js";
 import { applyBotAction, spendDriveStack } from "./policies/transition.js";
 import { makeRng } from "./rng.js";
-import { ABILITY_CD, ABILITY_DB_COST, cooldownLeft } from "./systems/cooldowns.js";
+import { ABILITY_CD, cooldownLeft } from "./systems/cooldowns.js";
 import { SWING_DRIVE_SPEND } from "./systems/attackParams.js";
 import {
-  PSYCHO_BUSHIDO_CD, PSYCHO_BUSHIDO_DB_COST, PSYCHO_BUSHIDO_AP_COST,
+  PSYCHO_BUSHIDO_CD, PSYCHO_BUSHIDO_AP_COST,
   PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
   PSYCHO_BUSHIDO_STACK_COST, PSYCHO_BUSHIDO_D8_LADDER, psychoBushidoD8s,
-  SHADOW_ILLUSION_CD, SHADOW_ILLUSION_DB_COST, SHADOW_ILLUSION_TURNS,
-  SHADOW_ILLUSION_SUSTAIN_DRAIN, FLAT_ABILITY_UNLOCK_DB,
+  SHADOW_ILLUSION_CD, SHADOW_ILLUSION_TURNS,
+  SHADOW_ILLUSION_SUSTAIN_DRAIN,
 } from "../data/gameConstants.js";
 import { SKILL_BY_ID } from "../data/skillTree.js";
 import { CORNERS } from "../data/corners.js";
@@ -114,7 +114,7 @@ function boardAt(d, { ap = 5, ns = {} } = {}) {
       ...st.noteStates,
       [RONIN]: {
         ...st.noteStates[RONIN],
-        hasConfirmed: true, unlockedSkills: [BUSHIDO], dbPoints: 10, ...ns,
+        hasConfirmed: true, unlockedSkills: [BUSHIDO], ...ns,
       },
     },
   };
@@ -130,12 +130,10 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(PSYCHO_BUSHIDO_MAX_RANGE, 5, '🗡️ …and closes at 5');
   eq(PSYCHO_BUSHIDO_AP_COST, 3, '🗡️ 3 AP flat — not "everything you have left"');
   eq(PSYCHO_BUSHIDO_CD, 4, '🕒 4-round cooldown — was 2');
-  eq(PSYCHO_BUSHIDO_DB_COST, 1, '💿 still 1 Db a draw — the per-use price did not move');
   eq(PSYCHO_BUSHIDO_STACK_COST, 2, '🎸 …and 2 notes off the Drive stack, which is new');
   eq(PSYCHO_BUSHIDO_D8_LADDER, [2, 3, 4], '⭐ the ladder Alex settled 2026-09-04e — since 2026-10-01 counted in d6s turned into d8s');
 
   eq(ABILITY_CD[BUSHIDO], PSYCHO_BUSHIDO_CD, '🕒 the cooldown table reads the constant');
-  eq(ABILITY_DB_COST[BUSHIDO], PSYCHO_BUSHIDO_DB_COST, '💿 …and so does the per-use table');
 
   // ⚠️ THE WINDOW MUST BE AS WIDE AS THE LADDER IS LONG. A ladder with four rungs
   // and a three-hex window would make the fourth unreachable, and nothing else in
@@ -219,11 +217,9 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(bushidosIn(boardAt(3, { ap: PSYCHO_BUSHIDO_AP_COST - 1 })).length, 0,
     '⚡ one AP short and there is no draw at all — the flat bill is a hard gate');
 
-  // 💿🕒 Both halves of `canFire`, because `legalActions` asks them as one
-  // question and a generator that emitted a move the resolver refuses is a
-  // searcher planning turns it cannot play.
-  eq(bushidosIn(boardAt(4, { ns: { dbPoints: 0 } })).length, 0,
-    '💿 no Db, no draw');
+  // 🕒🔒 Both halves of `canFire` (🪦 the Db half went with Db, 2026-10-02),
+  // because `legalActions` asks them as one question and a generator that emitted
+  // a move the resolver refuses is a searcher planning turns it cannot play.
   eq(bushidosIn(boardAt(4, { ns: { abilityCd: { [BUSHIDO]: 2 } } })).length, 0,
     '🕒 recharging, no draw');
   eq(bushidosIn(boardAt(4, { ns: { unlockedSkills: [] } })).length, 0,
@@ -244,13 +240,12 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
     const ns = nsOf(after, RONIN);
 
     // ⚠️ THE BUFF LANDS BEFORE THE BLOW — `tempDrive` is zeroed when a battle
-    // resolves, so what is asserted is the Db and the clock, plus the stack.
+    // resolves, so what is asserted is the clock, plus the stack.
     // The bonus itself is checked through `psychoBushidoBonus` in §2; asserting a
     // post-battle `tempDrive` would be asserting `battleFlow`'s cleanup.
     eq(cooldownLeft(ns, BUSHIDO), PSYCHO_BUSHIDO_CD,
       `🕒 the draw at ${d} starts the ${PSYCHO_BUSHIDO_CD}-round clock`);
-    eq(ns.dbPoints, 10 - PSYCHO_BUSHIDO_DB_COST,
-      `💿 …and pays ${PSYCHO_BUSHIDO_DB_COST} Db, exactly as the client does`);
+    eq(ns.dbPoints, undefined, '🪦 …and pays no Db — there is none');
     // 🚩 TWO NOTES, WHERE IT USED TO BE FOUR. Until 2026-10-01 the strike was a
     // Swing and paid the Swing's own two on a hit; it is a Drive-vs-Sustain
     // burst now (bushidoBurstCheck), so the draw's two are the whole stack bill.
@@ -300,11 +295,9 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
 // ═════════════════════════════════════════════════════════════════════════════
 {
   eq(SHADOW_ILLUSION_CD, 4, '👤 4-round cooldown — was 3 (§2.2.1)');
-  eq(SHADOW_ILLUSION_DB_COST, 1, '👤 1 Db to fire — was 2. Dearer to own, cheaper to fire');
   eq(SHADOW_ILLUSION_TURNS, 2, '👤 the double stands 2 of his turns — was 3');
   eq(SHADOW_ILLUSION_SUSTAIN_DRAIN, 1, '👤 …and eats 1 Sustain each of them');
   eq(ABILITY_CD.shadow_illusion, SHADOW_ILLUSION_CD, '🕒 the cooldown table reads the constant');
-  eq(ABILITY_DB_COST.shadow_illusion, SHADOW_ILLUSION_DB_COST, '💿 …and so does the per-use table');
 
   // ⚠️ THE COOLDOWN MUST OUTLAST THE DOUBLE, or he can stand a second one up the
   // turn the first falls and the ability stops being a thing you SPEND. That is
@@ -323,23 +316,14 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 8. ⭐ THE FLAT UNLOCK PRICE — a rule about the whole tree, not about the Ronin.
+// 8. 🪦 THE FLAT UNLOCK PRICE AND THE PER-USE Db ARE GONE (2026-10-02).
+//    This section pinned the 6 Db unlock and asserted that per-use Db stayed
+//    varied. Db was cut whole; what prices Bushido and the double now is §1's
+//    cooldowns and their own sacrifices (AP + Drive notes; Sustain drain).
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  eq(FLAT_ABILITY_UNLOCK_DB, 6, '⭐ every ability unlocks at 6 Db (Alex, 2026-09-04f)');
-  eq(SKILL_BY_ID[BUSHIDO].dbCost, FLAT_ABILITY_UNLOCK_DB,
-    '⭐ …including Bushido, whose respec asked for 8 and did not get it');
-  eq(SKILL_BY_ID.shadow_illusion.dbCost, FLAT_ABILITY_UNLOCK_DB,
-    '⭐ …and Shadow Illusion, whose respec asked for 10');
-
-  // ⚠️ THE PER-USE PRICES ARE **NOT** FLATTENED, AND THAT IS THE OTHER HALF OF THE
-  // RULE. `UPGRADE_SHOP_DESIGN.md` §0⃣.3 files "do per-use costs flatten too?" as
-  // its own open question; the standing assumption is no. An ability's ongoing
-  // price is now the only place its cost can vary, so if this set ever collapses
-  // to one value the flattening has spread further than anyone decided.
-  const perUse = new Set(Object.values(ABILITY_DB_COST));
-  ok(perUse.size > 1,
-    '💿 per-USE Db is still varied — only the UNLOCK price is flat (§0⃣.3 is still open)');
+  eq(SKILL_BY_ID[BUSHIDO].dbCost, undefined, '🪦 Bushido carries no unlock price');
+  eq(SKILL_BY_ID.shadow_illusion.dbCost, undefined, '🪦 …nor does Shadow Illusion');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -369,13 +353,13 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(bushidoLane(ronin, new Set([LANE[2]])).map(x => x.num), LANE.slice(1, 3), 'close blocker included and stops the walk');
   eq(bushidoLane(ronin)[4].to, LANE[4], 'range-five landing is immediately before rival');
   eq(bushidoLane(null), [], 'missing actor has no lane');
-  const ns = { dbPoints: 10, tempDrive: 2, driveStack: ['A', 'B', 'C', 'D'], abilityCd: { other: 2 } };
+  const ns = { tempDrive: 2, driveStack: ['A', 'B', 'C', 'D'], abilityCd: { other: 2 } };
   const before = structuredClone(ns);
   const patch = bushidoDrawPatch(ns, 5);
   eq(ns, before, 'draw calculation does not mutate the live sheet');
   eq(patch.driveStack, ['C', 'D'], 'draw spends from the front');
   eq('tempDrive' in patch, false, '🪦 the draw no longer pays tempDrive — the range turns d6s into d8s instead (2026-10-01)');
-  eq(patch.dbPoints, 9, 'draw pays one Db');
+  eq(patch.dbPoints, undefined, '🪦 the draw pays no Db');
   eq(patch.abilityCd, { other: 2, psycho_bushido: 4 }, 'draw preserves other cooldowns');
 }
 

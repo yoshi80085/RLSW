@@ -4,7 +4,7 @@
 //   turn 1  — take the shamisen up from the rail; the strings do NOT open yet
 //   turn 2  — the chord step's third destination: three Iwato strings out of
 //             the 3-commit budget, a non-Iwato note refused; then the cast on a
-//             rival two hexes away (the Action Token, Db, the cooldown)
+//             rival two hexes away (the Action Token, the cooldown)
 //   rival   — their hand reads on the Iwato palette; each of their turn ends
 //             counts the curse down; the second one ends it
 // Run: npm run test:shamisenjourney
@@ -19,7 +19,7 @@ import { buildTestingGroundsConfig } from '../data/matchSetup.js';
 import { HEX_BY_NUM } from '../board/hexMap.js';
 import { neighborInDirection, axialDist } from '../board/hexGeometry.js';
 import { isIwato } from '../board/cursedShamisen.js';
-import { CURSED_SHAMISEN_DB_COST, CURSED_SHAMISEN_CD } from '../data/gameConstants.js';
+import { CURSED_SHAMISEN_CD } from '../data/gameConstants.js';
 import { CURSE_TURNS, CAST_RANGE } from './systems/iwatoCurse.js';
 
 const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/' });
@@ -90,10 +90,9 @@ try {
   await click(buttons().find(b => /Commit \(\d/.test(b.textContent)));
   const takeUp = button('Take up Shamisen');
   ok(takeUp && !takeUp.disabled, 'the rail offers to take the shamisen up');
-  const dbBefore = sheetOf(RONIN).dbPoints ?? 0;
   await click(takeUp);
   ok(sheetOf(RONIN).shamisen && sheetOf(RONIN).shamisen.ready === false, 'taken up — and the strings are NOT open this turn');
-  ok((sheetOf(RONIN).dbPoints ?? 0) === dbBefore, 'the take-up is free');
+  ok((sheetOf(RONIN).abilityCd?.cursed_shamisen ?? 0) === 0, 'the take-up is free — it does not start the clock');
   ok(button('strings next turn'), 'the rail says when the strings open');
   const root0 = sheetOf(RONIN).shamisen.root;
   await click(button('End ⏭')); await wait(120);
@@ -125,20 +124,16 @@ try {
   if (note) await click(note);
   const commit = buttons().find(b => /Commit \(\d/.test(b.textContent));
   if (commit && !commit.disabled) await click(commit);
-  // Db for the cast, from the Testing Grounds panel (the same lever a tester uses).
-  await click(button('🧪 TEST'));
-  while ((sheetOf(RONIN).dbPoints ?? 0) < CURSED_SHAMISEN_DB_COST) await click(button('+3 DB'));
-  await click(button('🧪 CLOSE'));
+  // 🪦 No Db top-up from the 🧪 panel any more — the cast costs no Db (cut 2026-10-02).
   const castBtn = button('Cast the curse');
-  ok(castBtn && !castBtn.disabled, 'three strings, Db and an action: the rail offers the cast');
+  ok(castBtn && !castBtn.disabled, 'three strings and an action: the rail offers the cast');
   await click(castBtn);
   ok(button('Cancel'), `armed — the rail offers Cancel while it waits for a rival within ${CAST_RANGE} hexes`);
-  const db0 = sheetOf(RONIN).dbPoints;
   await click(document.querySelector(`[data-hex-num="${near.num}"]`));
   const curse = sheetOf(RIVAL).iwatoCurse;
   ok(curse && curse.by === RONIN && curse.roninRoot === root0 && curse.turnsLeft === CURSE_TURNS, '⚡ the rival is cursed, in the key he took the shamisen up in');
   ok(sheetOf(RONIN).shamisen === null, 'the strings are spent and the instrument put away');
-  ok(sheetOf(RONIN).dbPoints === db0 - CURSED_SHAMISEN_DB_COST, `he paid ${CURSED_SHAMISEN_DB_COST} Db`);
+  ok(sheetOf(RONIN).dbPoints === undefined, '🪦 he paid no Db — there is none');
   ok(sheetOf(RONIN).abilityCd.cursed_shamisen === CURSED_SHAMISEN_CD, 'the cooldown runs');
   ok(observed.turn.actionTokenUsed, 'the Action Token is spent');
   ok(button('Shamisen 🕒'), 'the rail shows it recharging');
@@ -147,15 +142,15 @@ try {
   // ── the rival's cursed turns ──
   await toTurnOf(RIVAL);
   ok(sheetOf(RIVAL).iwatoCurse?.turnsLeft === CURSE_TURNS, 'their first cursed turn');
-  // ⭐ A line of their OWN notes (none Iwato on his root) is discord now: no Db.
+  // ⭐ A line of their OWN notes (none Iwato on his root) is discord now: no fans.
   await click(button('Continue to Melody'));
   const dead = freeIdx(RIVAL).filter(i => !isIwato(sheetOf(RIVAL).noteStock[i], root0)).slice(0, 2);
   console.log(`  Rival's hand: ${sheetOf(RIVAL).noteStock.join(' ')} — playing ${dead.map(i => sheetOf(RIVAL).noteStock[i]).join(' ')}`);
   ok(dead.length === 2, 'the rival holds two non-Iwato notes to try');
   for (const i of dead) await click(document.querySelector(`[data-stock-idx="${i}"]`));
-  const rivalDb = sheetOf(RIVAL).dbPoints ?? 0;
+  const rivalFans = sheetOf(RIVAL).casuals ?? 0;
   await click(buttons().find(b => /Commit \(\d/.test(b.textContent)));
-  ok((sheetOf(RIVAL).dbPoints ?? 0) === rivalDb, '⭐ cursed: a melody of their own scale earns NO Db');
+  ok((sheetOf(RIVAL).casuals ?? 0) === rivalFans, '⭐ cursed: a melody of their own scale wins NO fans');
   ok(sheetOf(RIVAL).iwatoCurse?.turnsLeft === CURSE_TURNS, '…and does not exorcise');
   await click(button('End ⏭')); await wait(120);
   const after1 = sheetOf(RIVAL);
@@ -166,7 +161,7 @@ try {
     await plainTurn(2);
     ok(!sheetOf(RIVAL).iwatoCurse && sheetOf(RIVAL).curseEnded?.how === 'expired', 'the second cursed turn ends it — expired');
   }
-  console.log(`PASS: ${checks} checks — take up (free, strings next turn), the third chord-step destination out of the shared budget, Iwato only, the cast (token, Db, cooldown, his key), the curse counted on the rival's own turn ends`);
+  console.log(`PASS: ${checks} checks — take up (free, strings next turn), the third chord-step destination out of the shared budget, Iwato only, the cast (token, cooldown, his key), the curse counted on the rival's own turn ends`);
 } finally {
   await act(async () => root.unmount());
   dom.window.close();

@@ -190,44 +190,10 @@ export function legalActions(state, spiritId, view = {}) {
   const tokenSpent = !!turn.actionTokenUsed;
   const out = [];
 
-  // ── 🎯 SKILL TARGETING — phase-agnostic: Db is not AP, and choosing what to
-  // save for is not acting.
-  //
-  // ⚠️ THIS WAS `skillUnlock` AND IT MODELLED A MECHANIC THE GAME DOES NOT HAVE.
-  // Until 2026-08-16 this file emitted `{ kind: 'skillUnlock', skillId, dbCost }`
-  // gated on `dbPoints >= dbCost`, and `transition.js` paid for it by subtracting
-  // the cost and pushing the id into `unlockedSkills` — a shop. There is no shop.
-  // The shipped flow is four steps and the monolith spells them out:
-  //
-  //   1. you pick a TARGET skill  →  `targetSkillId`
-  //   2. every Db earned counts toward it (`advanceDB`, overflow carries)
-  //   3. the bar fills → the skill is awarded AUTOMATICALLY, inside the commit
-  //   4. you pick the next target
-  //
-  // So the only decision a player ever makes here is step 1, and it is free.
-  // The award is `commitMelodyEconomy`'s, and its state half is already modelled.
-  //
-  // ⚠️ THE INVENTED RULE WAS INVISIBLE FOR THE SAME REASON THE OTHER TWO WERE:
-  // this family is emitted only when the caller passes `skillById`, and nothing
-  // could until SKILL_TREE left the monolith. `transition.js`'s header warns that
-  // a transition inventing a rule "shows up as a bot that is confidently wrong,
-  // which is not visible" — this was one, sitting in the pair of files that warn
-  // about it. Found by the §6.6 bench: Spirits were filling a 4 Db bar over and
-  // over (the no-target fallback) and never receiving a single skill.
-  //
-  // ⚠️ NO Db GATE. You may save toward anything you are ELIGIBLE for, however
-  // broke you are — that is what saving means. Gating on affordability was part
-  // of the shop fiction, and it hid every capstone from the searcher precisely
-  // when deciding to aim at one is the interesting decision (§3.2).
-  //
-  // ⚠️ AND IT IS OFFERED ONLY WHEN THERE IS NO TARGET — which is the client's
-  // own flow ("skill awarded automatically, overlay opens to pick next"), and
-  // also the only version of this that TERMINATES. A free, unlimited re-aim is a
-  // zero-cost action that changes the position — `dbHorizon` divides by the
-  // target's cost — so a greedy searcher will re-aim, re-score, re-aim forever
-  // and burn the whole turn without touching the board. The §6.6 harness hit its
-  // per-turn ceiling on the first run after this family went live, which is
-  // exactly what that ceiling is for.
+  // ── 🪦 SKILL TARGETING — GONE. This family once let a Spirit pick the skill a
+  // Db bar filled toward (and before that, `skillUnlock` modelled a shop the
+  // game never had — `SEQUENCING.md` §B2). Db was cut 2026-10-02 and the draft
+  // hands every seat its two abilities, so nothing is emitted here.
 
 
   // ═════════════════════════════════════════════════════════════════════════
@@ -239,9 +205,10 @@ export function legalActions(state, spiritId, view = {}) {
     const track  = ns.melodyLine ?? [];
     const unused = stock.map((n, i) => ({ note: n, idx: i })).filter(({ idx }) => !usedHas(used, idx));
 
-    // ⚡ A pending Major/Minor declaration freezes every note action — the
-    // client refuses both the melody and the stack until it is answered.
-    if (!ns.pivotPending) {
+    // 🪦 This block was gated on a pending Major/Minor declaration until
+    // 2026-10-02; the pivot is gone (each Spirit plays its own fixed scale), so
+    // the gate went with it. The bare block keeps the diff to one line.
+    {
       // Melody notes. Each one is +1 potential AP, capped by speed at confirm.
       if (track.length < MELODY_MAX) {
         for (const { note, idx } of unused) {

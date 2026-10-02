@@ -685,7 +685,7 @@ export function sandboxSeatTaken(spiritId) {
   return { type: SANDBOX_SEAT_TAKEN, spiritId };
 }
 export const SANDBOX_REFILLED = "SANDBOX_REFILLED";
-/** 🧪 Free play: top the acting Spirit's AP, token, cooldowns, Db and kit back up. */
+/** 🧪 Free play: top the acting Spirit's AP, token, cooldowns and kit back up. */
 export function sandboxRefilled(spiritId, ap) {
   return ap == null ? { type: SANDBOX_REFILLED, spiritId } : { type: SANDBOX_REFILLED, spiritId, ap };
 }

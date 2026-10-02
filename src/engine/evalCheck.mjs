@@ -30,7 +30,7 @@ import {
 import { underdogBonus } from "./systems/combat.js";
 import {
   UNDERDOG_MIN_DEFICIT, UNDERDOG_MAX_MULT, POSE_FP_MAX, POSE_FP_STEP,
-  STOCK_REFILL_RATE, DB_UPGRADE_THRESHOLD, FAN_MULT_MAX,
+  STOCK_REFILL_RATE, FAN_MULT_MAX,
 } from "../data/gameConstants.js";
 import { EDGE_HEX_NUMS, HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
 import { LIMELIGHT_HEX } from "../data/gameConstants.js";
@@ -122,7 +122,7 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   // Deliberately absurd inputs on every axis at once.
   let st = baseState();
   st = withNs(st, RONIN, {
-    fame: 9999, perfScore: 99, dbPoints: 9999, diehards: 999, casuals: 999,
+    fame: 9999, perfScore: 99, diehards: 999, casuals: 999,
     driveStack: Array(50).fill('A'), sustainStack: Array(50).fill('A'),
     chargeFloorTurns: 99, chargeCeilTurns: 99,
   });
@@ -181,10 +181,9 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
   ok(term(late, RONIN, 'fanMult') < term(early, RONIN, 'fanMult'),
      'the same crowd is worth LESS late — fans are an investment, not a trophy');
 
-  const dbEarly = withNs(st, RONIN, { fame: 0,       dbPoints: DB_UPGRADE_THRESHOLD });
-  const dbLate  = withNs(st, RONIN, { fame: win - 1, dbPoints: DB_UPGRADE_THRESHOLD });
-  ok(term(dbLate, RONIN, 'dbHorizon') < term(dbEarly, RONIN, 'dbHorizon'),
-     '§3.2 — banked Db is worth less with no match left to fire it in');
+  // 🪦 `dbHorizon` and `kit` are gone with Db (2026-10-02) — nothing banked to score.
+  eq(term(early, RONIN, 'dbHorizon'), undefined, '🪦 there is no dbHorizon term');
+  eq(term(early, RONIN, 'kit'), undefined, '🪦 …and no kit term');
 
   // Fans still have to POINT the right way at a fixed horizon.
   const few  = withNs(st, RONIN, { fame: 0, casuals: 0 });

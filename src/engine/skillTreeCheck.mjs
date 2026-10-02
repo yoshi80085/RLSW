@@ -16,7 +16,6 @@
 import assert from "node:assert";
 import { SKILL_TREE, SKILL_BY_ID, SPIRIT_ONLY_ROUTE } from "../data/skillTree.js";
 import { skillEligibility } from "./systems/skills.js";
-import { FLAT_ABILITY_UNLOCK_DB } from "../data/gameConstants.js";
 import { legalActions } from "./policies/legalActions.js";
 import { makeInitialState } from "./state.js";
 import { moveBudgetSet } from "./actions.js";
@@ -53,7 +52,7 @@ const allSkills = () => Object.values(SKILL_BY_ID);
 
   for (const sk of allSkills()) {
     ok(typeof sk.id === 'string' && sk.id, 'every skill has an id');
-    ok(Number.isFinite(sk.dbCost), `${sk.id} has a Db price — the engine reads it`);
+    eq(sk.dbCost, undefined, `🪦 ${sk.id} carries no Db price — Db was cut 2026-10-02 and nothing reads one`);
     ok(typeof sk.routeId === 'string', `${sk.id} knows its route`);
     ok('spiritOnly' in sk, `⚠️ ${sk.id} answers the ownership question explicitly, even if the answer is null`);
   }
@@ -153,112 +152,44 @@ const allSkills = () => Object.values(SKILL_BY_ID);
     ],
   };
 
-  const rich = (id) => {
+  // 🪦 THE `skillTarget` FAMILY IS GONE (2026-10-02). It let a Spirit pick the
+  // skill a Db bar filled toward; Db was cut and the draft hands every seat its
+  // two abilities, so the generator offers it to NOBODY — with a tree in the view
+  // or without. (This block asserted the family's ownership gates until then; the
+  // ownership rule itself is still pinned in §2–§4 through `skillEligibility`.)
+  const fresh = (id) => {
     let st = makeInitialState(structuredClone(CONFIG), 4242);
     st = { ...st, acting: id };
-    st = applyAction(st, moveBudgetSet(5, false));
-    // 📌 Db is irrelevant to this family now — you may SAVE toward anything you
-    // are eligible for however broke you are. Left rich anyway, so a regression
-    // that reintroduced an affordability gate would show up as a diff here.
-    return { ...st, noteStates: { ...st.noteStates, [id]: { ...st.noteStates[id], dbPoints: 999 } } };
+    return applyAction(st, moveBudgetSet(5, false));
   };
-
-  const offered = (id) => new Set(
-    legalActions(rich(id), id, { skillById: SKILL_BY_ID })
-      .filter(a => a.kind === 'skillTarget').map(a => a.skillId));
-
-  const toRonin = offered(RONIN);
-  const toMonster = offered(MM);
-
-  ok(toRonin.size > 0, 'with a real tree in the view, the skillTarget family finally appears');
-  ok(toMonster.has('tentacle'), 'the Monster is offered his own arm');
-  ok(!toRonin.has('tentacle'),
-     '⚠️ THE REGRESSION: the Ronin is NOT offered the Tentacle — this gate read an always-undefined field until the tree was extracted');
-  ok(!toRonin.has('goes_to_11'), '…nor the dial');
-  ok(!toMonster.has('blaster_of_ra'), '…and the Monster is not offered the Blaster');
-  ok(toRonin.has('psycho_bushido'), 'each Spirit IS offered their own exclusive route');
-  ok(toMonster.has('goes_to_11') && toMonster.has('master_moshpits'),
-     '…including the Monster\'s whole rework, which is the point of the extraction');
-  ok(!toMonster.has('psycho_bushido'), 'the Monster is not offered the Ronin\'s route either — the gate cuts both ways');
-
-  // 📌 A rung a Spirit ALREADY OWNS is offered to nobody — `skillEligibility`
-  // returns `already`. This was pinned on `amp_1` (granted to everyone at setup)
-  // until the rig branch went, then on the Ronin's free `theory_minor` until the
-  // Theory branch went. ⚠️ **NOBODY IS BORN HOLDING A SKILL ANY MORE**
-  // (`economy.js` seeds `unlockedSkills: []` for the whole roster), so the rule is
-  // exercised by handing a Spirit a rung and checking it leaves the list. Worth
-  // keeping, because "rung missing from the list" is otherwise indistinguishable
-  // from a broken gate.
-  const ownedAlready = new Set(
-    legalActions(
-      (() => { const st = rich(RONIN);
-               return { ...st, noteStates: { ...st.noteStates,
-                 [RONIN]: { ...st.noteStates[RONIN], unlockedSkills: ['psycho_bushido'] } } }; })(),
-      RONIN, { skillById: SKILL_BY_ID })
-      .filter(a => a.kind === 'skillTarget').map(a => a.skillId));
-  ok(!ownedAlready.has('psycho_bushido'),
-     'a rung already held is not offered again — `already`, not a broken gate');
-  ok(ownedAlready.has('shadow_illusion'),
-     '…while the rest of his own route still is');
-
-  // 🛑 AND NOTHING FROM THE DELETED RIG BRANCH IS OFFERED TO ANYBODY. This is the
-  // assertion that would have caught a half-finished deletion: the ids are gone
-  // from the tree, so the family cannot emit them, so no Spirit can aim Db at a
-  // rung that does nothing.
-  for (const dead of ['amp_1', 'amp_2', 'amp_3', 'power_1', 'power_2', 'power_3',
-                      'range_1', 'range_2', 'range_3', 'overcharge',
-                      // 🅰️ and the Theory branch, deleted 2026-09-02 — stack seats
-                      // are FOUND on the board now (`music/stackSlots.js`), and
-                      // the pardon ladder is universal and free.
-                      'theory_major', 'theory_minor', 'theory_dom7',
-                      'theory_modes', 'theory_chromatic', 'theory_sus']) {
-    ok(!toRonin.has(dead) && !toMonster.has(dead) && !SKILL_BY_ID[dead],
-       `🛑 ${dead} is gone from the tree — nobody can aim Db at a rung that does nothing`);
+  for (const id of [RONIN, MM]) {
+    const withTree = legalActions(fresh(id), id, { skillById: SKILL_BY_ID }).filter(a => a.kind === 'skillTarget');
+    const blind = legalActions(fresh(id), id, {}).filter(a => a.kind === 'skillTarget');
+    eq(withTree.length + blind.length, 0, `🪦 ${id}: no skillTarget is offered — there is nothing to save toward`);
   }
 
-  // 📌 And the family really is ABSENT without a tree — §6a's rule, which is
-  // what made both holes invisible for so long.
-  const blind = legalActions(rich(RONIN), RONIN, {}).filter(a => a.kind === 'skillTarget');
-  eq(blind.length, 0, '⚠️ no `skillById`, no `skillTarget` family — absent rather than guessed, which is correct AND is how all three of these holes hid');
-
-  // ⚠️ AND THE POOR ARE OFFERED THE SAME LIST AS THE RICH. `skillUnlock` gated
-  // on `dbPoints >= dbCost`, which was part of the shop fiction; saving toward a
-  // capstone you cannot yet afford IS the §3.2 decision, so hiding it from a
-  // broke Spirit hid the interesting choice exactly when it was interesting.
-  let broke = makeInitialState(structuredClone(CONFIG), 4242);
-  broke = { ...broke, acting: MM };
-  broke = { ...broke, noteStates: { ...broke.noteStates, [MM]: { ...broke.noteStates[MM], dbPoints: 0 } } };
-  const toBroke = new Set(legalActions(broke, MM, { skillById: SKILL_BY_ID })
-    .filter(a => a.kind === 'skillTarget').map(a => a.skillId));
-  ok(toBroke.has('tentacle'), '⚠️ a Spirit with 0 Db may still AIM at a 10 Db unlock — that is what saving is');
+  // 🛑 AND NOTHING FROM THE DELETED BRANCHES IS IN THE TREE. Rig (2026-08-20) and
+  // Theory (2026-09-02).
+  for (const dead of ['amp_1', 'amp_2', 'amp_3', 'power_1', 'power_2', 'power_3',
+                      'range_1', 'range_2', 'range_3', 'overcharge',
+                      'theory_major', 'theory_minor', 'theory_dom7',
+                      'theory_modes', 'theory_chromatic', 'theory_sus']) {
+    ok(!SKILL_BY_ID[dead], `🛑 ${dead} is gone from the tree`);
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 6. PRICES ARE REAL NUMBERS — the engine spends them.
+// 6. 🪦 THERE ARE NO PRICES — Db was cut, 2026-10-02.
+//
+//    This section pinned the flat 6 Db unlock price (Alex, 2026-09-04f), whose
+//    job was to stop the arsenal being bought in PRICE order. The draft now hands
+//    each seat two abilities and nothing is bought at all, which answers that
+//    finding more completely than a flat price did. A `dbCost` reappearing on any
+//    skill means someone is rebuilding a shop.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  for (const sk of allSkills()) {
-    ok(sk.dbCost >= 0 && sk.dbCost < 100, `${sk.id}'s Db price is sane (${sk.dbCost})`);
-  }
-  // ⭐ THE FLAT-PRICE GUARD — Alex, 2026-09-04f.
-  //
-  // 🪦 THESE TWO LINES USED TO PIN THE SPREAD: `tentacle` at 10 and
-  // `master_moshpits` at 8, "what the design doc says". The rule changed, so they
-  // are INVERTED rather than deleted — the same move `melodyCommitCheck` §13 made
-  // when Wa no Koe was cut, and `shukuchiCheck` made when the client gap closed.
-  // A check standing on a number becomes the guard on the rule that replaced it.
-  //
-  // 🎯 WHY IT IS WORTH A SUITE AT ALL. `UPGRADE_SHOP_DESIGN.md` §1.1 MEASURED the
-  // arsenals being bought in price order, not value order. A flat price deletes
-  // the variable that finding is about — and a single re-spread price, added in
-  // good faith to "balance" one ability, quietly puts it back. Nothing else in
-  // the repo can tell.
-  for (const sk of Object.values(SKILL_BY_ID)) {
-    eq(sk.dbCost, FLAT_ABILITY_UNLOCK_DB,
-      `⭐ ${sk.id} unlocks at the flat price (${FLAT_ABILITY_UNLOCK_DB} Db) — every ability costs the same`);
-  }
-  eq(new Set(Object.values(SKILL_BY_ID).map(sk => sk.dbCost)).size, 1,
-    '⭐ there is exactly ONE unlock price in the whole tree — price cannot sort the arsenal');
+  ok(Object.values(SKILL_BY_ID).every(sk => !('dbCost' in sk)),
+    '🪦 no skill in the tree carries a `dbCost`');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -266,14 +197,11 @@ const allSkills = () => Object.values(SKILL_BY_ID);
 //
 //    Both universal routes are deleted — the rig on 2026-08-20, Music Theory on
 //    2026-09-02 — so what a Spirit may buy is now entirely a function of WHO THEY
-//    ARE. 🎀 Glamarchy owns no route, so **she can buy nothing at all**, and every
-//    Db she earns banks forever.
+//    ARE. 🎀 Glamarchy owns no route, so **she has nothing to draft**.
 //
-//    🎯 `PROGRESSION_REWRITE_DESIGN.md` §5 is the answer (per-ability upgrade
-//    streams on the abilities characters already have) and §5 IS NOT BUILT. These
-//    assertions are the alarm for that, pinned where somebody reading the tree
-//    will trip over them. **When §5 lands they are EXPECTED TO FAIL**, and the fix
-//    is to assert what each Spirit can buy — not to delete the block.
+//    🪦 `PROGRESSION_REWRITE_DESIGN.md` §5 (per-ability upgrade streams) was
+//    CANCELLED with Db, 2026-10-02. What is left is a ROSTER question — Glamarchy
+//    is being cut (`STATE_OF_PLAY.md` §2) — and these assertions are its alarm.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   ok(SKILL_TREE.routes.every(r => r.spiritOnly),
@@ -286,7 +214,7 @@ const allSkills = () => Object.values(SKILL_BY_ID);
   const offeredToGlam = allSkills().filter(sk =>
     skillEligibility(sk, [], { ownerRoute: sk.spiritOnly ?? null, selfId: 'Glamarchy' }).ok);
   eq(offeredToGlam.length, 0,
-     '⛔ …so nothing in the tree is eligible for her at all — every Db she earns banks forever');
+     '⛔ …so nothing in the tree is eligible for her at all');
 }
 
 console.log(`✅ skillTreeCheck: ${count} assertions passed`);

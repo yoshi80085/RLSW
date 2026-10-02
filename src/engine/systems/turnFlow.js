@@ -199,8 +199,6 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
     paletteMode,
     modeReason:    'spirit',
     modeChordName: null,
-    pivotPending:  false,
-    pendingModeBonus: null,
 
     // 👤 Shadow Illusion counts the Ronin's OWN turns, so a 3-turn double
     // survives three full rounds of rivals guessing wrong — and CHARGES HIM

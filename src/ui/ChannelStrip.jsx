@@ -8,7 +8,8 @@
 // It holds two things and a meter:
 //   ① the TURN RAIL — three lamps, one lit, each carrying its own one-line state
 //   ② the KEY PLATE — the root, the mode and the interval map
-//   ③ DB Progress, at the foot, where a level meter belongs
+//   ③ the seat's abilities and their cooldowns, at the foot (`AbilityWallet`;
+//     it was the Db meter until Db was cut, 2026-10-02)
 //
 // ⚠️ WHY THIS IS A COMPONENT AND NOT MARKUP IN THE CLIENT. Everything here is
 // SHELL — geometry, lighting, chrome. Every number it displays and every rule
@@ -142,7 +143,7 @@ export function ChannelStrip({ foot, children }) {
         display: "flex", flexDirection: "column", gap: CS.sectionGap, height: "100%" }}>
         {children}
         {/* 📌 `marginTop:auto` is what puts the meter AT THE FOOT — it is not
-            decoration, it is the whole of "DB METER: at the foot". */}
+            decoration, it is the whole of "the meter at the foot". */}
         {foot && <div style={{ marginTop: "auto", paddingTop: CS.sectionGap }}>{foot}</div>}
       </div>
       {CS.rivets && [["5px", "auto"], ["auto", "5px"]].map(([top, bottom], i) => (

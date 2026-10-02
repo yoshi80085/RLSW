@@ -1,3 +1,7 @@
+// 🪦 THREE CARDS LEFT THIS DECK 2026-10-02 — 27 Club Séance, Payola Scandal and
+// Backstage Pass. All three paid (or cost) Db, which was cut from the game, and
+// Alex called them "very old". The marquee quiz is what live marquees run now;
+// this deck is reachable only from the 🧪 Testing Grounds.
 export const EVENT_DECK = [
   {
     id: 'disco_inferno', icon: '\u{1F525}\u{1F4BF}', title: 'DISCO INFERNO', color: '#ff6622',
@@ -24,34 +28,16 @@ export const EVENT_DECK = [
     kind: 'auto',
   },
   {
-    id: 'seance_27', icon: '\u{1F56F}️', title: '27 CLUB SÉANCE', color: '#88ddff',
-    flavor: 'The lights dip. A cold wind crosses the stage. Someone left a candle, a crossroads map, and a left-handed guitar...',
-    rules: 'Roll d6. On 6 — the legends answer: +3 Decibills. On 2–5 — a faint whisper: +1 DB. On 1 — spooked: 2 stock slots frozen for 1 turn.',
-    kind: 'roll',
-  },
-  {
     id: 'hotel_trash', icon: '\u{1F4FA}', title: 'TRASH THE SUITE', color: '#44cc88',
     flavor: 'Checkout time. The TV is already airborne and the pool is six floors down. Everyone nearby scatters from the splash zone.',
     rules: 'All adjacent rivals are shoved 1 hex directly away from you. No rivals adjacent? Pure catharsis: +1 Vibe.',
     kind: 'auto',
   },
   {
-    id: 'payola', icon: '\u{1F4B0}', title: 'PAYOLA SCANDAL', color: '#ffaa22',
-    flavor: 'A brown envelope changes hands at the radio station. Your single is suddenly in heavy rotation... or you are suddenly in the headlines.',
-    rules: 'Roll d6. Even — your single charts: +2 Decibills. Odd — busted: lose 2 DB progress.',
-    kind: 'roll',
-  },
-  {
     id: 'stage_dive', icon: '\u{1F938}', title: 'STAGE DIVE', color: '#ff88ff',
     flavor: 'You lock eyes with your nearest rival, point at the crowd, and leap. Whose fans love them more?',
     rules: 'You and your nearest rival both roll d6. Winner steals 1 Vibe from the loser. Tie — the crowd carries you both: +1 Vibe each.',
     kind: 'duel',
-  },
-  {
-    id: 'backstage_pass', icon: '\u{1F39F}️', title: 'BACKSTAGE PASS', color: '#44aaff',
-    flavor: 'A laminated all-access pass glints on the floor. Whatever is behind that door, it is yours now.',
-    rules: 'Slip backstage and soak up the scene: +3 Decibills.',
-    kind: 'auto',
   },
   {
     id: 'divine_mission', icon: '\u{1F60E}\u{1F576}️', title: 'DIVINE MISSION', color: '#1a1a1a',

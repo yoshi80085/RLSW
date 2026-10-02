@@ -64,8 +64,12 @@ console.log('§1 the numbers are Alex\'s — moved levers his, the rest the prev
   }
   for (const [k, from] of Object.entries(CROWD_BUBBLE_CHANGED)) ok(String(from) === PREVIEW_DEFAULTS[k], `${k} was moved FROM the preview's real default (${PREVIEW_DEFAULTS[k]})`);
   const asBool = v => v === 'on' ? true : v === 'off' ? false : v;
+  // 🪦 RETIRED LEVERS — still on the preview page, gone from the game (2026-10-02,
+  // with Db): `dbBubble` and `ending` steered the Db ending bubble.
+  const RETIRED = ['dbBubble', 'ending'];
+  for (const key of RETIRED) ok(!(key in B), `🪦 ${key} is retired — it must not ship`);
   for (const key of Object.keys(PREVIEW_DEFAULTS)) {
-    if (key in CROWD_BUBBLE_CHANGED) continue;
+    if (key in CROWD_BUBBLE_CHANGED || RETIRED.includes(key)) continue;
     const def = asBool(PREVIEW_DEFAULTS[key]);
     const expected = typeof B[key] === 'number' ? Number(def) : def;
     ok(B[key] === expected, `  ${key} = ${JSON.stringify(B[key])} is the untouched default (${JSON.stringify(expected)})`);
@@ -146,7 +150,7 @@ console.log('§4 the client gates it and wires it');
   ok(/crowdCoachOn && turnStep === 'melody' && !activeTip && \(\s*<CrowdBubble/.test(c), 'the bubble renders in the melody step only, and never over a Pickles tip');
   ok((c.match(/data-coach=\{/g) ?? []).length === 2, 'both stock grids carry the coach mark (melody pool + chord grid)');
   ok(/data-crowd-speaker=\{s\.id === acting\?\.id && i === 0 \? '' : undefined\}/.test(c), 'the acting Spirit\'s front-row fan is the speaker');
-  ok(/goals: turnStep === 'melody' \? \['fans', 'db'\] : \['drive', 'sustain'\]/.test(c), 'melody asks fans+db; chord asks drive+sustain');
+  ok(/goals: turnStep === 'melody' \? \['fans'\] : \['drive', 'sustain'\]/.test(c), 'melody asks fans (🪦 no db since 2026-10-02); chord asks drive+sustain');
   const worker = read('src/engine/policies/playFinder.worker.js');
   ok(/findBestPlays\(spiritId, ns, \{ goals \}\)/.test(worker) && !/melodyPayoutFor|spiritChord/.test(worker), 'the worker only calls the finder');
   const client = read('src/ui/crowdFinderClient.js');

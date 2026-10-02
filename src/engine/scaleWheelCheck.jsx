@@ -16,7 +16,7 @@ import { buildTestingGroundsConfig } from '../data/matchSetup.js';
 import { wheelModel, WHEEL_DEFAULTS, WHEEL_LOOK, POCKET_WHEEL } from '../ui/scaleWheelModel.js';
 import { melodyModeFor } from '../music/melodyIdentity.js';
 import { playableScale, getSpelledPool, pitchIndex } from '../music/notes.js';
-import { ENDING_DB } from '../music/melodyPayout.js';
+import { ENDING_WEIGHT } from '../music/melodyPayout.js';
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -36,7 +36,8 @@ for (const sp of Object.keys(WHEEL_LOOK)) for (const root of ROOTS) {
   ok(ends === 'fifth,fourth,tonic', `${where}: one tonic, 4th and 5th (${ends})`);
   ok(m.slots.filter(s => s.sig).length === 1, `${where}: one ★ signature note`);
 }
-ok(ENDING_DB.fifth === 3 && ENDING_DB.fourth === 2 && ENDING_DB.tonic === 1, 'badges read ENDING_DB (1/2/3)');
+ok(ENDING_WEIGHT.fifth === 3 && ENDING_WEIGHT.fourth === 2 && ENDING_WEIGHT.tonic === 1, 'the dormant ending ladder is intact (1/2/3) for the Riff-Off hook');
+ok(!('dbBadges' in WHEEL_DEFAULTS), '🪦 the wheel no longer badges endings with Db (cut 2026-10-02)');
 const cRot = wheelModel({ spiritId: 'cosmic_ronin', root: 'G', opts: { ...WHEEL_DEFAULTS, rotate: 'c' } });
 ok(cRot.slots[0].k === 0 && cRot.slots[7].k === 7, '"C on top" puts C at 12 o\'clock');
 const held = wheelModel({ spiritId: 'cosmic_ronin', root: 'C', hand: ['C', 'C', 'Eb', 'F#'], available: i => i !== 1 });

@@ -5,13 +5,13 @@ import { characterId } from "../../data/spiritIdentity.js";
 //
 // §1's spine says the melody you commit buys your ability to act. The engine has
 // always owned the MECHANICAL half of that sentence (`moveBudgetSet` → AP) and
-// never the ECONOMIC half — the Db, the Performance Score, the fans, the banked
+// never the ECONOMIC half — the Performance Score, the fans, the banked
 // note, the riff, the cadence. Those lived ~600 lines deep inside
 // `confirmNoteTrack`, tangled with React setters, so `applyBotAction` could only
 // declare `confirmMelody` PARTIAL and a searcher could only see half of what a
 // melody is worth. A searcher blind to the scoring half systematically prefers
 // SHORT tracks: it can see that three notes cost less stock than six, and cannot
-// see that six notes pay Db, flair, and a crowd.
+// see that six notes pay flair and a crowd.
 //
 // ⚠️ THIS FILE IS PURE AND OWNS NO SIDE EFFECTS. It computes; it does not write.
 // It returns a note-sheet `patch` and an ORDERED `effects` list, and the caller
@@ -29,8 +29,9 @@ import { characterId } from "../../data/spiritIdentity.js";
 // ── WHAT IS STILL THE CLIENT'S ─────────────────────────────────────────────
 // Named in `report.clientOwned`, so the gap is announced at every call rather
 // than remembered from a doc — the same honest pattern as `PARTIAL_KINDS`:
-//   · `applySkillEffects` — the STATE half of a skill award is modelled here
-//     (unlockedSkills, targetSkillId cleared); the side-effect chain is not.
+//   · `applySkillEffects` — 🪦 a commit awards nothing since Db was cut
+//     (2026-10-02); the name stays in `CLIENT_OWNED` only so old readers of the
+//     list still find it.
 //   · presentation — `playTrackSequence`, `playRiffSequence`, the banners, the
 //     toasts, the tips, the d6 spin. `flashLines` is returned so a rewired
 //     `confirmNoteTrack` can render without recomputing anything.
@@ -44,10 +45,8 @@ import {
 import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { melodyPayoutFor } from "../../music/melodyPayout.js";
 import { livePalette, exorcisedBy, exorcisePatch } from "./iwatoCurse.js";
-import { advanceDB } from "../../board/boardHelpers.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
-  DB_UPGRADE_THRESHOLD,
   FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START,
 } from "../../data/gameConstants.js";
 
@@ -76,10 +75,8 @@ export const CLIENT_OWNED = [
  *            this file is random. Must be a fork (`rng.fork('search')`) when
  *            called speculatively (§0.4). Omit it and the mic skill is skipped
  *            rather than silently rolled off `Math.random`.
- *   · `view` client-owned slices: `skillById` (SKILL_TREE still lives in the
- *            monolith — without it a target skill's real `dbCost` is unknown and
- *            the threshold falls back to `DB_UPGRADE_THRESHOLD`) and
- *            `unsurePool`. 🪦 `riffBook` is gone with the riff library.
+ *   · `view` client-owned slices: `unsurePool`. 🪦 `riffBook` is gone with the
+ *            riff library, and `skillById` with Db (nothing is awarded now).
  *
  * @returns {object}
  *   · `ok`      false only when there is nothing to commit
@@ -112,7 +109,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
 
   // ── 🎤 MIC — the voice roll SHADOWS the track ─────────────────────────────
   // ⚠️ Everything below scores `melodyLine`, not `baseTrack`. A bonus note the
-  // player never placed still counts for Db, for P, for the ending, and for the
+  // player never placed still counts for P, for the ending, and for the
   // AP grant — which is the whole point of the skill.
   let melodyLine = baseTrack;
   let voiceRoll = null, micBonusNote = null;
@@ -133,7 +130,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // for the red/blue ending carrot and never become clean notes.
   // 🌑 THE IWATO CURSE SWAPS THIS PALETTE, and only this one line knows it:
   // under a curse every note that is not Iwato on the Ronin's root classifies
-  // as discord, and "discord notes are inert" does the rest (no Db, no fans).
+  // as discord, and "discord notes are inert" does the rest (no fans).
   // `iwatoCurse.js` `livePalette`; uncursed it is exactly `playableScale`.
   const currentScale = livePalette(spiritId, ns);
   const harmonicScale = buildScale(rootNote, scaleMode);
@@ -214,7 +211,6 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const firstNote  = melodyLine[0];
   // The root follows the ending, while the Spirit's mode stays fixed.
   const newMode       = scaleMode;
-  const newPivotPending = false;
   const newRootRaw    = ENHARMONIC_RESPELL[lastNote] ?? lastNote;
 
   // ── SPEED & BANKING — §1's spine ──────────────────────────────────────────
@@ -230,11 +226,15 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const isMojoDrained = (ns.mojoDrain ?? 0) > 0;
 
   // ── INTERVAL EFFECTS ──────────────────────────────────────────────────────
-  // ── THE THREE-LAYER MELODY ECONOMY ─────────────────────────────────────────
-  // 1. Spirit structure → fans (Ronin only until the other identities are set).
-  // 2. Clean notes + clean streak → Db.
-  // 3. The final note → harmonic Db bonus and, when it is a stack root, a
-  //    red/blue temporary-stat carrot.
+  // ── THE MELODY ECONOMY ─────────────────────────────────────────────────────
+  // 1. Spirit structure + craft → fans.
+  // 2. The final note → when it is a stack root, a red/blue temporary-stat carrot.
+  // 🪦 Clean notes, clean streaks and the tonic/4th/5th ending used to pay Db.
+  //    Db was cut 2026-10-02 (Alex: "the cooldowns and 'sacrifices' are the
+  //    gate"), and on his call the ending pays NOTHING for now — `payout.ending`
+  //    is still classified (the Riff-Off's planned hook weight wants it), but
+  //    ⚠️ the fifth's chord-change pressure (`ENDING_WEIGHT` in
+  //    `melodyPayout.js`) is currently switched off. Open decision, recorded.
   const stackRootDrive = driveStack[0] ?? null;
   const stackRootSustain = sustainStack[0] ?? null;
   const payout = melodyPayoutFor(spiritId, melodyLine, currentScale, {
@@ -252,46 +252,27 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
 
   const rawDriveBoost = colorDrive;
   const prevTempDrive = ns.tempDrive ?? 0;
-  let newTempDrive = prevTempDrive, driveOverflowToDB = 0;
+  let newTempDrive = prevTempDrive, driveOverflow = 0;
   if (rawDriveBoost > 0) {
-    if (rawDriveBoost > prevTempDrive) { driveOverflowToDB = prevTempDrive; newTempDrive = rawDriveBoost; }
-    else                               { driveOverflowToDB = rawDriveBoost; }
+    if (rawDriveBoost > prevTempDrive) { driveOverflow = prevTempDrive; newTempDrive = rawDriveBoost; }
+    else                               { driveOverflow = rawDriveBoost; }
   }
 
   const rawSustainBoost = colorSustain;
   const prevTempSustain = ns.tempSustain ?? 0;
-  let newTempSustain = prevTempSustain, sustainOverflowToDB = 0;
+  let newTempSustain = prevTempSustain, sustainOverflow = 0;
   if (rawSustainBoost > 0) {
-    if (rawSustainBoost > prevTempSustain) { sustainOverflowToDB = prevTempSustain; newTempSustain = rawSustainBoost; }
-    else                                   { sustainOverflowToDB = rawSustainBoost; }
+    if (rawSustainBoost > prevTempSustain) { sustainOverflow = prevTempSustain; newTempSustain = rawSustainBoost; }
+    else                                   { sustainOverflow = rawSustainBoost; }
   }
-  // ⚠️ The discard NO LONGER FEEDS Db. It was 13% of all Db income and the single
-  // largest source the player could neither see, name, nor aim at — because it
-  // paid out the half of a comparison that LOST. Kept as a display value only.
-  const dbOverflow = 0;
-  const discarded  = driveOverflowToDB + sustainOverflowToDB;
+  // The carrot that LOST the comparison is discarded — display value only.
+  const discarded  = driveOverflow + sustainOverflow;
 
   const newDieFloorBoost = 0;
   const newStatusEffects = [...(ns.statusEffects ?? [])];
 
-  const baseScore = {
-    points: payout.db,
-    breakdown: [
-      `${payout.cleanCount} clean notes → +${payout.cleanDb}`,
-      ...(payout.streakDb ? [`clean streak → +${payout.streakDb}`] : []),
-      ...(payout.ending !== 'normal' ? [`${payout.ending} resolve → +${payout.endingDb}`] : []),
-    ], endingBonus: payout.endingDb, endingKind: payout.ending,
-  };
-  const lock = { bonus: 0, stack: null, rank: 0, chordName: null };
-
-  const breakdown = [...baseScore.breakdown];
-  if (lock.bonus > 0) breakdown.push(`🔒 ${lock.chordName} +${lock.bonus}`);
-  const earned = baseScore.points + lock.bonus;
-
-  // ── ⚡ DISSONANCE EDGE — REMOVED. Pinned at 0 rather than deleted from the
-  // arithmetic below, so the Db pot still reads as the single pot it is.
-  const edgeDbCost = 0, edgeDbBonus = 0, edgeFanCost = 0, edgeCollapseFans = 0;
-  const edgeResolvedThisTurn = false, newEdgeStage = 0;
+  // ── ⚡ DISSONANCE EDGE — REMOVED. `edgeStage` stays pinned at 0 on the sheet.
+  const newEdgeStage = 0;
 
   // Layer 1: finished Spirit structures — the IDENTITY half of the crowd's ear.
   // Monster and Intergalactic deliberately return zero until their rules exist.
@@ -312,20 +293,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const perfPromotions = 0;
   const perfFansLost = 0;
   const lowPerfStreak = 0;
-  const perfDbBonus = 0;
 
-  // Four sources in, one number out.
-  const earnedTotal = earned + dbOverflow + perfDbBonus + edgeDbBonus - edgeDbCost;
-
-  // ── Db BAR & THE UPGRADE ──────────────────────────────────────────────────
-  // ⚠️ §3.2's tension lives here: `dbCost` is the ONE-TIME unlock, but several
-  // abilities then charge per use from the same pool. The bar does not know that;
-  // the evaluator must.
-  const targetSkill = ns.targetSkillId ? (view.skillById ?? {})[ns.targetSkillId] : null;
-  const targetCost  = targetSkill?.dbCost ?? DB_UPGRADE_THRESHOLD;
-  const { newDBPoints: rawDBPoints, upgradeTriggered } = advanceDB(ns.dbPoints ?? 0, earnedTotal, targetCost);
-  const newDBPoints = Math.max(0, rawDBPoints);
-  const newUpgradesPending = upgradeTriggered ? (ns.upgradesPending ?? 0) + 1 : (ns.upgradesPending ?? 0);
 
   // ── 🔥 THE EXORCISM — the Iwato curse's way out (`iwatoCurse.js`) ─────────
   // On their FIRST cursed turn only, a line holding three different Iwato notes
@@ -350,19 +318,15 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     lastCommittedMelody: [...melodyLine], // Survives turn reset for alternating arena calls.
     committedFreq:    melodyLine.map((_, i) => melodyFreq[i] ?? null),
     discordCount:  0,
-    pivotPending:  newPivotPending,
     rootNote:      newRootRaw,
     scaleMode:     newMode,
     paletteMode:   newMode,
-    dbPoints:      newDBPoints,
-    totalDB:       (ns.totalDB ?? 0) + earnedTotal,
     edgeStage:     newEdgeStage,
     perfScore,
     recentP:       [...(ns.recentP ?? []), perfScore].slice(-2),
     excitement:    perfExcitement,
     loyalty:       perfLoyalty,
     lowPerfStreak,
-    upgradesPending: newUpgradesPending,
     hasConfirmed:  true,
     dieFloorBoost: newDieFloorBoost,
     statusEffects: newStatusEffects,
@@ -373,25 +337,6 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     ...trailPatch,
   };
 
-  // ── THE SKILL AWARD — state half only ─────────────────────────────────────
-  // `awardTargetSkill`'s sheet write is modelled; `applySkillEffects` is not
-  // (see CLIENT_OWNED). A searcher that earned a capstone and never received it
-  // would misprice every Db decision downstream, which is worse than the gap.
-  let awardedSkillId = null;
-  if (upgradeTriggered) {
-    if (ns.targetSkillId) {
-      awardedSkillId = ns.targetSkillId;
-      const already = patch.unlockedSkills ?? unlockedSkills;
-      patch.unlockedSkills      = already.includes(awardedSkillId) ? already : [...already, awardedSkillId];
-      patch.upgradesPending     = 1;
-      patch.pendingAwardSkillId = awardedSkillId;
-      patch.targetSkillId       = null;
-      const awarded = (view.skillById ?? {})[awardedSkillId];
-      logs.push(`🏆 ${name} earned: ${awarded ? `${awarded.icon ?? ''} ${awarded.label}`.trim() : awardedSkillId}!`);
-    } else {
-      patch.upgradesPending = 1;
-    }
-  }
 
   // ── LAYER 1 EFFECTS ───────────────────────────────────────────────────────
   // The commit has one fan source: the Spirit's completed structure. Position,
@@ -424,14 +369,8 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const deedReport = null;
 
   // ── FLASH (presentation; transcribed so a rewired client recomputes nothing) ──
-  if (earned > 0) {
-    flashLines.push(`+${earned} DB pts`);
-    breakdown.forEach(b => flashLines.push(b));
-    if (upgradeTriggered) flashLines.push(`🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`);
-  }
   if (rawDriveBoost > 0)   flashLines.push(`⚔️ Drive +${newTempDrive}`);
   if (rawSustainBoost > 0) flashLines.push(`🛡️ Sustain +${newTempSustain}`);
-  if (payout.ending !== 'normal') flashLines.push(`🎯 ${payout.ending} resolve — DB +${payout.endingDb}`);
   if (canBank)           flashLines.push(`💾 Banked: ${newBankedNote.note}`);
   if (totalNotes > speed && !canBank) flashLines.push(`⚠️ ${totalNotes - speed} note(s) discarded (bank full)`);
   if (unpardonedDiscord > 0) flashLines.push(`⚡ ${unpardonedDiscord} Discord — movement only`);
@@ -444,16 +383,12 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   if (style.score > 0) flashLines.push(`🎤 ${style.labels.join(' + ')} · +${style.score} fan${style.score !== 1 ? 's' : ''}`);
   if (perfPromotions > 0) flashLines.push(`💜 ${perfPromotions} fan${perfPromotions !== 1 ? 's' : ''} → Diehard!`);
 
-  const scoreStr = earned > 0
-    ? ` · 🎯 +${earned}pts (${breakdown.join(', ')})${upgradeTriggered ? ` · 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!` : ` · DB [${newDBPoints}/${targetCost}]`}`
-    : ` · DB [${newDBPoints}/${targetCost}]`;
   const speedMsg = totalNotes > speed
     ? ` · SPD ${speed}/${totalNotes}${canBank ? ` · 💾 ${newBankedNote.note} banked` : ' · bank full'}`
     : ` · SPD ${hexes}/${speed}`;
-  logs.unshift(`✓ Committed · ${hexes} hexes${scoreStr}`
+  logs.unshift(`✓ Committed · ${hexes} hexes`
     + (rawDriveBoost > 0 ? ` · ⚔️ Drive +${newTempDrive}` : '')
     + (rawSustainBoost > 0 ? ` · 🛡️ Sustain +${newTempSustain}` : '')
-    + (payout.ending !== 'normal' ? ` · 🎯 ${payout.ending} DB+${payout.endingDb}` : '')
     + `${speedMsg} · Next RN: ${newRootRaw}`);
 
   return {
@@ -465,11 +400,9 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
       exorcised,
       unpardonedDiscord, contextPardons, allInScale, cleanNoteCount, endingClean,
       cleanPhrase, endingChoice,
-      colorDrive, colorSustain, discarded, dbOverflow,
+      colorDrive, colorSustain, discarded,
       diatonicRunLen: 0, repeatPatLen: 0, skipClimbLen: 0,
       trackHasTritone: false, isOctaveResolution: false,
-      baseScore, lock, breakdown,
-      earned, earnedTotal, newDBPoints, targetCost, upgradeTriggered, awardedSkillId,
       perfScore, perfExciteGain, perfFansGained, perfPromotions, perfFansLost,
       craftRun: payout.craftRun, craftFans,
       // 🎭 Which of this Spirit's own gestures the line landed. On the report

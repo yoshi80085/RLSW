@@ -16,14 +16,14 @@
 //                    potentially a note that could have been used for his Drive
 //                    or Sustain. But yes, up to 3 a turn - after the ability was
 //                    selected, so … from the next turn."*
-//   3. ⚡ CAST     — three strings tuned: the Action Token, Db and the cooldown
+//   3. ⚡ CAST     — three strings tuned: the Action Token and the cooldown
 //                    (`firePatch`), on a rival within `CAST_RANGE` hexes. The
 //                    strings are spent and the instrument is put away.
 //   4. 🌑 CURSED   — `rivalNs.iwatoCurse`: their palette IS Iwato on the Ronin's
 //                    root for their next `CURSE_TURNS` turns. Everything that asks
 //                    "which notes are clean for this Spirit?" goes through
 //                    `livePalette` below, so the existing "discord notes are inert"
-//                    rule does the punishing — no Db, no fans.
+//                    rule does the punishing — no fans.
 //   5. 🔥 EXORCISM — on the FIRST cursed turn only, a committed melody holding
 //                    `EXORCISE_NOTES` different Iwato notes lifts it. Otherwise it
 //                    runs out at the end of their second cursed turn.
@@ -113,14 +113,14 @@ export function castCheck({ ns, rivalNs = null, from = null, to = null, tokenUse
   if (!ns?.shamisen) return { ok: false, reason: 'Take the shamisen up first.' };
   if (stringsOf(ns).length < STRINGS) return { ok: false, reason: `Tune all three strings first (${stringsOf(ns).length}/${STRINGS}).` };
   if (tokenUsed) return { ok: false, reason: 'Already used your Action Token this turn.' };
-  if (!canFire(ns, SHAMISEN_SKILL)) return { ok: false, reason: cooldownLeft(ns, SHAMISEN_SKILL) > 0 ? 'The Shamisen is recharging.' : 'Not enough Db for the curse.' };
+  if (!canFire(ns, SHAMISEN_SKILL)) return { ok: false, reason: cooldownLeft(ns, SHAMISEN_SKILL) > 0 ? 'The Shamisen is recharging.' : 'The curse is not in your kit.' };
   if (rivalNs?.iwatoCurse) return { ok: false, reason: 'That rival is already cursed.' };
   if (from && to && axialDist(from.q, from.r, to.q, to.r) > CAST_RANGE) return { ok: false, reason: `Too far — the curse reaches ${CAST_RANGE} hexes.` };
   return { ok: true };
 }
 
 /**
- * The cast, as two patches. The Ronin pays Db + cooldown and his strings; the
+ * The cast, as two patches. The Ronin pays the cooldown and his strings; the
  * rival takes the curse. `roninRoot` is HIS root — the scale is his, not theirs.
  */
 export function castPatches(ns, roninId, key = `${roninId}`) {

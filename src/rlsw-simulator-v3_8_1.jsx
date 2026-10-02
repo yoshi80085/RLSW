@@ -85,7 +85,7 @@ import { StatKnob } from "./ui/StatKnob.jsx";
 import { ChordStackPanel, CommitTrackPanel, COMMIT_OVERLAY,
          StackNest, stackSeatPos,
          poolSeatPos, poolNestHeight, usePoolColumns } from "./ui/NoteCommitOverlay.jsx";
-// 🎛️ The column beside the character card — turn rail, key plate, DB meter.
+// 🎛️ The column beside the character card — turn rail, key plate, abilities.
 import { ChannelStrip, StripSection, TurnRail, KeyPlate, SPIRIT_CARD, CHANNEL_STRIP } from "./ui/ChannelStrip.jsx";
 import { detectSpiritStyle, gesturesFor } from "./music/spiritStyle.js";
 import { ActionRail, RailBtn, ACTION_RAIL } from "./ui/ActionRail.jsx";
@@ -105,7 +105,7 @@ import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
 import { playSonicBeamAudio } from "./audio/sonicBeamAudio.js";
 import { sonicRig, rigPoolLabel, drivePowerBreakdown, drivePowerNote } from "./engine/systems/sonicRig.js";
 import AmpDecks from "./board/ampDecks.jsx";
-import { hexRingFromCenter, crowdMultiplier, advanceDB } from "./board/boardHelpers.js";
+import { hexRingFromCenter, crowdMultiplier } from "./board/boardHelpers.js";
 import { DEFAULT_SKIN_ID, stageSkinPlateFilter, stageSkinLineMatrix } from "./board/stageSkins.js";
 import { getRiffAudio, riffDegreeFreq, playRiffWrong, pickGlitchRiffNote, playRiffMiss, playBeamClash, playBeamSurge, playBeamBreak, playFanPop } from "./audio/riffSfx.js";
 import { TONE_KNOB_DEFAULTS, SPIRIT_TONES, TONE_VOICE_ORDER, TONE_VOICES, getAmpBuses, playAmpNote, makeDistortionCurve } from "./audio/ampVoice.js";
@@ -132,29 +132,27 @@ import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineM
 // player sees and the hex an ability will accept have to be the same read.
 import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
 import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
-import { ABILITY_CD, ABILITY_DB_COST, cooldownLeft, canFire, firePatch } from "./engine/systems/cooldowns.js";
+import { ABILITY_CD, cooldownLeft, canFire, firePatch } from "./engine/systems/cooldowns.js";
 // 🎸 THE IWATO CURSE — the Cursed Shamisen's rules (`RONIN_ABILITY_DESIGN.md` §2.3.00).
 import { SHAMISEN_SKILL, CAST_RANGE as SHAMISEN_RANGE, STRINGS as SHAMISEN_STRINGS, CURSE_TURNS, EXORCISE_NOTES,
          hasShamisen, stringsOf, shamisenRoot, canTakeUp, takeUpPatch, tuningOpen, tuneCheck, tunePatch, stringVoicing,
          castCheck, castPatches, isCursed, exorciseWindow, livePalette, endCursedTurn, curseScene } from "./engine/systems/iwatoCurse.js";
 import { CURSED_SHAMISEN, planCast, isIwato, iwatoNames } from "./board/cursedShamisen.js";
 import { CursedWheel } from "./ui/CursedWheel.jsx";
-import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
-         PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
+import { PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
          PSYCHO_BUSHIDO_STACK_COST, psychoBushidoD8s, SHADOW_ILLUSION_TURNS,
          SHADOW_ILLUSION_SUSTAIN_DRAIN, PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD,
          CURSED_SHAMISEN_CD,
          DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD,
          SUNBEAM_CD } from "./data/gameConstants.js";
-import { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS,
-         DISPLACE_DB_COST, DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
-         GRAVITY_DB_COST, GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN,
-         CODE_INJECT_DB_COST } from "./data/gameConstants.js";
+import { SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS,
+         DISPLACE_MIN_RINGS, DISPLACE_MAX_RINGS,
+         GRAVITY_PLACE_RINGS, GRAVITY_PULL_RINGS, GRAVITY_PULL_HEXES, GRAVITY_NOTE_DRAIN } from "./data/gameConstants.js";
 // 🌀 SHUKUCHI ARPEGGIO — 縮地. The RULES live in the engine and are imported,
 // never re-derived here: a highlight with its own notion of "2 rings" is how you
 // get a hex that lights up and then refuses the click (the same reasoning
 // `displaceTargets` carries, and the reason `shukuchiLandings` is shared).
-import { SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS,
+import { SHUKUCHI_CD, SHUKUCHI_MAX_HOPS,
          SHUKUCHI_AP_PER_HOP } from "./data/gameConstants.js";
 import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
          shukuchiHopsLeft, SHUKUCHI_SKILL } from "./engine/systems/shukuchi.js";
@@ -184,7 +182,6 @@ import {
 import {
   usedHas, usedList, usedAdd, performanceScore, makeInitialNoteState, fansFromDeed,
 } from "./engine/systems/economy.js";
-import { skillEligibility } from "./engine/systems/skills.js";
 import {
   battleConsequences, chordFray as chordFrayFlow, runBattleFlow, poseConsequences,
   // 🏆 THE MODE, AS THE ENGINE DEFINES IT. Imported rather than re-derived: the
@@ -207,10 +204,8 @@ import { STYLE_DEFS, styleOf } from "./data/styles.js";
 // and the HUD bar cannot drift into two different golds — see data/fameTheme.js.
 import { FAME, FAME_CONTESTED, FAME_NEUTRAL, fameSet, fameFill } from "./data/fameTheme.js";
 import {
-  BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_SKILL_PRIORITY_BASE, BOT_SPIRIT_SKILLS,
-  SPIRIT_ONLY_ROUTE, BOT_RIFF_PROFILE,
+  BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_RIFF_PROFILE,
   botAssignPersona, botPickTarget as _botPickTarget, botHexScore as _botHexScore,
-  botSkillEligible as _botSkillEligible, botPickSkillTarget as _botPickSkillTarget,
   botRiffResults as _botRiffResults,
   botPlanNoteStep as _botPlanNoteStep, botSpiritChord,
   botPlanRevoice as _botPlanRevoice,
@@ -232,7 +227,7 @@ import { SLOT_LADDER, stackRoot, nextRung, unlockClaim, applyUnlockClaim, crowdS
 // 🔦 The four corner spotlights (Alex, 2026-09-25) — rules in the engine, read here.
 import { poseSpotFor, homeSpotlightDrive } from "./engine/systems/spotlights.js";
 import { SPOTLIGHT_POSE_SUSTAIN_COST, POSE_SUSTAIN_PENALTY, SPOTLIGHT_STEAL_CASUALS } from "./data/gameConstants.js";
-import { DB_UPGRADE_THRESHOLD, CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, MARQUEE_HAND_MAX, MARQUEE_SOLO_SECONDS, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
+import { CAMERA_ZOOM_MS, LIMELIGHT_HEX, LIMELIGHT_TO_WIN, LIMELIGHT_FAME, POSE_FP_MAX, POSE_SUSTAIN_COST, fpPerLife, fameScaleFor, FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, FAME_RACE_CONTESTED_LEAD, UNDERDOG_MIN_DEFICIT, TOKEN_MAX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_TOTAL_CAP, addCasuals, addDiehard, FAN_DIEHARD_START, FAN_CASUAL_START, EXCITE_PER_CASUAL, LOYALTY_PER_DIEHARD, FAN_GAIN_BY_RING, FAN_DECAY, FAN_BORED_AFTER, FAN_PROMOTE_EVERY, FAN_RECOVERY_LAG, FAN_FLEE_MIN, FAN_FLEE_MAX, FAN_DEFECT_TO_VICTOR, CROWD_DRAWN_MAX, MARQUEE_HAND_MAX, MARQUEE_SOLO_SECONDS, EVENT_RESPAWN_TURNS, FLAMING_DISC_COUNT, FLAMING_DISC_ROUNDS, CHARGE_ZONE_COUNT, CHARGE_ZONE_BOOST_TURNS, CHARGE_ZONE_COOLDOWN, CHARGE_FLOOR_BONUS, SONIC_BASE_DIE, SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG, ATK_BONUS_CAP, THRASH_DAMAGE_CAP, STACK_COMMIT_BUDGET, STACK_CAP_BASE, STACK_CAP_MAX, stackCapFor } from "./data/gameConstants.js";
 // ── SPOTLIGHT SYSTEM ─────────────────────────────────────────────────────────
 // A roaming searchlight that heals +1 Vibe to any spirit ending their turn on it.
 // Moves to a new hex every full round (once all spirits have taken a turn).
@@ -431,11 +426,10 @@ const DISCORD_UPGRADE_TIERS = [
   },
 ];
 // ── 🌀 INTERGALACTIC 0 — ARSENAL TUNING ──────────────────────────────────────
-// Both of his signature actives are UNLOCK-then-PAY-PER-USE (the Cursed
-// Shamisen pattern): the `dbCost` in SKILL_TREE buys the ability, and every
-// firing costs Db again. That is deliberate for a zoner — his power is real,
-// but it is metered by how loud he has managed to get, so he cannot simply
-// hold the board hostage every single turn on a whim.
+// His actives are metered by their COOLDOWNS (and, until Db was cut on
+// 2026-10-02, by a Db price per firing too). ⚠️ With the Db meter gone the
+// cooldown is the only brake on Displace, Gravity and Code Injection — recorded
+// as a balance note, deliberately not compensated (`SEQUENCING.md` §B10).
 //
 // ⚠️ HISTORY (read before you "fix" anything here). Both of these names used to
 // belong to DIFFERENT abilities and were replaced outright in this pass:
@@ -1758,8 +1752,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [fanCoachEnabled, setFanCoachEnabled] = useState(gameState.fanCoach ?? true);
   const [activeTip, setActiveTip] = useState(null); // { id, title, body } or null
   // The very first tip (welcome) is triggered by the initial Full Scale grant
-  // useEffect, which also queues the chord tip to follow it. The skill_tree tip
-  // fires the first time the Theory Tree opens (DB bar filled → upgradesPending).
+  // useEffect, which also queues the chord tip to follow it.
   const turnQueue = engineState.turnQueue; // engine-owned (Phase 2)
   // 🧪 TESTING GROUNDS — dev panel (only when the sandbox was launched from the
   // menu). N8: hard-disabled online — dev grants dispatch real actions and the
@@ -1767,7 +1760,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const testMode = !!gameState.testMode && !gameState.net;
   const [devOpen, setDevOpen] = useState(false);
   // 🆓 FREE PLAY — the acting Spirit is kept topped up (AP, action token,
-  // cooldowns, Db, full kit) so any move can be tried at any moment. Starts ON
+  // cooldowns, full kit) so any move can be tried at any moment. Starts ON
   // for a menu launch (`buildTestingGroundsConfig({ freePlay: true })`) and OFF
   // for the journey suites, which drive real turns off the same config.
   // ⚠️ `testMode &&` is load-bearing: the flag must never survive into a room.
@@ -2328,33 +2321,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         { body: [`TWO: win the FAME war. First to ${fameToWin} FAME POINTS is crowned a LEGEND — no punching required.`,
                  'Most Spirits end up doing a bit of both. Pick a lane, or don\'t. I\'m a pick, not a cop.'], anchor: 'fame-bar', emote: 'fame' },
         { body: 'Use your MELODY to — one! MOVE. Every note you play is a hex you travel.', anchor: 'note-stock', act: 'travel' },
-        // 💲 THE ONLY Db PAGE IN THIS TIP. Db used to be explained three times
-        // across the welcome — here, again on the root-note page, and a third
-        // time on a SECOND db-bar page right after it, which flew him back to a
-        // bar he'd already pointed at. All of it is folded into this one beat.
-        { body: 'Two! Gain DECIBILLS (Db). That\'s the currency of learning — Db is what buys you new skills, new tech and better gear.', anchor: 'db-bar', emote: 'paid' },
+        // 🪦 The Db page that stood here went with Db (2026-10-02). Fans are now
+        // the only thing a good melody pays, so they move up to "Two!".
         // 🎟️ The fans don't just get named — they run in and gather round him.
-        { body: 'Three! Gain FANS. They\'re out there listening to your tune, and they make everything you earn worth more.', anchor: 'fan-crowd', crowd: true },
+        { body: 'Two! Gain FANS. They\'re out there listening to your tune, and they make everything you earn worth more.', anchor: 'fan-crowd', crowd: true },
         // 🎸 A ROADMAP LINE, not a lesson. The `chord` tip teaches the stacks
         // properly the moment the player reaches that step — so this stays at
         // "these two things exist and here's where they live" and goes no
         // further. Anything more detailed here gets said twice.
         { body: 'And use your CHORDS to improve your attack strength (DRIVE) and your defense (SUSTAIN). Totally rad.', anchor: 'chord-stack', emote: 'flex' },
         { body: 'This glowing badge is your ROOT NOTE — the tonal centre of your turn. It\'s what decides which notes in your pool light up as CLEAN.', anchor: 'root-note' },
-        // ⚠️ A page here ("Those lit-up ones are the money notes. Play clean,
-        // get paid.") is CUT — the Db page above already says clean notes pay,
-        // and the root-note page already says which ones are clean. It was the
-        // punchline to a joke told twice. Don't reinstate it.
         // 🪦 The TRANSPOSE card was introduced here, then moved to `chord`, and
         // is now gone from both because the card itself is gone. Kept as a note
         // only so nobody re-adds the page from memory.
-      ],
-    },
-    skill_tree: {
-      title: '🌳 The Theory Tree',
-      pages: [
-        { body: 'Your Db bar is FULL — the THEORY TREE is open! Pick a SKILL TARGET: scale tones, amps, crew, combat tricks. Pick a route that fits how you wanna play. Or panic-pick. Everyone does, their first game.' },
-        { body: 'In-scale notes keep feeding Db toward that target — when the bar refills, the skill is yours and you pick the next one. The mini progress bar lives on your spirit card.', anchor: 'db-bar' },
       ],
     },
     // 🎸 B8: the `pivot` tip is GONE along with the step it explained. There is no
@@ -2418,10 +2397,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       title: '🎶 Step 2 — Build Your Melody',
       pages: [
         { body: 'Now spend your remaining notes on your MELODY LINE. Each note = 1 hex of movement, up to your Spirit\'s Speed stat.', anchor: 'note-stock', act: 'travel' },
-        { body: 'In-scale notes — the ones that light up — also earn Db.', anchor: 'note-stock', emote: 'paid' },
-        { body: ['The greyed-out ones are DISCORD notes. They still buy one hex of movement, but they earn no Db and the crowd ignores them.',
+        { body: 'In-scale notes — the ones that light up — are the ones the crowd actually hears.', anchor: 'note-stock', emote: 'paid' },
+        { body: ['The greyed-out ones are DISCORD notes. They still buy one hex of movement, but the crowd ignores them.',
                  'A discord final cannot resolve your ending. Use one when the extra distance is worth giving up the music payout.'], anchor: 'note-stock' },
-        { body: ['Do you commit your best Db-earning notes to your Chord Stacks? Do you burn a discord just to move farther?',
+        { body: ['Do you commit your best clean notes to your Chord Stacks? Do you burn a discord just to move farther?',
                  'These are choices you make while playing. Just don\'t second-guess yourself. Play it HARD!'], anchor: 'note-stock' },
       ],
     },
@@ -2458,7 +2437,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         { body: gesturesFor(actingRef.current?.id)
             .map(g => `${g.label.toUpperCase()} — ${g.pattern}. ${g.lesson}`),
           anchor: 'note-stock' },
-        { body: 'Then finish CLEAN — tonic, 4th or 5th. That\'s where the Db is.', anchor: 'commit-track', emote: 'paid' },
+        { body: 'Then finish CLEAN — end on your Drive or Sustain stack\'s root for its red/blue boost.', anchor: 'commit-track', emote: 'paid' },
       ],
     },
     // 🔁 THE ONE REMINDER, and the moment is the whole point: it fires the first
@@ -2480,7 +2459,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       title: '💜 The 4th & the 5th',
       pages: [
         { body: ['First time seeing the purple and pink notes? Those are the 4th and the 5th — your harmonic balance notes.',
-                 'At commit, choose the Db ending or trade it for your red/blue stack boost.',
+                 'Rock is built on them — they are where a line sounds like it has landed.',
                  'These notes bring balance to the Force... of Music.'], anchor: 'interval-legend' },
       ],
     },
@@ -2505,7 +2484,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       title: '🥇 Gold Hex',
       pages: [
         { body: 'A GOLD hex means ending there resolves a cadence. And it looks cool.', anchor: 'commit-track', emote: 'gold' },
-        { body: 'Gold hexes are what the fans are *dying* to hear — commit it LAST for a boost in fans. Unless you maybe want that Db...', anchor: 'fan-crowd', emote: 'gold' },
+        { body: 'Gold hexes are what the fans are *dying* to hear — commit it LAST for a boost in fans.', anchor: 'fan-crowd', emote: 'gold' },
       ],
     },
     move_act: {
@@ -2577,13 +2556,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                  'Sorry to impede your playing. Go get \'em, little Rocker!! 🐯🎸'], anchor: 'fame-bar' },
       ],
     },
-    skill_unlock: {
-      title: '🌳 Skill Unlocked!',
-      pages: [
-        { body: 'New ability unlocked — the Db grind paid off! Skills are permanent: scale tones, amps, crew, combat upgrades, signature moves. Your spirit card wears the new badge. Hover it to gloat.' },
-        { body: 'Now pick your NEXT target and keep the loop rolling: in-scale notes → Db → skill → repeat. Spirits who stop building become content in other people\'s highlight reels.', anchor: 'db-bar' },
-      ],
-    },
     status_effect: {
       title: '⚡ Status Effect!',
       pages: [
@@ -2619,7 +2591,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       pages: [
         { body: ['Some notes carry more weight than others — this legend names the exact ones in play this turn:',
                  '🔴 TRITONE — maximum dissonance, the devil\'s interval. 💗 5th / 💜 4th — your harmonic balance notes. 💚 MAJOR 3rd — the bright one. 🔵 MINOR 7th — the blues note.',
-                 'End on the 4th, 5th or the octave and you get PAID in Db. The rest start out grey and costly — climbing the Theory Tree is what turns them clean. Wrong notes become your best notes. That\'s rock, baby.'], anchor: 'interval-legend' },
+                 'Wrong notes become your best notes. That\'s rock, baby.'], anchor: 'interval-legend' },
       ],
     },
     // edge tips — REMOVED (system cut)
@@ -2635,20 +2607,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   const activeTipRef = useRef(null);
   useEffect(() => { activeTipRef.current = activeTip; }, [activeTip]);
-  // 🎓 Tips fired while the Theory Tree modal is up get QUEUED, not shown —
-  // their arrows would point at HUD the modal covers (and competing overlays
-  // look broken). The flush effect below (next to `upgradesPending`) replays
-  // them once the modal closes. skill_tree/skill_unlock are ABOUT the modal,
-  // so they still show immediately.
-  const upgradesPendingRef = useRef(0);
+  // 🪦 The Theory Tree modal that tips used to queue behind is gone (2026-10-02,
+  // with Db). Tips now queue only behind another tip — see the flush effect.
   const pendingTipsRef = useRef([]);
   function showTip(tipId) {
     if (!beginnerEnabled) return;
     if (beginnerTipsSeen.has(tipId)) return;
-    if (upgradesPendingRef.current > 0 && tipId !== 'skill_tree' && tipId !== 'skill_unlock') {
-      if (!pendingTipsRef.current.includes(tipId)) pendingTipsRef.current.push(tipId);
-      return;
-    }
     // 🐛 THE MISSING-AP-TIP BUG: this used to `return` here, silently DROPPING
     // any tip that fired while another was on screen. Commit fires three tips in
     // 300ms — last_note, gold_hex, move_act — so move_act (the one that explains
@@ -2658,7 +2622,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Being told how to move a turn after you worked it out yourself is worse
     // than not being told.
     //
-    // Blocked tips now QUEUE instead. The flush effect beside `upgradesPending`
+    // Blocked tips now QUEUE instead. The flush effect below
     // reruns whenever `activeTip` clears, so the queue drains one page-turn at a
     // time in the order they fired.
     if (activeTipRef.current) {
@@ -2754,10 +2718,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const usedStockIdx = actingNoteState?.usedStockIdx ?? [];
   const rootNote     = actingNoteState?.rootNote     ?? 'C';
   const scaleMode    = actingNoteState?.scaleMode    ?? 'major';
-  // ⚠️ B8: nothing sets pivotPending true any more (the mode is derived from the
-  // Drive Stack at turn start). Its read sites are left in place on purpose —
-  // they now all read false and gate nothing. Don't reintroduce a writer.
-  const pivotPending  = actingNoteState?.pivotPending ?? false;
+  // 🪦 `pivotPending` and its read sites are GONE (2026-10-02, Alex: the
+  // Major/Minor system is old — each Spirit plays its own scale). Nothing had
+  // set it true since B8, so every guard it fed was already reading false.
   // ── SONIC RIG (AMP_DECK_DESIGN.md §2, MARQUEE_QUIZ_DESIGN.md §0.1) ────────
   // Every Spirit has a Main Amp at their corner from turn 1. Pool size and die
   // upgrades come from the rig tiers; the effective radius BREATHES with the
@@ -2828,24 +2791,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   useEffect(() => { ampsInRangeRef.current = ampsInRange; }, [ampsInRange]);
   useEffect(() => { rigInRangeRef.current = actingRig.inRange; }, [actingRig.inRange]);
   const diceTier = rigPoolLabel(actingRig.pool);
-  const dbPoints      = actingNoteState?.dbPoints      ?? 0;
-  const upgradesPending = actingNoteState?.upgradesPending ?? 0;
-  // 🎓 showTip runs from setTimeouts — a ref keeps its view of the Theory Tree
-  // modal fresh (the closure's `upgradesPending` can be a render behind).
-  useEffect(() => { upgradesPendingRef.current = upgradesPending; }, [upgradesPending]);
-  // 🎓 The Theory Tree first opens when the DB bar fills (the initial pick was
-  // replaced by the free Full Scale grant) — introduce the tree at that moment.
-  useEffect(() => {
-    if (upgradesPending > 0 && canAct && !acting?.cpu) showTip('skill_tree');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [upgradesPending]);
   // 🎓 Flush QUEUED tips — one at a time (this reruns as each one closes), after
-  // a beat so the previous card animates out. Two things fill this queue: tips
-  // fired while the Theory Tree modal was up, and tips fired while another tip
-  // was already on screen (see showTip). Without this drain, whichever tip lost
-  // the race was gone for good.
+  // a beat so the previous card animates out. The queue fills with tips fired
+  // while another tip was already on screen (see showTip). Without this drain,
+  // whichever tip lost the race was gone for good.
   useEffect(() => {
-    if (upgradesPending > 0 || !beginnerEnabled || activeTip) return;
+    if (!beginnerEnabled || activeTip) return;
     if (!pendingTipsRef.current.length) return;
     const t = setTimeout(() => {
       const nextId = pendingTipsRef.current.shift();
@@ -2853,7 +2804,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }, 500);
     return () => clearTimeout(t);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [upgradesPending, activeTip, beginnerEnabled]);
+  }, [activeTip, beginnerEnabled]);
   const discordCount  = actingNoteState?.discordCount  ?? 0;
   const hasConfirmed  = actingNoteState?.hasConfirmed  ?? false;
   // Speed, banking, discord unlocks
@@ -3100,15 +3051,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     && (turnStep === 'melody' || turnStep === 'chord'));
   const crowdCoach = useCrowdCoach(crowdCoachOn ? {
     spiritId: acting.id, ns: actingNoteState,
-    goals: turnStep === 'melody' ? ['fans', 'db'] : ['drive', 'sustain'],
+    goals: turnStep === 'melody' ? ['fans'] : ['drive', 'sustain'],
     unavailable: turnStep === 'melody' ? staggeredSlots : [],
   } : null);
   const [crowdShown, setCrowdShown] = useState(null);
   const crowdAsksNow = crowdCoachOn && turnStep === 'melody' && crowdCoach.plays
     ? crowdAsks(acting.id, actingNoteState, crowdCoach.plays,
-        { voice: CROWD_BUBBLE.voice, chips: CROWD_BUBBLE.chips, dbBubble: CROWD_BUBBLE.dbBubble, ending: CROWD_BUBBLE.ending })
+        { voice: CROWD_BUBBLE.voice, chips: CROWD_BUBBLE.chips })
     : [];
-  // 📍 stock index → 'fans' | 'db' (the note the bubble names next) or 'drive' | 'sustain' (chord glow)
+  // 📍 stock index → 'fans' (the note the bubble names next) or 'drive' | 'sustain' (chord glow)
   const crowdMarks = !crowdCoachOn ? new Map()
     : turnStep === 'melody' ? crowdStockMarks(crowdShown)
     : crowdCoach.plays ? chordGlow(crowdCoach.plays, CROWD_BUBBLE.glowSrc, {
@@ -3697,7 +3648,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (usedHas(usedStockIdx, idx)) {
       const hasMixer  = (actingNoteState?.unlockedSkills ?? []).includes('mixer');
       const mixerUsed = actingNoteState?.mixerUsedThisTurn ?? false;
-      if (!hasMixer || mixerUsed || hasConfirmed || melodyLine.length >= 8 || pivotPending) return;
+      if (!hasMixer || mixerUsed || hasConfirmed || melodyLine.length >= 8) return;
       if (staggeredSlots.includes(idx)) { addLog('⚡ Staggered — that slot is unavailable this turn.'); return; }
       const note     = noteStock[idx];
       const playable = isNotePlayable(note);
@@ -3731,7 +3682,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // (harmony vs. movement). Consumes the stock slot.
     if (stackCommitDest || _forceChordMode) {
       if (hasConfirmed) { addLog('✓ Already confirmed this turn.'); return; }
-      if (pivotPending) { addLog('⚡ Declare Major or Minor first!'); return; }
       if ((actingNoteState?.stackCommitsThisTurn ?? 0) >= STACK_COMMIT_BUDGET) { addLog('🎸 Stack commit budget spent this turn (3/turn).'); return; }
       // 🧠 `_forceChordMode` may NAME the destination ('drive' | 'sustain'), so a
       // driver with no UI to click can still reach the Sustain stack. A bare
@@ -3837,7 +3787,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (hasConfirmed) { addLog('✓ Already confirmed this turn — end your turn to continue.'); return; }
     if (staggeredSlots.includes(idx)) { addLog('⚡ Staggered — that slot is unavailable this turn.'); return; }
     // Pivot must be declared before building can start (if Root Note is A/E/B)
-    if (pivotPending) { addLog('⚡ Declare Major or Minor for your Root Note before building!'); return; }
     const note = noteStock[idx];
     const isTritone      = pitchIndex(note) === pitchIndex(tritoneNote);
     const intervalKey    = getIntervalKey(note);
@@ -3900,7 +3849,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function removeMelodyNote(i) {
     if (!acting || !canAct) return;
     if (hasConfirmed) { addLog('✓ Already confirmed this turn — the track is locked in.'); return; }
-    if (pivotPending) { addLog('⚡ Declare Major or Minor for your Root Note first!'); return; }
     const note = melodyLine[i];
     if (note === undefined) return;
 
@@ -3969,7 +3917,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // permanently out-of-tune note into a track that everything else voices in
   // equal temperament. We keep the octave you played, not your intonation.
   function micPlaceNote({ key, pcAbsolute, freqTempered }) {
-    if (!acting || !canAct || hasConfirmed || pivotPending) return;
+    if (!acting || !canAct || hasConfirmed) return;
     const heardName = NOTE_POOL[pcAbsolute] ?? key;
     if (melodyLine.length >= 8) { setMicHeard({ note: heardName, ok: false }); return; }
     // Strip any octave digits a stock note may carry before the lookup.
@@ -4203,66 +4151,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     addLog('🎸 Drop not available — use the stack commit system.');
   }
 
-  // ── 🎸 B8 MODE BONUS — the applier ──────────────────────────────────────────
-  // This was `declarePivot(mode)`, wired to two buttons. The mode itself is now
-  // derived and respelled inside the startNewTurnNotes reducer (B8); all that is
-  // left here is the part that reducer can't do — pay the bonus, announce it, and
-  // award a skill if the DB bar tipped over.
-  //
-  //   Major → +1 DB          (bright momentum; major favours harmonic runs)
-  //   Minor → +1 tempSustain (dark resolve, defensive edge) — blocked by Mojo Drain
-  //
-  // The asymmetry is deliberate and load-bearing: major is tempo, minor is
-  // defense. If both paid DB the "choice" would collapse into "always the bigger
-  // number". (It also used to pay minor in tempDRIVE, contradicting both the
-  // comment above it and the design doc — fixed in the B8 core pass.)
-  function payModeBonus(spiritId) {
-    const ns = noteStates[spiritId];
-    const staged = ns?.pendingModeBonus;
-    if (!staged) return;
-    const { mode, reason, root } = staged;
-
-    const isMojoDrained = (ns.mojoDrain ?? 0) > 0;
-    let bonusPatch = {};
-    let bonusMsg = '';
-    if (mode === 'major') {
-      const targetSkill = ns.targetSkillId ? SKILL_BY_ID[ns.targetSkillId] : null;
-      const targetCost  = targetSkill?.dbCost ?? DB_UPGRADE_THRESHOLD;
-      const { newDBPoints, upgradeTriggered } = advanceDB(ns.dbPoints ?? 0, 1, targetCost);
-      const newUpgradesPending = upgradeTriggered
-        ? (ns.upgradesPending ?? 0) + 1
-        : (ns.upgradesPending ?? 0);
-      bonusPatch = { dbPoints: newDBPoints, upgradesPending: newUpgradesPending,
-        totalDB: (ns.totalDB ?? 0) + 1 };
-      bonusMsg = upgradeTriggered
-        ? ` · ☀️ Major bonus: +1 DB → 🎸 ${targetSkill?.label ?? 'UPGRADE'} UNLOCKED!`
-        : ` · ☀️ Major bonus: +1 DB [${newDBPoints}/${targetCost}]`;
-    } else {
-      if (!isMojoDrained) {
-        const newSustain = (ns.tempSustain ?? 0) + 1;
-        bonusPatch = { tempSustain: newSustain };
-        bonusMsg = ` · 🌑 Minor bonus: +1 Sustain (now +${newSustain})`;
-      } else {
-        bonusMsg = ' · 🌑 Minor (Mojo Drained — Sustain bonus blocked)';
-      }
-    }
-
-    setNoteField(spiritId, { ...bonusPatch, pendingModeBonus: null });
-
-    // Say WHY the mode is what it is — the line is doing the teaching the two
-    // buttons used to do. 'locked' is the most valuable of the three: hearing a
-    // minor chord and being told the game can't spell it yet sells Minor Tonality
-    // far better than a greyed-out button at the moment of least interest.
-    const chord  = ns.modeChordName ?? 'your stack';
-    const why = reason === 'quality'   ? `${chord} sets the key`
-              : reason === 'ambiguous' ? `${chord} has no third — mode held`
-              : /* locked */             `${chord} wants minor — 🔒 unlock Minor Tonality`;
-    addLog(`🎸 ${root} ${mode} — ${why}.${bonusMsg}`);
-
-    if (bonusPatch.upgradesPending > (ns.upgradesPending ?? 0) && ns.targetSkillId) {
-      setTimeout(() => awardTargetSkill(spiritId), 60);
-    }
-  }
+  // 🪦 THE MAJOR/MINOR MODE BONUS IS GONE (Alex, 2026-10-02): "the major/minor
+  // system is old … each Spirit has their own scale to play in the current
+  // version." `payModeBonus` paid Major +1 Db / Minor +1 Sustain off a staged
+  // `pendingModeBonus` that `turnFlow.js` has cleared every turn since B8, so it
+  // could no longer fire. Each Spirit's palette is `melodyModeFor` — fixed.
 
   function clearNoteTrack() {
     if (!acting || !canAct) return; // N4/N7: gate
@@ -4272,7 +4165,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       melodyFreq: [],
       usedStockIdx: engineRef.current.noteStates?.[acting.id]?.recoveryStockIdx ?? [],
       discordCount: 0,
-      // pivotPending intentionally NOT cleared — must still be resolved if active
     });
     addLog('✕ Melody Line cleared');
   }
@@ -4281,7 +4173,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function useBankedNote() {
     if (!acting || !canAct || !bankedNote) return; // N4/N7: gate
     if (hasConfirmed) { addLog('✓ Already confirmed — cannot use bank this turn.'); return; }
-    if (pivotPending) { addLog('⚡ Declare Major/Minor before using the banked note.'); return; }
     const note = bankedNote.note;
     const playable = isNotePlayable(note);
     const newTrack = [...melodyLine, note];
@@ -4423,18 +4314,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       setTimeout(() => showTip('fan_phrases_again'), 450);
     }
 
-    // ── 4. THE SKILL AWARD — the half the kernel declares CLIENT_OWNED ───────
-    // ⚠️ `awardTargetSkill` MUST NOT run here. The STATE half is already in the
-    // patch (unlockedSkills, upgradesPending, pendingAwardSkillId, targetSkillId
-    // cleared), so it would find `targetSkillId` already null, take its no-op
-    // branch, and the side-effect chain would never fire. Only that chain is
-    // left to do — and the kernel already wrote the 🏆 line into `logs`.
-    if (report.awardedSkillId) {
-      setTimeout(() => {
-        applySkillEffects(acting.id, report.awardedSkillId);
-        showTip('skill_unlock');
-      }, 60);
-    }
+    // ── 4. 🪦 THE SKILL AWARD is gone (2026-10-02): a commit fills no Db bar and
+    //    awards nothing. Abilities arrive only from the draft.
 
     // ── 5. HUD FLOW & THE AP GRANT (§1's mechanical half) ────────────────────
     setTurnStep('move_act'); // advance HUD flow → movement & actions
@@ -4481,8 +4362,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   // Called when this character's turn begins — replenish only the used slots.
-  // B8: the Major/Minor mode is DERIVED here from the Drive Stack instead of
-  // prompting the player, so pivotPending is now set false rather than true.
+  // (There is no Major/Minor prompt: each Spirit's palette is fixed — `melodyModeFor`.)
   // Also clears per-turn debuffs: tripped (movement halved), dazed, instrumentDropped.
   // ── TURN START ─────────────────────────────────────────────────────────────
   // 📌 The transform moved to engine/systems/turnFlow.js. What stays here is the
@@ -4611,20 +4491,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [acting?.id]);
 
-  // ── 🎸 B8: pay the staged mode bonus ────────────────────────────────────────
-  // startNewTurnNotes derives the mode inside its reducer and stages the bonus;
-  // this pays it out here, where side effects are legal. It fires once per turn
-  // because payModeBonus clears pendingModeBonus as it pays.
-  //
-  // OWNERSHIP: same rule as the initial-skill grant above — only the client that
-  // controls the acting spirit may write, or a remote client would dispatch a
-  // duplicate patch and relay it (desync).
-  useEffect(() => {
-    if (!acting || !canAct) return;
-    if (!noteStates[acting.id]?.pendingModeBonus) return;
-    payModeBonus(acting.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [acting?.id, canAct, noteStates[acting?.id]?.pendingModeBonus]);
   function move(toNum) {
     const s = spirits.find(sp => sp.id === acting.id);
     const ns = noteStates[acting.id] ?? {};
@@ -4694,12 +4560,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
   }
 
-  // ─── SKILL TREE — TARGET SELECTION & AWARD ───────────────────────────────────
-  // New flow:
-  //   1. Player picks a target skill → stored as targetSkillId, dbCost stored as target cost
-  //   2. Every DB earned counts toward dbPoints (resets at targetCost, carries overflow)
-  //   3. When threshold hit → upgradesPending=1, skill awarded automatically, overlay opens to pick next
-  //   4. Player picks next target → overlay closes, cycle repeats
+  // ─── SKILL EFFECTS ──────────────────────────────────────────────────────────
+  // What happens the moment a Spirit gains an ability: its intro log line and
+  // any one-off side effect. Called by the draft's opening kit and by the 🧪
+  // Testing Grounds' free-play unlock — there is no other way to gain one.
 
   function applySkillEffects(spiritId, skillId) {
     // Pure side-effects only (state mutations outside noteStates)
@@ -4719,9 +4583,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (skillId === 'goes_to_11')   addLog(`🔊 ${spirit?.name} — GOES TO 11! Set your attack to exactly ${ELEVEN_DRIVE} and shrug off knockback — but it eats your Sustain stack and blows your amp for a turn. If you were already louder, it turns you down. That's the joke, and it's also the rule.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
-    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
-    if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
-    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Take it up, and from your next turn tune its ${SHAMISEN_STRINGS} strings with Iwato notes in the chord step. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes (${CURSED_SHAMISEN_DB_COST} Db, your Action Token) — their scale becomes Iwato for ${CURSE_TURNS} turns.`);
+    if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
+    if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
+    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Take it up, and from your next turn tune its ${SHAMISEN_STRINGS} strings with Iwato notes in the chord step. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes (your Action Token) — their scale becomes Iwato for ${CURSE_TURNS} turns.`);
     // 🪦 THE SIX THEORY UNLOCK LOGS AND THE DISCORD-GRANT TABLE WENT WITH THE
     // BRANCH (2026-09-02). They taught the pardon ladder at the moment of
     // purchase; the ladder is universal and free now (`music/context.js`), so
@@ -4735,9 +4599,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // It could never have printed. Same family as `legalActionsCheck` §15.
     // (hydra removed — Ronin rework)
     if (skillId === 'blaster_of_ra') addLog(`🌀 ${spirit?.name} — BLASTER OF RA! Your Smash becomes a ranged, piercing bass-drop down the beam — undefendable, scatters & knocks back every rival in line.`);
-    if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — SPACE IS DISPLACED! ${DISPLACE_DB_COST} Db to blink to any open hex ${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out, then ${DISPLACE_CD} turn to settle. No AP. He doesn't run — he transcends space.`);
-    if (skillId === 'code_injection') addLog(`💻 ${spirit?.name} — CODE INJECTION! ${CODE_INJECT_DB_COST} Db, committed in secret, and the next rival who lands on you gets their dice thrown out and re-rolled. Nobody can see it armed.`);
-    if (skillId === 'gravity_control') addLog(`🕳️ ${spirit?.name} — GRAVITY CONTROL! ${GRAVITY_DB_COST} Db opens a black hole within ${GRAVITY_PLACE_RINGS} rings. It drags every rival nearby inward, and swallows ${GRAVITY_NOTE_DRAIN} notes from anyone it takes whole.`);
+    if (skillId === 'displace')      addLog(`🌌 ${spirit?.name} — SPACE IS DISPLACED! Blink to any open hex ${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out, then ${DISPLACE_CD} turn to settle. No AP. He doesn't run — he transcends space.`);
+    if (skillId === 'code_injection') addLog(`💻 ${spirit?.name} — CODE INJECTION! Committed in secret, and the next rival who lands on you gets their dice thrown out and re-rolled. Nobody can see it armed.`);
+    if (skillId === 'gravity_control') addLog(`🕳️ ${spirit?.name} — GRAVITY CONTROL! Open a black hole within ${GRAVITY_PLACE_RINGS} rings. It drags every rival nearby inward, and swallows ${GRAVITY_NOTE_DRAIN} notes from anyone it takes whole.`);
 
     // 🎛️ (The Amp / Power / Range unlock logs are GONE with the rungs themselves,
     //  2026-08-20. None of the three is a purchase any more: pool and power are
@@ -4773,122 +4637,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     //  on the round schedule: see the STAGE EFFECTS SYSTEM + data/stageEffects.js.)
   }
 
-  // Called when player selects a skill to target (from the overlay).
-  // The previously awarded skill is already in unlockedSkills — just set the new target.
-  function setSkillTarget(spiritId, skillId) {
-    if (noteStates[spiritId]?.loadoutLocked) return;
-    if (!canAct) return; // OWNERSHIP: only the controlling client sets skill targets
-    const ns    = noteStates[spiritId] ?? {};
-    const skill = SKILL_BY_ID[skillId];
-    if (!skill) return;
-    const spirit = spirits.find(s => s.id === spiritId);
-
-    const unlocked = ns.unlockedSkills ?? [];
-    if (unlocked.includes(skillId)) return;
-
-    // Prereq / chain gating — shared pure kernel (engine/systems/skills.js), the
-    // same gate the bot uses. Human path passes no owner-route (the overlay only
-    // ever offers the player their own skills), preserving prior behavior.
-    const elig = skillEligibility(skill, unlocked);
-    if (!elig.ok) {
-      if (elig.reason === 'prereq') {
-        const names = (elig.missing ?? []).map(id => SKILL_BY_ID[id]?.label ?? id).join(' + ');
-        addLog(`❌ Requires ${names} first.`);
-      }
-      else if (elig.reason === 'ultimate') addLog(`❌ Ultimate requires: ${elig.missing.join(', ')}`);
-      else if (elig.reason === 'pa')       addLog(`❌ PA system requires Amp I first.`);
-      return;
-    }
-
-    // Initial loadout: the first skill is a real starting ability, selected
-    // before the Spirit's first turn. Do not route it through the Db target
-    // flow; that would leave the player with an empty kit until earning Db.
-    if ((ns.upgradesPending ?? 0) > 0 && unlocked.length === 0 && !ns.targetSkillId
-        && !ns.pendingAwardSkillId && (engineRef.current.turn?.round ?? 1) === 1) {
-      setNoteStates(prev => ({
-        ...prev,
-        [spiritId]: {
-          ...prev[spiritId],
-          unlockedSkills: [skillId],
-          targetSkillId: null,
-          pendingAwardSkillId: null,
-          upgradesPending: 0,
-          skillRoute: null,
-          dbPoints: prev[spiritId]?.dbPoints ?? 0,
-        }
-      }));
-      addLog(`🎸 ${spirit?.name ?? 'Spirit'} starts with: ${skill.icon} ${skill.label}!`);
-      applySkillEffects(spiritId, skillId);
-      if (turnStep === 'chord') setTimeout(() => showTip('chord'), 400);
-      return;
-    }
-
-    setNoteStates(prev => ({
-      ...prev,
-      [spiritId]: {
-        ...prev[spiritId],
-        targetSkillId:       skillId,
-        pendingAwardSkillId: null,
-        upgradesPending:     0,
-        skillRoute:          ns.skillRoute,
-        dbPoints:            prev[spiritId]?.dbPoints ?? 0,
-      }
-    }));
-
-    addLog(`🎯 ${spirit?.name} is saving toward: ${skill.icon} ${skill.label} (${skill.dbCost} DB)`);
-    if (turnStep === 'chord') setTimeout(() => showTip('chord'), 400);
-  }
-
-  // Called when advanceDB fires upgradeTriggered — awards the target skill & opens overlay.
-  function awardTargetSkill(spiritId) {
-    let awardedSkillId = null;
-    // Functional update reads fresh state even when called from a stale setTimeout closure
-    setNoteStates(prev => {
-      const ns      = prev[spiritId] ?? {};
-      const skillId = ns.targetSkillId;
-      if (!skillId) {
-        return { ...prev, [spiritId]: { ...ns, upgradesPending: 1 } };
-      }
-      awardedSkillId = skillId;
-      const unlocked    = ns.unlockedSkills ?? [];
-      const newUnlocked = unlocked.includes(skillId) ? unlocked : [...unlocked, skillId];
-      return {
-        ...prev,
-        [spiritId]: {
-          ...ns,
-          unlockedSkills:      newUnlocked,
-          upgradesPending:     1,
-          pendingAwardSkillId: skillId,
-          targetSkillId:       null,
-        }
-      };
-    });
-    // Side-effects run after state settles — use a second timeout so React has batched the update
-    setTimeout(() => {
-      if (awardedSkillId) {
-        const skill = SKILL_BY_ID[awardedSkillId];
-        addLog(`🏆 ${spirits.find(s => s.id === spiritId)?.name} earned: ${skill?.icon} ${skill?.label}!`);
-        applySkillEffects(spiritId, awardedSkillId);
-        showTip('skill_unlock');
-      }
-    }, 60);
-  }
-
-  // Legacy alias
-  function purchaseSkill(spiritId, skillId) { setSkillTarget(spiritId, skillId); }
-  function chooseUpgrade(spiritId, categoryId) {
-    // 🛑 `amp:'amp_1'` was removed here on 2026-08-20 — the target it aliased
-    //    does not exist, so an old save asking for `amp` now falls through to
-    //    `setSkillTarget` with an unknown id and is refused, rather than silently
-    //    aiming a Spirit's Db at nothing.
-    const legacyMap = { roadie:'roadie_1',
-      discord_1:'discord_1', discord_2:'discord_2', discord_3:'discord_3', discord_4:'discord_4' };
-    // Old crew ids (roadie_1/crew_stagehand, fans_4eva/crew_backstage, pranksta/crew_heckler, crew_merch, crew_manager) drop silently
-    const DEAD_IDS = new Set(['roadie_1','crew_stagehand','fans_4eva','crew_backstage','pranksta','crew_heckler','crew_merch','crew_manager']);
-    const resolved = legacyMap[categoryId] ?? categoryId;
-    if (DEAD_IDS.has(resolved)) return;
-    setSkillTarget(spiritId, resolved);
-  }
+  // 🪦 `setSkillTarget`, `awardTargetSkill`, `purchaseSkill` and `chooseUpgrade`
+  // are GONE (2026-10-02). They were the Db shop: pick a target, fill the bar,
+  // receive the skill. The draft now hands each seat two abilities, ready, and
+  // Db itself was cut — so there is no target, no bar and no award.
 
   // ENCORE APOCALYPSE — the Ultimate. Once per game: 2 Vibe damage + 1-turn
   // Stagger to every rival within 4 hexes.
@@ -5599,9 +5351,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const alive = spirits.filter(s => !s.knockedOut);
     const rngNeeded = eventId === 'disco_inferno' ? FLAMING_DISC_COUNT
       : eventId === 'satanic_panic' ? alive.length
-      : eventId === 'seance_27' ? 8   // 1 d6 + up to 7 shuffle values
       : eventId === 'stage_dive' ? 2
-      : (eventId === 'bat_snack' || eventId === 'payola') ? 1
+      : eventId === 'bat_snack' ? 1
       : 0;
     let rCursor = 0;
     let batch = [];
@@ -5704,43 +5455,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
     }
 
-    else if (eventId === 'seance_27') {
-      const roll = d6();
-      rolls = { you: roll };
-      if (roll === 6) {
-        grantDB(spiritId, 3);
-        lines.push(`🕯️ Rolled 6 — the legends ANSWER. A chord you've never heard rings out.`);
-        lines.push(`+3 Decibills.`);
-        addLog(`🕯️ The 27 Club answers ${spirit?.name}'s séance — +3 DB!`);
-      } else if (roll === 1) {
-        // Pre-read shuffle values from the batch (drawn above; rCursor already past the d6)
-        const shuffleVals = batch.slice(rCursor, rCursor + 7);
-        rCursor += 7;
-        setNoteStates(prev => {
-          const cur = prev[spiritId] ?? {};
-          if (cur.stagger) return prev;
-          const slots = Array.from({ length: 8 }, (_, i) => i);
-          for (let i = slots.length - 1; i > 0; i--) {
-            const j = Math.floor(shuffleVals[slots.length - 1 - i] * (i + 1));
-            [slots[i], slots[j]] = [slots[j], slots[i]];
-          }
-          // turnsLeft: 2 — this stagger is applied mid-way through the spirit's
-          // OWN turn, and stagger now ticks down at the end of your own turn,
-          // so 2 here = frozen for exactly 1 full upcoming turn.
-          return { ...prev, [spiritId]: { ...cur, stagger: { slots: slots.slice(0, 2), turnsLeft: 2 } } };
-        });
-        lines.push(`🕯️ Rolled 1 — the candle blows out by itself. Something touched your fretting hand.`);
-        lines.push(`Spooked: 2 stock slots frozen for 1 turn.`);
-        addLog(`🕯️ ${spirit?.name} is SPOOKED by the séance — 2 slots frozen!`);
-        setTimeout(() => triggerEffectFlash(spiritId, '⚡', 'SPOOKED!', '#ff8800'), 200);
-      } else {
-        grantDB(spiritId, 1);
-        lines.push(`🕯️ Rolled ${roll} — a faint whisper of a melody drifts through.`);
-        lines.push(`+1 Decibill.`);
-        addLog(`🕯️ A faint whisper reaches ${spirit?.name} — +1 DB.`);
-      }
-    }
-
     else if (eventId === 'hotel_trash') {
       const sHex = HEX_BY_NUM[spirit?.num];
       const adj = sHex ? spirits.filter(r => {
@@ -5790,25 +5504,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
     }
 
-    else if (eventId === 'payola') {
-      const roll = d6();
-      rolls = { you: roll };
-      if (roll % 2 === 0) {
-        grantDB(spiritId, 2);
-        lines.push(`💰 Rolled ${roll} — the envelope works. Your single is in HEAVY rotation.`);
-        lines.push(`+2 Decibills.`);
-        addLog(`💰 Payola pays off for ${spirit?.name} — +2 DB!`);
-      } else {
-        setNoteStates(prev => {
-          const cur = prev[spiritId] ?? {};
-          return { ...prev, [spiritId]: { ...cur, dbPoints: Math.max(0, (cur.dbPoints ?? 0) - 2) } };
-        });
-        lines.push(`💰 Rolled ${roll} — BUSTED. Your face is on the evening news next to the word "scandal."`);
-        lines.push(`-2 Decibills progress.`);
-        addLog(`💰 ${spirit?.name} caught in the Payola Scandal — -2 DB progress!`);
-      }
-    }
-
     else if (eventId === 'stage_dive') {
       const sHex = HEX_BY_NUM[spirit?.num];
       const rivals = spirits.filter(r => r.id !== spiritId && !r.knockedOut);
@@ -5847,13 +5542,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           addLog(`🤸 Stage dive TIE (${yourRoll}) — ${spirit?.name} and ${nearest.name} both ride the crowd, +1 Vibe each!`);
         }
       }
-    }
-
-    else if (eventId === 'backstage_pass') {
-      grantDB(spiritId, 3);
-      lines.push(`🎟️ The pass is real. The door opens onto a room full of legends swapping licks.`);
-      lines.push(`You soak it all in: +3 Decibills.`);
-      addLog(`🎟️ ${spirit?.name} works the Backstage Pass — +3 DB!`);
     }
 
     else if (eventId === 'divine_mission') {
@@ -5925,8 +5613,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function devGrant(kind) {
     const id = devCurrentSpiritId(); if (!id) return;
     const nm = spiritById[id]?.name;
-    if (kind === 'hc')       { grantDB(id, 3); addLog(`🧪 +3 DB → ${nm}`); }
-    else if (kind === 'cas') { dispatch(fansChanged(id, { casuals: addCasuals(engineRef.current.noteStates[id] ?? {}, 5) })); flashFanFx(id, 'gain', 5); addLog(`🧪 +5 Casuals → ${nm}`); }
+    if (kind === 'cas') { dispatch(fansChanged(id, { casuals: addCasuals(engineRef.current.noteStates[id] ?? {}, 5) })); flashFanFx(id, 'gain', 5); addLog(`🧪 +5 Casuals → ${nm}`); }
     else if (kind === 'die') { dispatch(fansChanged(id, { diehards: addDiehard(engineRef.current.noteStates[id] ?? {}, 1) })); addLog(`🧪 +1 Diehard → ${nm}`); }
     else if (kind === 'uns') { setUnsurePool(p => p + 5); addLog('🧪 +5 to the Unsure pool'); }
     else if (kind === 'vup') { setSpirits(prev => prev.map(s => s.id === id ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 1) } : s)); addLog(`🧪 +1 Vibe → ${nm}`); }
@@ -6061,24 +5748,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     devUnlockSkill(spiritId, skill.id, skill.pre);
   }
 
-  // Add raw Decibills toward the spirit's current target skill.
-  // Crossing the threshold awards the skill exactly like a committed track would.
-  function grantDB(spiritId, amount) {
-    const ns         = noteStates[spiritId] ?? {};
-    const targetCost = ns.targetSkillId ? (SKILL_BY_ID[ns.targetSkillId]?.dbCost ?? DB_UPGRADE_THRESHOLD) : DB_UPGRADE_THRESHOLD;
-    const { newDBPoints, upgradeTriggered } = advanceDB(ns.dbPoints ?? 0, amount, targetCost);
-    setNoteStates(prev => ({
-      ...prev,
-      [spiritId]: {
-        ...prev[spiritId],
-        dbPoints: newDBPoints,
-        totalDB: (prev[spiritId]?.totalDB ?? 0) + amount,
-      },
-    }));
-    if (upgradeTriggered && ns.targetSkillId) {
-      setTimeout(() => awardTargetSkill(spiritId), 80);
-    }
-  }
 
 
   // ─── BATTLE SYSTEM ───────────────────────────────────────────────────────────
@@ -7482,15 +7151,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
 
   // 🌌 SPACE IS DISPLACED — Intergalactic 0's signature. He can't run; he WARPS.
-  // Spend DISPLACE_DB_COST Db and appear instantly on any open hex between
-  // DISPLACE_MIN_RINGS and DISPLACE_MAX_RINGS away. No Action Points, no
-  // cooldown, no amp rig — Db is the ONLY brake, which is the point: the slowest
-  // Spirit on the board (speed 4) buys his mobility with the currency he earns by
-  // performing well, so a good set literally makes him harder to pin down.
+  // Appear instantly on any open hex between DISPLACE_MIN_RINGS and
+  // DISPLACE_MAX_RINGS away. No Action Points, no amp rig — the COOLDOWN is the
+  // only brake. ⚠️ Until 2026-10-02 Db was a second brake (he bought the blink
+  // with what a good set earned); Db is cut, so this is now one of the cheapest
+  // moves in the game. Recorded, not rebalanced (`SEQUENCING.md` §B10).
   //
   // ⚠️ MIN 2 RINGS IS A RULE, NOT AN OFF-BY-ONE. An adjacent hex is a normal
-  // step he could take for free, so allowing ring 1 would let him burn Db to do
-  // something walking already does, and would blur the fantasy — he moves THROUGH
+  // step he could take for free, so allowing ring 1 would let him burn the cooldown
+  // on something walking already does, and would blur the fantasy — he moves THROUGH
   // the space between, never across it. Don't "helpfully" widen this to include 1.
   //
   // Ring distance uses the shared `axialDist` from board/hexGeometry.js — the
@@ -7499,14 +7168,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function resolveDisplace(hexNum) {
     if (!acting) return;
     const ns = actingNoteState ?? {};
-    const dbPts = ns.dbPoints ?? 0;
     const displaceCdLeft = cooldownLeft(ns, 'displace');
     if (displaceCdLeft > 0) {
       addLog(`\u{1F30C} Space has not settled \u2014 ${displaceCdLeft} turn${displaceCdLeft > 1 ? 's' : ''} before he can fold it again.`);
-      return;
-    }
-    if (dbPts < DISPLACE_DB_COST) {
-      addLog(`🌌 Not enough Db to fold space — Space is Displaced costs ${DISPLACE_DB_COST} Db (you have ${dbPts}).`);
       return;
     }
     const spHex = HEX_BY_NUM[acting.num];
@@ -7524,12 +7188,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (occupied.has(hexNum)) { addLog('🌌 Something is already standing there.'); return; }
 
     triggerEffectFlash(acting.id, '🌌', 'WARP', seatColor(acting.id));
-    // cost 0 — the warp is paid for in Db, not Action Points, so the reducer must
+    // cost 0 — the warp is paid for in cooldown, not Action Points, so the reducer must
     // not deduct movement. He can still walk his full allowance after blinking.
     dispatch(spiritWarped(acting.id, hexNum, 0)); // reducer owns the position write
     setNoteField(acting.id, firePatch(ns, 'displace'));
     setAction(null);
-    addLog(`🌌 ${acting.name} folds space and WARPS ${rings} rings to hex #${hexNum} — Space is the place. (−${DISPLACE_DB_COST} Db)`);
+    addLog(`🌌 ${acting.name} folds space and WARPS ${rings} rings to hex #${hexNum} — Space is the place. (${DISPLACE_CD}-turn cooldown)`);
   }
 
   // 🕳️ GRAVITY CONTROL — the black hole vortex.
@@ -7556,14 +7220,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function resolveGravityControl(hexNum) {
     if (!acting || characterId(acting.id) !== 'intergalactic_0') return;
     const ns = actingNoteState ?? {};
-    const dbPts = ns.dbPoints ?? 0;
     const gravityCdLeft = cooldownLeft(ns, 'gravity_control');
     if (gravityCdLeft > 0) {
       addLog(`\u{1F573}\uFE0F Gravity is still ringing \u2014 ${gravityCdLeft} turn${gravityCdLeft > 1 ? 's' : ''} before another vortex will open.`);
-      return;
-    }
-    if (dbPts < GRAVITY_DB_COST) {
-      addLog(`🕳️ Not enough Db to bend gravity — Gravity Control costs ${GRAVITY_DB_COST} Db (you have ${dbPts}).`);
       return;
     }
     if (ns.gravityVortex) { addLog('🕳️ A vortex is already open — the stage only tolerates one singularity at a time.'); return; }
@@ -7589,7 +7248,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       gravityVortex: { hex: hexNum, turnsLeft: aliveCount, pulled: [] },
     });
     setAction(null);
-    addLog(`🕳️ ${acting.name} clenches a fist and space TEARS — a BLACK HOLE VORTEX opens on hex #${hexNum}. (−${GRAVITY_DB_COST} Db)`);
+    addLog(`🕳️ ${acting.name} clenches a fist and space TEARS — a BLACK HOLE VORTEX opens on hex #${hexNum}. (${GRAVITY_CD}-turn cooldown)`);
     focusOnHex(hexNum, 900, 0.42);
 
     // Everyone already standing in the pull radius gets taken immediately.
@@ -7737,7 +7396,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // 💻 CODE INJECTION — the blind commit.
   //
-  // Pay CODE_INJECT_DB_COST on your own turn and say nothing. For one full round
+  // Arm it on your own turn (the cooldown starts) and say nothing. For one full round
   // the first rival whose attack WOULD BEAT YOU has their dice thrown out and
   // re-rolled, and they live with the second result.
   //
@@ -7761,15 +7420,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function resolveCodeInjection() {
     if (!acting || characterId(acting.id) !== 'intergalactic_0') return;
     const ns = actingNoteState ?? {};
-    const dbPts = ns.dbPoints ?? 0;
     if ((ns.codeInjectTurns ?? 0) > 0) { addLog('💻 A patch is already live — one injection at a time.'); return; }
     const injectCdLeft = cooldownLeft(ns, 'code_injection');
     if (injectCdLeft > 0) {
       addLog(`\u{1F4BB} The last patch is still compiling \u2014 ${injectCdLeft} turn${injectCdLeft > 1 ? 's' : ''}.`);
-      return;
-    }
-    if (dbPts < CODE_INJECT_DB_COST) {
-      addLog(`💻 Not enough Db to inject — Code Injection costs ${CODE_INJECT_DB_COST} Db (you have ${dbPts}).`);
       return;
     }
     const aliveCount = Math.max(1, spirits.filter(s => !s.knockedOut).length);
@@ -7779,7 +7433,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     });
     // Quiet on purpose — no triggerEffectFlash. A board-wide flash would be
     // visible to every client and would hand rivals the read for free.
-    addLog(`💻 ${acting.name} slips a patch into the fight and gives nothing away. (−${CODE_INJECT_DB_COST} Db · armed for one round · nobody else can see this)`);
+    addLog(`💻 ${acting.name} slips a patch into the fight and gives nothing away. (${CODE_INJECT_CD}-turn cooldown · armed for one round · nobody else can see this)`);
   }
 
   // 💻 Tick the armed patch down one spirit-turn — same cadence as the vortex.
@@ -7791,7 +7445,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     setNoteField(ownerId, { codeInjectTurns: 0 });
     // Only he is told the bet lapsed — the log is local to his client.
     if (characterId(acting?.id) === 'intergalactic_0' || !netRef.current) {
-      addLog(`💻 The patch times out unused. ${CODE_INJECT_DB_COST} Db into the void — that was the gamble.`);
+      addLog(`💻 The patch times out unused — the cooldown spent for nothing. That was the gamble.`);
     }
   }
 
@@ -7831,7 +7485,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // See `resolvePsychoBushido` below.
   // 🌀 SHUKUCHI ARPEGGIO — one hop, and the client half of §2.5.0a/§2.5.0b.
   //
-  // ⚠️ THE Db AND THE CLOCK ARE PAID ONCE, ON THE FIRST HOP — and the branch
+  // ⚠️ THE CLOCK STARTS ONCE, ON THE FIRST HOP — and the branch
   // that decides which hop that is, is `hopIsActivation`. This resolver mirrors
   // `transition.js`'s `shukuchi` case line for line: same budget patch, same
   // `firePatch`, same order, same pickups. 🎯 That symmetry is not tidiness —
@@ -7849,7 +7503,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!canHop(ns)) {
       const cd = cooldownLeft(ns, SHUKUCHI_SKILL);
       if (cd > 0) addLog(`🌀 The earth has not settled — ${cd} round${cd > 1 ? 's' : ''} before Shukuchi can shrink it again.`);
-      else addLog(`🌀 Not enough Db — Shukuchi costs ${SHUKUCHI_DB_COST} Db to open (you have ${ns.dbPoints ?? 0}).`);
+      else addLog('🌀 Shukuchi is not in your kit.');
       return;
     }
     if (moveStepsLeft < SHUKUCHI_AP_PER_HOP) {
@@ -7870,8 +7524,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const fromHex = acting.num;
 
     triggerEffectFlash(acting.id, '🌀', 'SHUKUCHI', seatColor(acting.id));
-    // The reducer owns position, facing and the AP; the sheet owns the budget,
-    // the Db and the clock. Two writes, in the engine's own order.
+    // The reducer owns position, facing and the AP; the sheet owns the budget
+    // and the clock. Two writes, in the engine's own order.
     dispatch(shukuchiHopped(acting.id, hexNum));
     setNoteField(acting.id, {
       ...hopBudgetPatch(ns),
@@ -7884,7 +7538,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     const left = fired ? SHUKUCHI_MAX_HOPS - 1 : shukuchiHopsLeft(ns) - 1;
     addLog(fired
-      ? `🌀 ${acting.name} — SHUKUCHI ARPEGGIO! The earth shrinks and he lands on #${hexNum}, straight over everything between. (−${SHUKUCHI_DB_COST} Db · ${SHUKUCHI_CD}-round cooldown · ${left} hop${left !== 1 ? 's' : ''} left this turn)`
+      ? `🌀 ${acting.name} — SHUKUCHI ARPEGGIO! The earth shrinks and he lands on #${hexNum}, straight over everything between. (${SHUKUCHI_CD}-round cooldown · ${left} hop${left !== 1 ? 's' : ''} left this turn)`
       : `🌀 ${acting.name} hops to #${hexNum} — ${left} hop${left !== 1 ? 's' : ''} left.`);
 
     // 🎵 EVERY LANDING PAYS, exactly as walking on does (§2.5.2 #5) — the same
@@ -7916,15 +7570,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const bushidoCd = cooldownLeft(ns, 'psycho_bushido');
     if (bushidoCd > 0) {
       addLog(`🌀 Psycho Bushido is recharging — ${bushidoCd} turn${bushidoCd > 1 ? 's' : ''} left.`);
-      return;
-    }
-    // 💿 THE Db REFUSAL BELONGS WITH THE OTHER PRE-DASH REFUSALS, not after the
-    // warp. Everything from here down commits the turn, and a Ronin who has
-    // dashed and then been told he cannot afford the strike has paid his entire
-    // AP pool for nothing — the same class of bug as any refusal that fires
-    // after the state has already been committed.
-    if ((ns.dbPoints ?? 0) < PSYCHO_BUSHIDO_DB_COST) {
-      addLog(`🌀 Not enough Db for Psycho Bushido — costs ${PSYCHO_BUSHIDO_DB_COST} Db.`);
       return;
     }
     if (actionTokenUsed) { addLog('🌀 Already used your Action Token this turn!'); return; }
@@ -8000,7 +7645,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     dispatch(beatsSpent(PSYCHO_BUSHIDO_AP_COST, true));
     setAction(null);
 
-    // 💿🕒🎸 The draw's own bill — Db, the clock, two notes off the TOP of the
+    // 🕒🎸 The draw's own bill — the clock, two notes off the TOP of the
     // Drive stack — paid BEFORE the dice, so the chord he throws is what survives.
     // Read from the live sheet, not the render-scoped `ns`.
     const liveNs = engineRef.current.noteStates[acting.id] ?? {};
@@ -8020,7 +7665,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     logCardPlayed(rolled, attacker);
 
     triggerEffectFlash(acting.id, '⚡', 'BUSHIDO!', seatColor(acting.id));
-    addLog(`⚡ PSYCHO BUSHIDO! ${attacker.name} draws on ${defender.name} from ${distToTarget} hexes — ${rigPoolLabel(rolled.rolledPool ?? rolled.dicePool)} (${d8s} d6 → d8), Drive ${rolled.atkTotal} against a ${rolled.shieldValue} Sustain shield. (−${PSYCHO_BUSHIDO_DB_COST} Db, −${PSYCHO_BUSHIDO_AP_COST} AP${spentNotes > 0 ? `, −${spentNotes} off the Drive stack` : ''})`);
+    addLog(`⚡ PSYCHO BUSHIDO! ${attacker.name} draws on ${defender.name} from ${distToTarget} hexes — ${rigPoolLabel(rolled.rolledPool ?? rolled.dicePool)} (${d8s} d6 → d8), Drive ${rolled.atkTotal} against a ${rolled.shieldValue} Sustain shield. (−${PSYCHO_BUSHIDO_AP_COST} AP${spentNotes > 0 ? `, −${spentNotes} off the Drive stack` : ''})`);
     if (spentNotes > 0) {
       addLog(`🎸 The draw burns ${spentNotes} note${spentNotes > 1 ? 's' : ''} off the top of his Drive stack.`);
     }
@@ -8031,7 +7676,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function getPsychoBushidoTargets() {
     if (!acting || characterId(acting.id) !== 'cosmic_ronin') return new Set();
     const ns = actingNoteState ?? {};
-    // 💿 No Db, no lane. The highlight has to agree with `resolvePsychoBushido`'s
+    // 🕒 Recharging, no lane. The highlight has to agree with `resolvePsychoBushido`'s
     // refusals or the board offers a strike the click will bounce.
     if (!canFire(ns, 'psycho_bushido')) return new Set();
     if (moveStepsLeft < PSYCHO_BUSHIDO_AP_COST) return new Set();
@@ -8057,7 +7702,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // It can be walked around the board on the Ronin's own Action Points, so the
   // pair genuinely behaves like two Ronins on the field.
   //
-  // Costs SHADOW_ILLUSION_DB_COST Db to summon and then DRAINS
+  // Starts its cooldown on summon and then DRAINS
   // SHADOW_ILLUSION_SUSTAIN_DRAIN Sustain at the start of every one of Ronin's
   // turns that it stands (charged in `turnFlow.js`; the double COLLAPSES when he
   // has none left to feed it).
@@ -8106,12 +7751,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`👤 The shadow won't come — ${shadowCd} turn${shadowCd > 1 ? 's' : ''} until he can split again.`);
       return;
     }
-    if ((ns.dbPoints ?? 0) < SHADOW_ILLUSION_DB_COST) {
-      addLog(`👤 Not enough Db to split — costs ${SHADOW_ILLUSION_DB_COST} Db.`);
-      return;
-    }
     // ⚠️ AND HE MUST HAVE SUSTAIN TO FEED IT. Summoning a double the very next
-    // turn-start would starve is a Db burned for a body that never stands, so
+    // turn-start would starve is a cooldown burned for a body that never stands, so
     // the refusal happens here rather than as a silent collapse in `turnFlow`.
     if ((ns.tempSustain ?? 0) < SHADOW_ILLUSION_SUSTAIN_DRAIN) {
       addLog(`👤 Nothing left to give it — the shadow needs ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain a turn to stand.`);
@@ -8134,7 +7775,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     });
 
     triggerEffectFlash(acting.id, '👤', 'SHADOW!', seatColor(acting.id));
-    addLog(`👤 ${acting.name} splits — a SHADOW ILLUSION peels out of him on hex #${acting.num}. Two Ronins, one shape. Walk them apart and nobody can say which is which. (−${SHADOW_ILLUSION_DB_COST} Db)`);
+    addLog(`👤 ${acting.name} splits — a SHADOW ILLUSION peels out of him on hex #${acting.num}. Two Ronins, one shape. Walk them apart and nobody can say which is which. (${SHADOW_ILLUSION_CD}-round cooldown)`);
     addLog(`👤 It feeds on him while it stands — ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of each of his turns, and it falls apart the moment he has none to give.`);
     setAction(null);
   }
@@ -8302,7 +7943,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     shamisenSfx().pluck(midiHz(shamisenMidi(root)), { vel: 0.7, dark: 0.55 });
   }
 
-  // ⚡ THE CAST — three strings, a rival within reach, the Action Token, Db and the clock.
+  // ⚡ THE CAST — three strings, a rival within reach, the Action Token and the clock.
   function resolveIwatoCast(targetId) {
     const live = engineRef.current;
     const ns = live.noteStates[acting.id] ?? {};
@@ -8314,12 +7955,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const voicing = stringVoicing(ns);
     const root = shamisenRoot(ns);
     const patches = castPatches(ns, acting.id, `${acting.id}>${targetId}@${live.turn.count}`);
-    // ⚡ The bill, once: the Action Token (no AP), then the Db and the clock.
+    // ⚡ The bill, once: the Action Token (no AP), then the clock.
     dispatch(beatsSpent(0, true));
     setAction(null);
     setNoteField(acting.id, patches.ronin);
     setNoteField(targetId, patches.rival);
-    addLog(`🎸 ${acting.name} plays the CURSED SHAMISEN — ${voicing.labels.join(' · ')} — and the ghost-fire crosses to ${rival.name}. 呪 For their next ${CURSE_TURNS} turns their scale IS Iwato on ${root} (${iwatoNames(root).join(' ')}): every other note is discord — no Db, no fans. 🔥 They can exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`);
+    addLog(`🎸 ${acting.name} plays the CURSED SHAMISEN — ${voicing.labels.join(' · ')} — and the ghost-fire crosses to ${rival.name}. 呪 For their next ${CURSE_TURNS} turns their scale IS Iwato on ${root} (${iwatoNames(root).join(' ')}): every other note is discord — no fans. 🔥 They can exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`);
     triggerEffectFlash(targetId, '呪', 'CURSED!', CURSED_SHAMISEN.edgeColor);
     // 🔊 The cast's score, built on HIS strings (the same beat plan the arena draws).
     scheduleCast(shamisenSfx(), planCast(CURSED_SHAMISEN, voicing.ivs), shamisenMidi(root), CURSED_SHAMISEN);
@@ -10217,16 +9858,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     return _botPlanMove(engineRef.current, self, botPersona(self), amps);
   }
 
-  // ── SKILL-TREE PLANNING (constants + pure logic in engine/policies/bot.js) ──
-  function botSkillEligible(skillId, unlocked, selfId) {
-    return _botSkillEligible(skillId, unlocked, selfId, SKILL_BY_ID);
-  }
-  function botPickSkillTarget(self) {
-    const ns = engineRef.current.noteStates?.[self.id] ?? {};
-    const unlocked = ns.unlockedSkills ?? [];
-    const key = botPersonaRef.current[self.id] ?? (botPersona(self), botPersonaRef.current[self.id]);
-    return _botPickSkillTarget(self.id, unlocked, key, SKILL_BY_ID);
-  }
 
   // Of the 6 facing directions, find the one that lands the most/juiciest rivals
   // in the given attack shape ('beam' or 'cone'). Reuses the real geometry by
@@ -10436,7 +10067,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
    */
   function botSearcherExecute(self, a) {
     switch (a.kind) {
-      case 'skillTarget':   setSkillTarget(self.id, a.skillId); return true;
+      // 🪦 'skillTarget' — no client path since 2026-10-02 (no Db, nothing to save for);
+      // `transition.js` refuses it, so it falls through to the finding below.
       case 'melodyNote':    clickNoteStock(a.stockIdx); return true;
       // 🎸 Through the HUMAN path, which also spends the stock slot
       // (`usedStockIdx`). ⚠️ `botExecuteStackCommits` — the LEGACY bot's helper —
@@ -10581,16 +10213,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // fire underneath the searcher's own limelight terms).
     if (self.botPolicy === 'searcher') { botSearcherStep(self, schedule, guard); return; }
 
-    // 1) BUILD — climb the skill tree, sharpen the stock, build a clean track.
+    // 1) BUILD — sharpen the stock, build a clean track.
     if (step === 'idle' || step === 'building') {
       botStepRef.current = 'building';
 
-      // 1a) SKILL TREE — always be saving toward the next unlock. This is what
-      //     turns the bot from a naked rookie into a real opponent over the game.
-      if ((ns.upgradesPending ?? 0) > 0 && !ns.targetSkillId) {
-        const wantId = botPickSkillTarget(self);
-        if (wantId) { schedule(() => setSkillTarget(self.id, wantId)); return; }
-      }
+      // 1a) 🪦 SKILL TREE — gone 2026-10-02. The draft hands every seat its two
+      //     abilities and there is no Db to save, so there is nothing to target.
 
       // 1b) PIVOT — DELETED (B8). The bot used to declare Major/Minor here, leaning
       //     minor for Flair's defensive bonus. There is no pivot to declare any
@@ -11908,7 +11536,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         const mixerReady = used && !isStaggered
                           && (actingNoteState?.unlockedSkills ?? []).includes('mixer')
                           && !actingNoteState?.mixerUsedThisTurn
-                          && !hasConfirmed && !pivotPending && melodyLine.length < 8;
+                          && !hasConfirmed && melodyLine.length < 8;
                         const resolvesCadence = false;
                         // 🕳️ A used, non-Mixer, non-staggered slot is genuinely EMPTY — no note
                         // color, no letter — so it never reads as a (still-full-opacity) discord note.
@@ -12291,7 +11919,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           imageSrc: acting.imageSrc,
           vibe: acting.vibe,
           maxVibe: acting.maxVibe,
-          db: dbPoints,
           fans: (actingNoteState?.casuals ?? 0) + (actingNoteState?.diehards ?? FAN_DIEHARD_START),
           drive: spiritChord(acting.id, actingDriveStack).drive,
           // 🎲 The dice past the dial, and why (sonicRig.js drivePowerBreakdown).
@@ -12300,11 +11927,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             if (actingNoteState?.atEleven) return { driveBonus: 0, driveWhy: null };
             const why = drivePowerBreakdown(actingNoteState ?? {}, acting.id, homeSpotlightDrive(engineState, acting.id));
             return { driveBonus: why.power - why.dial, driveWhy: drivePowerNote(why) };
-          })(),
-          // 💰 What one ability use costs — the cheapest in this seat's kit.
-          dbCost: (() => {
-            const costs = (actingNoteState?.unlockedSkills ?? []).map(id => ABILITY_DB_COST[id]).filter(Number.isFinite);
-            return costs.length ? Math.min(...costs) : null;
           })(),
           sustain: spiritChord(acting.id, actingSustainStack).sustain,
           noteCount: canAct ? noteStock.length - usedStockIdx.length : null,
@@ -12820,7 +12442,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 </div>{/* end overlay content */}
                 </div>{/* end right column */}
 
-                {/* ── LEFT COLUMN — loadout: badges · crew & gear · DB · skills ── */}
+                {/* ── LEFT COLUMN — loadout: badges · crew & gear · skills ── */}
                 <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
                   borderRight:`1px solid ${s.color}22`}}>
                 {/* Status badges */}
@@ -12918,10 +12540,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     HUD grid is minmax(430,480) and the portrait beside it is a fixed
                     238). My preview mocked the card wider than the card is. The strip
                     flexes to the column instead; see `CHANNEL_STRIP.designWidth`. ── */}
-                {/* 📌 The DB block keeps its OWN header — it already draws
-                    "DB PROGRESS" with the target skill on the right, which is
-                    exactly the foot the preview showed. Wrapping it in a
-                    StripSection would print the words twice. */}
+                {/* 📌 The strip's foot is the seat's two abilities and their
+                    cooldowns (`AbilityWallet`). 🪦 It drew a Db count and an
+                    UPGRADES button above them until Db was cut, 2026-10-02. */}
                 <ChannelStrip foot={<AbilityWallet ns={ns}/>}>
                   <StripSection title="THIS TURN">
                     {/* 🎚️ THE THREE STEPS, and the one live number each one is really
@@ -13065,8 +12686,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               the Monster's Slime is innate and still belongs on the right, because
               the question this split answers is "is this mine, or is this
               everyone's". A rival can predict your left half and cannot predict
-              your right — and the right half is the one that visibly GROWS as you
-              spend Db, which is the whole reward loop made legible.
+              your right. (It used to GROW as you spent Db; since 2026-10-02 the
+              draft fixes it at two abilities from turn one.)
               🌀 Blaster of Ra stays on the LEFT even though it is an Intergalactic
               unlock: it does not add a button, it takes the Smash's slot, and the
               slot is universal. See ActionRail.jsx for the full argument. ── */}
@@ -13230,7 +12851,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const ns = actingNoteState ?? {};
               const hasBlaster = characterId(acting?.id) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
               if (!hasBlaster) return null;
-              const abilityReady = (ns.dbPoints ?? 0) >= 5 && cooldownLeft(ns, 'blaster_of_ra') === 0;
+              const abilityReady = cooldownLeft(ns, 'blaster_of_ra') === 0;
               const rivals = acting ? getRivalsInBeam(acting) : [];
               // 👤 The Shadow Illusion is a legal target here too — it has to be,
               // or the button greying out would reveal it as a fake.
@@ -13505,7 +13126,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 every value in this label must come from something in scope. */}
             {hasConfirmed && characterId(acting?.id) === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('displace') && (() => {
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
               const warpCd  = cooldownLeft(actingNoteState, 'displace');
               const canWarp = canFire(actingNoteState, 'displace');
               return (
@@ -13515,17 +13135,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     cooldown={{left:warpCd, max:ABILITY_CD.displace, color:actingHue}}
                     style={{borderColor: canWarp ? actingHue : actingHueDim, color: canWarp ? actingHueLight : actingHueDim}}
                     disabled={!canWarp}
-                    title={`Space is Displaced — spend ${DISPLACE_DB_COST} Db to warp to any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away. No Action Points, no cooldown, no rig needed — and your movement is untouched, so you can still walk after landing. Adjacent hexes don't count: he goes through the space between, not across it.`}
+                    title={`Space is Displaced — warp to any open hex ${DISPLACE_MIN_RINGS} or ${DISPLACE_MAX_RINGS} rings away (${DISPLACE_CD}-turn cooldown). No Action Points, no rig needed — and your movement is untouched, so you can still walk after landing. Adjacent hexes don't count: he goes through the space between, not across it.`}
                     onClick={() => {
                       if (action === 'displace') { setAction(null); }
                       else if (canWarp) {
                         setAction('displace');
-                        addLog(`🌌 SPACE IS DISPLACED — click any lit hex (${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out) to warp there for ${DISPLACE_DB_COST} Db.`);
+                        addLog(`🌌 SPACE IS DISPLACED — click any lit hex (${DISPLACE_MIN_RINGS}–${DISPLACE_MAX_RINGS} rings out) to warp there.`);
                       }
                     }}>
-                    🌌 Displace{canWarp ? ` (${DISPLACE_DB_COST} Db)`
-                      : warpCd > 0 ? ` (🕒 ${warpCd}t)`
-                      : ` (${dbPts}/${DISPLACE_DB_COST} Db)`}
+                    🌌 Displace{warpCd > 0 ? ` (🕒 ${warpCd}t)` : ''}
                   </RailBtn>
                   </div>
                   {action === 'displace' && (
@@ -13538,7 +13156,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {/* 🕳️ GRAVITY CONTROL — Intergalactic 0 opens a black hole vortex */}
             {hasConfirmed && characterId(acting?.id) === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('gravity_control') && (() => {
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
               const isOpen  = !!actingNoteState?.gravityVortex;
               const gravCd  = cooldownLeft(actingNoteState, 'gravity_control');
               const canOpen = canFire(actingNoteState, 'gravity_control') && !isOpen;
@@ -13551,18 +13168,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     disabled={!canOpen}
                     title={isOpen
                       ? `A vortex is already open on hex #${actingNoteState?.gravityVortex?.hex}. Only one singularity at a time — it collapses when the turn order comes back to you.`
-                      : `Gravity Control — spend ${GRAVITY_DB_COST} Db to tear open a black hole on any hex within ${GRAVITY_PLACE_RINGS} rings (you can drop it right on top of someone). Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it; anyone pulled all the way in loses ${GRAVITY_NOTE_DRAIN} notes off next turn's refill. It hangs for one full round and takes anyone who wanders close. It never touches you.`}
+                      : `Gravity Control — tear open a black hole (${GRAVITY_CD}-turn cooldown) on any hex within ${GRAVITY_PLACE_RINGS} rings (you can drop it right on top of someone). Every rival within ${GRAVITY_PULL_RINGS} rings is dragged ${GRAVITY_PULL_HEXES} hex toward it; anyone pulled all the way in loses ${GRAVITY_NOTE_DRAIN} notes off next turn's refill. It hangs for one full round and takes anyone who wanders close. It never touches you.`}
                     onClick={() => {
                       if (action === 'gravity_control') { setAction(null); }
                       else if (canOpen) {
                         setAction('gravity_control');
-                        addLog(`🕳️ GRAVITY CONTROL — click any lit hex (within ${GRAVITY_PLACE_RINGS} rings) to tear open the vortex for ${GRAVITY_DB_COST} Db.`);
+                        addLog(`🕳️ GRAVITY CONTROL — click any lit hex (within ${GRAVITY_PLACE_RINGS} rings) to tear open the vortex.`);
                       }
                     }}>
                     🕳️ Gravity{isOpen
                       ? ` (open #${actingNoteState?.gravityVortex?.hex})`
-                      : gravCd > 0 ? ` (🕒 ${gravCd}t)`
-                      : dbPts < GRAVITY_DB_COST ? ` (${dbPts}/${GRAVITY_DB_COST} Db)` : ` (${GRAVITY_DB_COST} Db)`}
+                      : gravCd > 0 ? ` (🕒 ${gravCd}t)` : ''}
                   </RailBtn>
                   </div>
                   {action === 'gravity_control' && (
@@ -13580,7 +13196,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 banner — the entire ability is that rivals cannot tell. */}
             {hasConfirmed && characterId(acting?.id) === 'intergalactic_0'
               && (actingNoteState?.unlockedSkills ?? []).includes('code_injection') && (() => {
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
               const armed   = (actingNoteState?.codeInjectTurns ?? 0) > 0;
               const hackCd  = cooldownLeft(actingNoteState, 'code_injection');
               const canHack = canFire(actingNoteState, 'code_injection') && !armed;
@@ -13592,11 +13207,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   disabled={!canHack}
                   title={armed
                     ? `A patch is live and nobody else can see it. The next rival whose attack would beat you gets their dice thrown out and re-rolled. Lapses when the turn order comes back to you.`
-                    : `Code Injection — spend ${CODE_INJECT_DB_COST} Db in secret. For one round, the first rival whose attack WOULD land on you has their dice re-rolled and must live with the second result. No tell, no aura: rivals cannot tell whether you've committed. If nobody lands a hit, the Db is gone — that's the bet.`}
+                    : `Code Injection — arm it in secret (${CODE_INJECT_CD}-turn cooldown). For one round, the first rival whose attack WOULD land on you has their dice re-rolled and must live with the second result. No tell, no aura: rivals cannot tell whether you've committed. If nobody lands a hit, the cooldown is spent for nothing — that's the bet.`}
                   onClick={() => { if (canHack) resolveCodeInjection(); }}>
                   💻 Inject{armed ? ' ✅ LIVE'
-                    : hackCd > 0 ? ` (🕒 ${hackCd}t)`
-                    : dbPts < CODE_INJECT_DB_COST ? ` (${dbPts}/${CODE_INJECT_DB_COST} Db)` : ` (${CODE_INJECT_DB_COST} Db)`}
+                    : hackCd > 0 ? ` (🕒 ${hackCd}t)` : ''}
                 </RailBtn>
               );
             })()}
@@ -13607,17 +13221,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes(SHUKUCHI_SKILL) && (() => {
               const cd    = cooldownLeft(actingNoteState, SHUKUCHI_SKILL);
-              const dbPts = actingNoteState?.dbPoints ?? 0;
               const left  = shukuchiHopsLeft(actingNoteState);
               const mid   = left > 0;
-              const poor  = dbPts < SHUKUCHI_DB_COST;
               const noAp  = moveStepsLeft < SHUKUCHI_AP_PER_HOP;
               const live  = canHop(actingNoteState ?? {}) && !noAp;
               const armed = action === 'shukuchi';
 
               /* Recharging or skint, the budget is not the story — the refusal
                  is, and the label carries that. Same rule the preview used. */
-              const showBudget = mid || (cd <= 0 && !poor);
+              const showBudget = mid || cd <= 0;
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...reachHover('shukuchi')}>
@@ -13626,7 +13238,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     style={{borderColor: live ? actingHue : actingHueDim,
                             color: live ? actingHueLight : actingHueDim}}
                     disabled={!live}
-                    title={`Shukuchi Arpeggio (縮地, "shrinking the earth") — leap exactly 2 hexes, straight OVER bodies, hazards, walls and slime. Up to ${SHUKUCHI_MAX_HOPS} hops a turn; each one costs ${SHUKUCHI_AP_PER_HOP} Action Point, the same as a step, and each landing picks up. ${SHUKUCHI_DB_COST} Db and the ${SHUKUCHI_CD}-round cooldown are charged ONCE, on the first hop — so hops 2 and 3 are free, and stopping after one still spends the ability.`}
+                    title={`Shukuchi Arpeggio (縮地, "shrinking the earth") — leap exactly 2 hexes, straight OVER bodies, hazards, walls and slime. Up to ${SHUKUCHI_MAX_HOPS} hops a turn; each one costs ${SHUKUCHI_AP_PER_HOP} Action Point, the same as a step, and each landing picks up. The ${SHUKUCHI_CD}-round cooldown starts ONCE, on the first hop — so hops 2 and 3 are free, and stopping after one still spends the ability.`}
                     onClick={() => {
                       if (armed) { setAction(null); return; }
                       if (!live) return;
@@ -13640,7 +13252,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         three different problems with three different answers,
                         and a button that only ever reads "Shukuchi" teaches the
                         player none of them. */}
-                    🌀 Shukuchi{cd > 0 && !mid ? ` 🕒${cd}` : poor && !mid ? ` (${dbPts}/${SHUKUCHI_DB_COST} Db)` : ''}
+                    🌀 Shukuchi{cd > 0 && !mid ? ` 🕒${cd}` : ''}
                     {showBudget && <ShukuchiBudget hopsLeft={left} mid={mid} pip={actingHueLight} />}
                   </RailBtn>
                   </div>
@@ -13655,9 +13267,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
               && (actingNoteState?.unlockedSkills ?? []).includes('psycho_bushido') && (() => {
               const cd    = cooldownLeft(actingNoteState, 'psycho_bushido');
-              const dbPts = actingNoteState?.dbPoints ?? 0;
-              const poor  = dbPts < PSYCHO_BUSHIDO_DB_COST;
-              const canDash = cd <= 0 && !poor && moveStepsLeft >= 1 && !actionTokenUsed;
+              const canDash = cd <= 0 && moveStepsLeft >= 1 && !actionTokenUsed;
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...reachHover('psycho_bushido')}>
@@ -13665,17 +13275,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:actingHue}}
                     style={{borderColor: canDash ? actingHue : actingHueDim, color: canDash ? actingHueLight : actingHueDim}}
                     disabled={!canDash}
-                    title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The Rival throws his Sustain as a shield and you must burst through it — what gets through is the damage, and pushes him back one hex per die. The farther the draw, the bigger your dice: ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} of your d6s become d8s at ${PSYCHO_BUSHIDO_MIN_RANGE}, ${psychoBushidoD8s(4)} at 4, ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
+                    title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The Rival throws his Sustain as a shield and you must burst through it — what gets through is the damage, and pushes him back one hex per die. The farther the draw, the bigger your dice: ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} of your d6s become d8s at ${PSYCHO_BUSHIDO_MIN_RANGE}, ${psychoBushidoD8s(4)} at 4, ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
                     onClick={() => {
                       if (action === 'psycho_bushido') { setAction(null); }
                       else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }
                     }}>
-                    {/* ⚠️ THE LABEL SAYS WHICH REFUSAL IS BITING. A greyed button
-                        that only ever reads "Bushido" teaches the player nothing
-                        — recharging and skint are different problems with
-                        different answers, and the Db one is new as of the
-                        2026-08-22 rule. */}
-                    🌀 Bushido{cd > 0 ? ` (🕒 ${cd}t)` : poor ? ` (${dbPts}/${PSYCHO_BUSHIDO_DB_COST} Db)` : ''}
+                    {/* ⚠️ THE LABEL SAYS WHICH REFUSAL IS BITING — a greyed button
+                        that only ever reads "Bushido" teaches the player nothing. */}
+                    🌀 Bushido{cd > 0 ? ` (🕒 ${cd}t)` : ''}
                   </RailBtn>
                   </div>
                   {action === 'psycho_bushido' && (
@@ -13690,14 +13297,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               && (actingNoteState?.unlockedSkills ?? []).includes('shadow_illusion') && (() => {
               const hasShadow = !!(actingNoteState?.shadowIllusion);
               const cd    = cooldownLeft(actingNoteState, 'shadow_illusion');
-              const dbPts = actingNoteState?.dbPoints ?? 0;
               const sus   = actingNoteState?.tempSustain ?? 0;
-              const poor  = dbPts < SHADOW_ILLUSION_DB_COST;
               // 👤 THE SUSTAIN CHECK IS A SUMMON CONDITION, not just a drain. A
               // double conjured with an empty guard starves at the very next
-              // turn-start, so the Db would buy a body that never stands.
+              // turn-start, so the cooldown would buy a body that never stands.
               const starving = sus < SHADOW_ILLUSION_SUSTAIN_DRAIN;
-              const canSummon = !hasShadow && cd <= 0 && !poor && !starving;
+              const canSummon = !hasShadow && cd <= 0 && !starving;
               // No hex to pick any more — the double is born on top of the
               // Ronin, so this is a single-click action.
               return (
@@ -13705,12 +13310,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   cooldown={{left:cd, max:ABILITY_CD.shadow_illusion, color:actingHue}}
                   style={{borderColor: canSummon ? actingHue : actingHueDim, color: canSummon ? actingHueLight : actingHueDim}}
                   disabled={!canSummon}
-                  title={`Shadow Illusion — split into a second, identical Ronin right where you stand (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body. ⚠️ It feeds on you: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it falls apart the moment you have none to give.`}
+                  title={`Shadow Illusion — split into a second, identical Ronin right where you stand (${SHADOW_ILLUSION_CD}-round cooldown). You start stacked, so nobody sees which one appeared; walk them apart on separate legs and let rivals waste a turn on the wrong body. ⚠️ It feeds on you: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it falls apart the moment you have none to give.`}
                   onClick={() => { if (canSummon) resolveShadowIllusion(); }}>
                   👤 Shadow{hasShadow
                     ? ` (${actingNoteState?.shadowIllusion?.turnsLeft ?? 0}t · −${SHADOW_ILLUSION_SUSTAIN_DRAIN}🛡️)`
                     : cd > 0 ? ` (🕒 ${cd}t)`
-                    : poor ? ` (${dbPts}/${SHADOW_ILLUSION_DB_COST} Db)`
                     : starving ? ' (no Sustain)' : ''}
                 </RailBtn>
               );
@@ -13726,13 +13330,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               && hasShamisen(actingNoteState) && (() => {
               const ns     = actingNoteState ?? {};
               const cd     = cooldownLeft(ns, SHAMISEN_SKILL);
-              const dbPts  = ns.dbPoints ?? 0;
               const up     = !!ns.shamisen;
               const tuned  = stringsOf(ns).length;
               const strung = up && tuned >= SHAMISEN_STRINGS;
-              const poor   = dbPts < CURSED_SHAMISEN_DB_COST;
               const canUp  = canTakeUp(ns);
-              const canCast = strung && !poor && cd <= 0 && !actionTokenUsed;
+              const canCast = strung && cd <= 0 && !actionTokenUsed;
               const armed  = action === 'cursed_shamisen';
               const live   = canUp || canCast;
               const hue    = CURSED_SHAMISEN.edgeColor;
@@ -13740,8 +13342,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 : !ns.shamisen.ready ? 'Shamisen · strings next turn'
                 : !strung ? `Shamisen · ${tuned}/${SHAMISEN_STRINGS} strings`
                 : cd > 0 ? `Curse 🕒${cd}`
-                : poor ? `Curse (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)`
-                : actionTokenUsed ? 'Curse (no action left)' : `Cast the curse (${CURSED_SHAMISEN_DB_COST} Db)`;
+                : actionTokenUsed ? 'Curse (no action left)' : 'Cast the curse';
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...(strung ? reachHover('cursed_shamisen') : {})}>
@@ -13753,7 +13354,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       ? `Cursed Shamisen — take it up (free). From your NEXT turn the chord step can tune its ${SHAMISEN_STRINGS} strings with Iwato notes (1 ♭2 4 ♭5 ♭7 on your root), up to ${SHAMISEN_STRINGS} a turn out of the same commits as Drive and Sustain. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes.`
                       : !strung
                       ? `The strings: ${tuned}/${SHAMISEN_STRINGS}, tuned to ${shamisenRoot(ns)}. ${ns.shamisen.ready ? 'Tune them in the chord step — the third destination beside Drive and Sustain.' : 'They open on your next turn.'} Every rival can count them.`
-                      : `Cast the Iwato curse on a rival within ${SHAMISEN_RANGE} hexes — ${CURSED_SHAMISEN_DB_COST} Db, your Action Token, ${CURSED_SHAMISEN_CD}-round cooldown. For their next ${CURSE_TURNS} turns their scale IS Iwato: every other note is discord (no Db, no fans), unless they exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`}
+                      : `Cast the Iwato curse on a rival within ${SHAMISEN_RANGE} hexes — your Action Token, ${CURSED_SHAMISEN_CD}-round cooldown. For their next ${CURSE_TURNS} turns their scale IS Iwato: every other note is discord (no fans), unless they exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`}
                     onClick={() => {
                       if (armed) { setAction(null); return; }
                       if (canUp) { takeUpShamisen(); return; }
@@ -13950,7 +13551,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               {(turnStep === 'melody' || turnStep === 'move_act') && (dieFloorBoost > 0 || statusEffects.length > 0
                 || (actingNoteState?.chargeFloorTurns ?? 0) > 0 || (actingNoteState?.chargeCeilTurns ?? 0) > 0
                 || (actingNoteState?.finalsTrail?.length ?? 0) > 0
-                || ((actingNoteState?.unlockedSkills ?? []).includes('mixer') && !actingNoteState?.mixerUsedThisTurn && !hasConfirmed && !pivotPending)) && (
+                || ((actingNoteState?.unlockedSkills ?? []).includes('mixer') && !actingNoteState?.mixerUsedThisTurn && !hasConfirmed)) && (
                 <div style={{display:"flex",gap:3,flexWrap:"wrap",marginBottom:4}}>
                   {(actingNoteState?.finalsTrail?.length ?? 0) > 0 && (() => {
                     const trail = actingNoteState.finalsTrail;
@@ -13982,7 +13583,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       </div>
                     );
                   })()}
-                  {(actingNoteState?.unlockedSkills ?? []).includes('mixer') && !actingNoteState?.mixerUsedThisTurn && !hasConfirmed && !pivotPending && (
+                  {(actingNoteState?.unlockedSkills ?? []).includes('mixer') && !actingNoteState?.mixerUsedThisTurn && !hasConfirmed && (
                     <span title="Mixer — tap one dimmed (already played) note to layer it a second time"
                       style={{fontSize:7,padding:"1px 5px",borderRadius:3,
                       background:"#0a141a",border:"1px solid #44ddff",color:"#44ddff",
@@ -14072,11 +13673,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   continuously by the note stock itself, in the same highlight language
                   B3 uses for every other pardon, instead of only at a modal moment.
 
-                  ⚠️ `pivotPending` is never set true any more, but its ~30 read sites
-                  are deliberately LEFT IN PLACE (they all read false and gate nothing)
-                  rather than ripped out at the same time as this. Nothing can deadlock
-                  a turn on a flag no one raises; a half-finished surgery on 30 call
-                  sites very much could. */}
+                  🪦 `pivotPending` and its read sites were removed 2026-10-02 — they
+                  had all read false since B8. */}
               {/* ── 🎧 RIVAL ON STAGE (online, not your turn) ────────────────────
                   N13. Everything below this point is the ACTING spirit's private
                   workshop — their note stock, the stack they're voicing, the
@@ -14549,15 +14147,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   {ns.dazed&&<span style={{fontSize:7,color:"#ffaaff"}} title="Dazed — next move misdirected">😵</span>}
                   {ns.instrumentDropped&&<span style={{fontSize:7,color:"#ff4444"}} title="Dropped instrument — -1 Drive">🎸💥</span>}
                 </div>
-                {/* Owned skills + DB target row */}
+                {/* Owned skills. 🪦 The Db target mini-bar beside them went with Db (2026-10-02). */}
                 {(() => {
                   const owned     = ns.unlockedSkills ?? [];
-                  const targetDef = ns.targetSkillId ? SKILL_BY_ID[ns.targetSkillId] : null;
-                  const targetRoute = targetDef ? SKILL_TREE.routes.find(r => r.id === targetDef.routeId) : null;
-                  const dbPts     = ns.dbPoints ?? 0;
-                  const targetCost = targetDef?.dbCost ?? 8;
-                  const pct       = Math.min(1, dbPts / targetCost);
-                  if (owned.length === 0 && !targetDef) return null;
+                  if (owned.length === 0) return null;
                   return (
                     <div style={{marginTop:4, display:"flex", flexDirection:"column", gap:3}}>
                       {/* Owned skill icons */}
@@ -14576,23 +14169,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                               }}>{sk.icon}</span>
                             );
                           })}
-                        </div>
-                      )}
-                      {/* DB target mini-bar */}
-                      {targetDef && (
-                        <div style={{display:"flex", alignItems:"center", gap:5}}>
-                          <span style={{fontSize:9}}>{targetDef.icon}</span>
-                          <div style={{flex:1, height:3, background:"#0a1020", borderRadius:2, overflow:"hidden"}}>
-                            <div style={{
-                              height:"100%", borderRadius:2,
-                              width:`${pct*100}%`,
-                              background: targetRoute?.color ?? '#ffcc44',
-                              transition:"width 0.4s",
-                            }}/>
-                          </div>
-                          <span style={{fontSize:6, color:"#3a5a7a", whiteSpace:"nowrap"}}>
-                            {dbPts}/{targetCost}
-                          </span>
                         </div>
                       )}
                     </div>
@@ -14851,7 +14427,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 step just as much as spending all three commits does. The
                 "Build the melody →" button already clears `stackCommitDest`,
                 so nothing can be left aimed at a panel that is gone. */}
-            {acting && turnStep === 'chord' && !hasConfirmed && !pivotPending && canAct && (() => {
+            {acting && turnStep === 'chord' && !hasConfirmed && canAct && (() => {
               const dStack = actingNoteState?.driveStack ?? [];
               const sStack = actingNoteState?.sustainStack ?? [];
               const dCh = spiritChord(acting?.id, dStack);

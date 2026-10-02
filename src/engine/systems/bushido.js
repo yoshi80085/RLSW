@@ -50,7 +50,7 @@ export function bushidoLane(spirit, blocked = new Set()) {
   return lane;
 }
 
-// ⭐ THE DRAW'S BILL: the Db and the clock, and two notes off the TOP of the
+// ⭐ THE DRAW'S BILL: the clock, and two notes off the TOP of the
 // Drive stack (Alex, 2026-09-27 — the root stays, the chord steps down).
 // 🪦 IT NO LONGER PAYS `tempDrive`. Until 2026-10-01 the range ladder went in
 // here as bonus Drive, which `sonicRig.drivePowerBreakdown` caps at 2 dice — so
