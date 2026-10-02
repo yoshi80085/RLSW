@@ -288,6 +288,7 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       lastActivation: null,
       lastTurnTick: null,
       lastRoundTick: null,
+      lastPyro: null,        // 🎆 pyro v2 report — fired / armed / struck
     },
     winner: null,
   };

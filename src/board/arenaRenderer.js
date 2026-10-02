@@ -189,6 +189,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       camera.position.sub(controls.target).multiplyScalar(fit(aspect)/fit(camera.aspect)).add(controls.target);
       camera.aspect=aspect;camera.updateProjectionMatrix();
       renderer.setSize(width,height);foreground.setPixelRatio(renderer.getPixelRatio());foreground.setSize(width,height);composer.setSize(width,height);overlay.setSize(width,height);tuneDirector();dirty=true;
+      // 🎆 Astra's mortar sparks are sized in screen pixels (pyroMortars `resize`).
+      visuals.resize?.(height*renderer.getPixelRatio());
     }
     function applyQuality() {
       const next=quality==='standard'||(quality==='auto'&&(autoLite||!!frame.lite));
@@ -273,7 +275,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
-      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.standeeSteps>0||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.standeeSteps>0||stats.pyroBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
@@ -298,11 +300,17 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         // the Ronin casts — exposure, not the lights, so every material dims
         // together and nothing in the rig has to be found and put back.
         {const cl=visuals.curseLight();renderer.toneMappingExposure=1-.6*Math.min(1,cl.dim);}
+        // 🎆 A mortar hit shakes the lens and punches the zoom (pyroStage.camera,
+        // Alex's dial-in: shake .3, punch .2). Applied around THIS draw and put
+        // back after it, so the camera director and OrbitControls never see it.
+        const pyroLens=visuals.pyroCamera?.(reduced),fov0=camera.fov;
+        if(pyroLens){camera.position.x+=pyroLens.x;camera.position.y+=pyroLens.y;camera.fov=fov0*pyroLens.fov;camera.updateProjectionMatrix();}
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);
         smoke.begin();foreground.clear();markSolid([smoke.vent,crowd.group,...visuals.solidRoots()]);solid.render(scene,camera);foreground.render(foregroundScene,camera);
         smoke.composite();
         beams.render(camera,{occluderScene:foregroundScene,occluders:visuals.beamOccluders(),bloom:bloom.enabled});
         smoke.drawSelf(camera,foregroundScene,visuals.pawnFor(frame.smoke?.selfId));dirty=false;
+        if(pyroLens){camera.position.x-=pyroLens.x;camera.position.y-=pyroLens.y;camera.fov=fov0;camera.updateProjectionMatrix();}
         host.dataset.arenaSmokeAmount=smokeState.opacity.toFixed(3);host.dataset.arenaSmokeExtent=smokeState.extent.toFixed(3);
         host.dataset.arenaSmokeSelf=frame.smoke?.selfId??'';
         host.dataset.arenaLaserPhase=stats.laserDetail.phase;host.dataset.arenaLaserPods=String(stats.laserDetail.pods);host.dataset.arenaLaserLanes=String(stats.laserDetail.lanes);

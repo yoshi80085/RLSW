@@ -23,6 +23,8 @@ import { createArenaLasers } from './arenaLasers.js';
 import { createStandee, STANDEE, STANDEE_Y, standeeYaw } from './standee.js';
 import { createStandeeSteps } from './standeeSteps.js';
 import { createLandingSfx } from '../audio/landingSfx.js';
+import { createPyroStage } from './pyroStage.js';
+import { createPyroSfx } from '../audio/pyroSfx.js';
 import { axialDist } from './hexGeometry.js';
 import { MODE_INTERVALS, SPIRIT_MELODY_MODES, BEGINNER_FALLBACK_MODE } from '../music/melodyIdentity.js';
 import { wrapClashStandees, STICK_STANDEE } from './swingStandee.js';
@@ -311,7 +313,12 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   // change is QUEUED and played out — a hop for a walk step, a blink for a leap, a
   // skate back with a clack for a shove — and lands with the stone-on-glass sound,
   // a ripple and sparkles. It replaced the silent 0.2 s lerp for standee pawns.
-  const standeeSteps=createStandeeSteps(root,{pointFor:arenaPoint,
+  // 🎆 PYRO v2 (pyroStage.js): Astra's mortars rise, fire at END TURN and fold
+  // away; a Spirit shoved onto one is launched and comes down ON it. It hears
+  // each landing from standeeSteps, so the blast starts on the skate's touchdown.
+  const pyro=createPyroStage(root,{pointFor:arenaPoint,sfx:typeof window!=='undefined'?createPyroSfx():null,
+    label:(text,color,w,h)=>sonicSceneLabel(text,color,w,h)});
+  const standeeSteps=createStandeeSteps(root,{pointFor:arenaPoint,onLand:e=>pyro.landed(e),
     distance:(a,b)=>{const h=HEX_BY_NUM[a],k=HEX_BY_NUM[b];return h&&k?axialDist(h.q,h.r,k.q,k.r):1;},
     scaleFor:id=>MODE_INTERVALS[SPIRIT_MELODY_MODES[characterId(id)]??BEGINNER_FALLBACK_MODE],
     sfx:typeof window!=='undefined'?createLandingSfx():null});
@@ -468,8 +475,11 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     for(const n of next.slime??[]) {
       const m=disc(n,0x64ff72);if(m)m.userData.kind='slime';
     }
-    const burning=new Set([...(next.fire??[]),...(next.pyro?.phase!=='arming'?next.pyro?.hexes??[]:[])]);
-    for(const n of next.pyro?.phase==='arming'?next.pyro.hexes:[])disc(n,0xff5522,.7);
+    // 🎆 v2 pyro is Astra's mortars (pyroStage.js), not discs and cones — this
+    // stays only for a LEGACY show (an old replay's arm → erupt cadence).
+    const legacyPyro=next.pyro&&!next.pyro.v?next.pyro:null;
+    const burning=new Set([...(next.fire??[]),...(legacyPyro&&legacyPyro.phase!=='arming'?legacyPyro.hexes:[])]);
+    for(const n of legacyPyro?.phase==='arming'?legacyPyro.hexes:[])disc(n,0xff5522,.7);
     for(const n of burning) {
       const p=arenaPoint(n,.75);if(!p)continue;
       const flame=new THREE.Mesh(new THREE.ConeGeometry(.35,1.4,7),glow(0xff7922,.65));flame.position.copy(p);flame.userData.kind='fire';hazards.add(flame);
@@ -573,6 +583,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     updateHazards(frame);
     lasers.update(frame.laser,frame.laserRound,clock);
     updatePawns(frame);
+    pyro.update(frame);
     shamisen.update(frame.shamisen??{});
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
     moveTiles.update(frame.reach,frame.spirits);
@@ -690,11 +701,23 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           }
         }
       }
-      for(const pawn of pawns.values()) {
+      // 🎆 The mortars and any shove reaction advance BEFORE the pawns, so a
+      // landing heard during the drive below starts on this frame's clock.
+      pyro.tick(time,{reduced});
+      for(const [pawnId,pawn] of pawns) {
         const target=pawn.userData.target;
         // 🎭 A pawn mid-step is driven by standeeSteps (position, yaw, tilt, squash);
         // a pawn at rest (and every block pawn) eases toward its target as before.
         const stepping=pawn.userData.standee?standeeSteps.drive(pawn,performance.now(),reduced):null;
+        // 🎆 …unless it is being blown off a mortar: the reaction owns the piece
+        // until it is back down and done swaying (pyroStage.pose), then hands it back.
+        const blown=pawn.userData.standee?pyro.pose(pawnId,pawn):null;
+        if(blown){
+          pawn.userData.standee.frame(time,{knockedOut:pawn.userData.knockedOut,active:pawn.userData.active,
+            acting:pawn.userData.active,reduced,cameraPos:camera?.position ?? null,lift:blown.lift});
+          pyro.applyKo(pawn.userData.standee,blown.ko);
+          continue;
+        }
         if(!stepping){
           pawn.position.lerp(target,reduced?1:1-Math.exp(-dt*14));
           const turn=pawn.userData.targetFacing;
@@ -873,8 +896,11 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0),shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;shamisen.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0),shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    // 🎆 The hit's share of the lens (shake + zoom punch) and the mortars' sprite scale.
+    pyroCamera:reduced=>pyro.camera(reduced),
+    resize:h=>pyro.resize(h),
     get disposed(){return disposed;},
   };
 }

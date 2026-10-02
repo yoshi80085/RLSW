@@ -37,8 +37,11 @@ const midiFreq = m => 440 * Math.pow(2, (m - 69) / 12);
  * @param o.distance `(fromNum, toNum) → hexes` — axial distance on the real map
  * @param o.scaleFor `(spiritId) → scale intervals` — the Spirit's palette
  * @param o.sfx a `createLandingSfx()` (null = silent: headless, tests)
+ * @param o.onLand `({ id, from, to, toNum, kind }) → void` — told the instant a
+ *   piece touches down (🎆 the pyro shove starts its blast on THIS beat, so the
+ *   approach stays the game's own skate). Points are arena space.
  */
-export function createStandeeSteps(root, { pointFor, distance, scaleFor, sfx = null, T = STANDEE_MOVE } = {}) {
+export function createStandeeSteps(root, { pointFor, distance, scaleFor, sfx = null, T = STANDEE_MOVE, onLand: landed = null } = {}) {
   const group = new THREE.Group(); group.name = 'Standee landings'; root.add(group);
   const ringGeo = new THREE.RingGeometry(0.86, 1, 6, 1).rotateX(-Math.PI / 2);
   const hexGeo = new THREE.CircleGeometry(0.93, 6).rotateX(-Math.PI / 2);
@@ -97,7 +100,7 @@ export function createStandeeSteps(root, { pointFor, distance, scaleFor, sfx = n
     const scale = scaleFor?.(item.id) ?? [0];
     const notes = style === 'shipped' ? null : landingNotes({ scale, kind:item.kind, now, walk:S.walk }, T);
     S.at = to;
-    S.cur = { step, plan, lean:{ fwd:d.dot(f), side:d.dot(right) }, notes, t0:now, fired:{}, color:item.color };
+    S.cur = { step, plan, lean:{ fwd:d.dot(f), side:d.dot(right) }, notes, t0:now, fired:{}, color:item.color, id:item.id, toNum:item.toNum };
   }
 
   function onTravel(cur) {
@@ -133,7 +136,7 @@ export function createStandeeSteps(root, { pointFor, distance, scaleFor, sfx = n
       const S = stateOf(pawn);
       if (!S.cur && !S.queue.length) S.at = pawn.position.clone().setY(STANDEE_Y);
       const kind = stepKind(distance?.(from, to) ?? 1, { shoved });
-      S.queue.push({ id, kind, bot, color, yaw, fromPoint, toPoint });
+      S.queue.push({ id, kind, bot, color, yaw, fromPoint, toPoint, toNum:to });
       return true;
     },
     /** Is this pawn mid-step (or waiting on one)? */
@@ -152,7 +155,10 @@ export function createStandeeSteps(root, { pointFor, distance, scaleFor, sfx = n
       const ms = now - cur.t0;
       const P = reduced ? reducedPose(step) : stepPose(step, plan, ms, T, lean);
       if (!cur.fired.travel && (reduced || ms >= plan.turnMs + plan.pre)) { cur.fired.travel = true; if (!reduced) onTravel(cur); }
-      if (!cur.fired.land && (reduced || ms >= plan.land)) { cur.fired.land = true; onLand(cur, reduced); }
+      if (!cur.fired.land && (reduced || ms >= plan.land)) {
+        cur.fired.land = true; onLand(cur, reduced);
+        landed?.({ id:cur.id, from:step.from, to:step.to, toNum:cur.toNum, kind:step.kind });
+      }
       const x = step.from.x + (step.to.x - step.from.x) * P.p, z = step.from.z + (step.to.z - step.from.z) * P.p;
       pawn.position.set(x, STANDEE_Y + P.y, z);
       pawn.rotation.x = P.pitch; pawn.rotation.y = P.yaw;

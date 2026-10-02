@@ -105,7 +105,11 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
     thump:thump && visible.has(thump.id) ? {id:thump.id,key:thump.key} : null,
     laser:laser?.beams?.map(b => [...b.hexes]) ?? [],
     laserRound:laser?.roundsLeft ?? null,
-    pyro:pyro ? {hexes:[...pyro.hexes], phase:pyro.phase} : null,
+    // 🎆 v2 (pyroStage.js): the wave is the set's identity — a re-arm batched
+    // into one frame with its volley still reads as a NEW set — and `struck`
+    // says whose shove fired which mortar. Public board state, like the hexes.
+    pyro:pyro ? {hexes:[...pyro.hexes], phase:pyro.phase,
+      ...(pyro.v ? {v:pyro.v, wave:pyro.wave, struck:(pyro.struck??[]).map(x=>({hexNum:x.hexNum,spiritId:x.spiritId}))} : {})} : null,
     smoke:smoke ? {radius:smoke.radius,roundsLeft:smoke.roundsLeft,
       selfId:smokeSelfId(spirits,smoke,actingId,viewerId)} : null,
     slime:slime.map(s => s.num ?? s.hex), fire:[...(fire?.hexes ?? [])],

@@ -21,7 +21,7 @@
 import {
   SMOKE_START_RADIUS, SMOKE_ROUNDS, SMOKE_MAX_RADIUS, stageFxSchedule,
   LASER_ROUNDS, LASER_BEAM_COUNT,
-  PYRO_WAVES, PYRO_WAVE_HEXES,
+  PYRO_WAVES, PYRO_WAVE_HEXES, PYRO_VERSION, PYRO_ROUND_HEXES,
   ANIMATRONIC_COUNT, ANIMATRONIC_ROUNDS,
 } from "../../data/stageEffects.js";
 import {
@@ -83,7 +83,7 @@ export function applyStageFxDrawn(state, { round, threshold }) {
  * spirits already standing in a fresh laser pattern (client plays the zap
  * cinematic + applies the damage, exactly like the old zapSpiritsInBeams).
  */
-export function applyStageFxActivated(state, { fxId, occupied = [], rounds }, rng) {
+export function applyStageFxActivated(state, { fxId, occupied = [], rounds, pyroVersion }, rng) {
   const fx = state.stageFx;
   if (!fx) return state;
   // 🗓️ `rounds` comes from the schedule (lastDraw.rounds). ⚠️ Absent = a legacy
@@ -102,6 +102,16 @@ export function applyStageFxActivated(state, { fxId, occupied = [], rounds }, rn
     const beams = rollLaserBeams(LASER_BEAM_COUNT, rng, clear);
     next.laser = { beams, roundsLeft: scheduled ? rounds : LASER_ROUNDS };
     next.lastActivation = { fxId, zapped: [] };
+  } else if (fxId === "pyrotechnics" && pyroVersion === PYRO_VERSION) {
+    // 🎆 PYRO v2 — the mortars rise at once and fire at the end of the first
+    // turn. `showRound` sizes every re-arm; `roundsLeft` is the same show clock
+    // the legacy path keeps (no clock = the Testing Grounds: three rounds).
+    next.pyro = {
+      v: PYRO_VERSION, phase: "armed", wave: 1, showRound: 1,
+      hexes: rollPyroHexes(pyroRoundSize(1), clear, rng),
+      roundsLeft: scheduled ? rounds : PYRO_ROUND_HEXES.length,
+    };
+    next.lastPyro = { event: "armed", wave: 1, hexes: next.pyro.hexes };
   } else if (fxId === "pyrotechnics") {
     next.pyro = { phase: "arming", hexes: rollPyroHexes(PYRO_WAVE_HEXES[0] ?? 5, clear, rng), wave: 1 };
     // ⚠️ Only a SCHEDULED pyro carries a clock. Its absence is what routes the
@@ -147,7 +157,30 @@ export function applyStageFxTurnTicked(state, _action, rng) {
   if (!fx) return state;
   let pyro = fx.pyro;
   let pyroReport = null;
-  if (pyro && pyro.roundsLeft != null) {
+  let lastPyro = fx.lastPyro ?? null;
+  if (pyro?.v === PYRO_VERSION) {
+    // 🎆 PYRO v2 — this tick is only its ROUND CLOCK. The firing is per turn
+    // (`applyPyroTurnEnded`), so all that happens here is the show getting one
+    // round older: the next re-arm is bigger, or the show is over.
+    const left = pyro.roundsLeft - 1;
+    if (left <= 0) {
+      // ⚠️ A charge still ARMED here means a turn ended without the client's
+      // end-turn volley (an old save, a skipped beat). It blows now as the
+      // finale rather than vanishing — a glowing hex that never goes off
+      // teaches players to ignore the glow.
+      if (pyro.phase === "armed" && pyro.hexes.length) {
+        const caught = caughtOn(state, pyro.hexes);
+        pyroReport = { event: "erupted", wave: pyro.wave, hexes: pyro.hexes, caught, finale: true };
+        lastPyro = { event: "fired", wave: pyro.wave, hexes: pyro.hexes, caught, finale: true };
+      } else {
+        pyroReport = { event: "burnout" };
+        lastPyro = { event: "retracted", hexes: pyro.hexes ?? [] };
+      }
+      pyro = null;
+    } else {
+      pyro = { ...pyro, roundsLeft: left, showRound: pyro.showRound + 1 };
+    }
+  } else if (pyro && pyro.roundsLeft != null) {
     // 🗓️ SCHEDULED pyro: cycle arm → erupt → re-arm until its show's clock runs
     // out. The last tick of the show erupts an armed wave as the finale (and
     // clears in the same beat) or burns out a spent one.
@@ -217,7 +250,82 @@ export function applyStageFxTurnTicked(state, _action, rng) {
 
   return {
     ...state,
-    stageFx: { ...fx, pyro, animatronics, lastTurnTick: { pyro: pyroReport, anim: animReport } },
+    stageFx: { ...fx, pyro, animatronics, lastPyro, lastTurnTick: { pyro: pyroReport, anim: animReport } },
+  };
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 🎆 PYRO v2 — the mortars (Alex, 2026-10-02; the rule text is in
+// data/stageEffects.js). Three actions, each reporting in `stageFx.lastPyro`:
+//   PYRO_TURN_ENDED    → { event:'fired', wave, hexes, caught:[ids] }
+//   PYRO_TURN_STARTED  → { event:'armed', wave, hexes }
+//   PYRO_CHARGE_STRUCK → { event:'struck', hexNum, spiritId, wave }
+// A no-op leaves `lastPyro: null`, so the client can play a report the instant
+// it lands without guarding against a stale one. Damage stays CLIENT-applied off
+// these reports, the same beat as every other stage hazard (header above).
+// ═════════════════════════════════════════════════════════════════════════════
+const pyroRoundSize = showRound =>
+  PYRO_ROUND_HEXES[Math.min(Math.max(1, showRound), PYRO_ROUND_HEXES.length) - 1];
+const caughtOn = (state, hexes) =>
+  state.spirits.filter(sp => !sp.knockedOut && hexes.includes(sp.num)).map(sp => sp.id);
+const quiet = state => ({ ...state, stageFx: { ...state.stageFx, lastPyro: null } });
+
+/** Is `hexNum` an ARMED v2 charge right now? The one question every shove asks. */
+export function isArmedPyroHex(state, hexNum) {
+  const p = state.stageFx?.pyro;
+  return p?.v === PYRO_VERSION && p.phase === "armed" && p.hexes.includes(hexNum);
+}
+
+export function applyPyroTurnEnded(state) {
+  const fx = state.stageFx, p = fx?.pyro;
+  if (p?.v !== PYRO_VERSION || p.phase !== "armed") return fx ? quiet(state) : state;
+  // A set whose every charge was struck by shoves fires nothing — but it is
+  // still SPENT, so the re-arm below runs on schedule.
+  const caught = caughtOn(state, p.hexes);
+  return {
+    ...state,
+    stageFx: {
+      ...fx,
+      pyro: { ...p, phase: "spent", hexes: [], spentHexes: [...(p.spentHexes ?? []), ...p.hexes] },
+      lastPyro: { event: "fired", wave: p.wave, hexes: p.hexes, caught },
+    },
+  };
+}
+
+export function applyPyroTurnStarted(state, { occupied = [] }, rng) {
+  const fx = state.stageFx, p = fx?.pyro;
+  if (p?.v !== PYRO_VERSION || p.phase !== "spent") return fx ? quiet(state) : state;
+  // Fresh charges never prime under a Spirit (the rule at the top of this
+  // file) and avoid the set that just blew, so the mortars visibly MOVE.
+  const clear = [...new Set([...occupied, ...occupiedHexes(state), ...(p.spentHexes ?? [])])];
+  const hexes = rollPyroHexes(pyroRoundSize(p.showRound), clear, rng);
+  const wave = p.wave + 1;
+  return {
+    ...state,
+    stageFx: {
+      ...fx,
+      pyro: { ...p, phase: "armed", wave, hexes, spentHexes: [], struck: [] },
+      lastPyro: { event: "armed", wave, hexes },
+    },
+  };
+}
+
+export function applyPyroChargeStruck(state, { spiritId, hexNum }) {
+  if (!isArmedPyroHex(state, hexNum)) return state.stageFx ? quiet(state) : state;
+  const fx = state.stageFx, p = fx.pyro;
+  return {
+    ...state,
+    stageFx: {
+      ...fx,
+      // Spent, not gone: it fired, and the re-arm must not drop a fresh charge
+      // straight back under the Spirit it just launched.
+      // `struck` is what the arena reads to play the right Spirit's reaction on
+      // the right mortar — a report alone would be overwritten before a frame
+      // drawn after a batch of dispatches ever saw it.
+      pyro: { ...p, hexes: p.hexes.filter(h => h !== hexNum), spentHexes: [...(p.spentHexes ?? []), hexNum],
+        struck: [...(p.struck ?? []), { hexNum, spiritId }] },
+      lastPyro: { event: "struck", wave: p.wave, hexNum, spiritId },
+    },
   };
 }
 

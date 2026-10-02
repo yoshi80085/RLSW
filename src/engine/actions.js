@@ -74,6 +74,10 @@ export const STAGE_FX_DRAWN        = "STAGE_FX_DRAWN";
 export const STAGE_FX_ACTIVATED    = "STAGE_FX_ACTIVATED";
 export const STAGE_FX_TURN_TICKED  = "STAGE_FX_TURN_TICKED";
 export const STAGE_FX_ROUND_TICKED = "STAGE_FX_ROUND_TICKED";
+// 🎆 pyro v2 (2026-10-02) — the mortars fire per TURN and stop a shove
+export const PYRO_TURN_ENDED    = "PYRO_TURN_ENDED";
+export const PYRO_TURN_STARTED  = "PYRO_TURN_STARTED";
+export const PYRO_CHARGE_STRUCK = "PYRO_CHARGE_STRUCK";
 
 // ── Phase R5: headliner ─────────────────────────────────────────────────────
 export const HEADLINER_CHANGED = "HEADLINER_CHANGED";
@@ -418,12 +422,44 @@ export function stageFxScheduled(round) {
  * `rounds` (from the scheduled draw) is how long the show lasts; omitted, each
  * effect keeps its old fixed length (legacy replays, the Testing Grounds).
  */
-export function stageFxActivated(fxId, occupied = [], rounds) {
+export function stageFxActivated(fxId, occupied = [], rounds, { pyroVersion } = {}) {
   // ⚠️ `rounds` is left OFF the action when not given, rather than written as
   // undefined, so a legacy log's action and a fresh one compare equal.
-  return rounds == null
+  // ⚠️ `pyroVersion` likewise — and it is OPT-IN rather than defaulted here, so
+  // an old log replays on the rules it was recorded under (data/stageEffects.js
+  // PYRO v2). Only the live client passes it.
+  const a = rounds == null
     ? { type: STAGE_FX_ACTIVATED, fxId, occupied }
     : { type: STAGE_FX_ACTIVATED, fxId, occupied, rounds };
+  if (pyroVersion != null && fxId === "pyrotechnics") a.pyroVersion = pyroVersion;
+  return a;
+}
+
+/**
+ * 🎆 PYRO v2 — END TURN: every armed charge fires. Report in
+ * `state.stageFx.lastPyro` (`{ event:'fired', hexes, caught:[ids], wave }`); the
+ * client applies the damage off it, as it does for every stage hazard.
+ */
+export function pyroTurnEnded() {
+  return { type: PYRO_TURN_ENDED };
+}
+
+/**
+ * 🎆 PYRO v2 — the next turn is about to start: a spent set re-arms on fresh
+ * hexes, sized by the show's round. `occupied` = hex nums that must stay clear
+ * (spirits + amps, client-supplied like STAGE_FX_ACTIVATED's).
+ */
+export function pyroTurnStarted(occupied = []) {
+  return { type: PYRO_TURN_STARTED, occupied };
+}
+
+/**
+ * 🎆 PYRO v2 — a forced move entered an armed charge: it stops there, the
+ * charge fires on that Spirit and is spent until the re-arm. A no-op (null
+ * report) when the hex holds no armed v2 charge.
+ */
+export function pyroChargeStruck(spiritId, hexNum) {
+  return { type: PYRO_CHARGE_STRUCK, spiritId, hexNum };
 }
 
 /**

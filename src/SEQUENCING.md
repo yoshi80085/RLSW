@@ -26,48 +26,69 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 52-dbcut. 🪦 Db is cut — the cooldowns and the sacrifices are the gate — 2026-10-02
+## 53-pyro. 🎆 Pyro is Astra's mortars — they fire every turn, a shove stops on one — 2026-10-02
 
-Alex: *"Lets cut Db entirely - no more shops, no more Db, the cooldowns and
-'sacrifices' are the gate, not another economy over what is already doing quite a
-bit."* Also ruled: the ending pays **nothing for now**; the old Séance / Payola /
-Backstage Pass event cards **removed** ("very old"); the Major/Minor bonus
-**removed** ("Each Spirit has their own 'scale' to play in the current version").
+Alex, on porting the pyro-shove preview: *"I want a Spirit that if it gets shoved
+into or in the way of a blaster/mortar to stop on the mortar — get blasted up and
+fall back on the mortar that then disassembles down into the arena again."* Then the
+rules: *"they fire under 2 conditions — 1. end of a player's turn (not a full round)
+… coming back before the start of the next player's turn, or 2. if a player gets
+pushed into it … it stops on the mortar and takes damage … 1st round about 5
+mortars, 2nd 10 or so, 3rd 13 or so"*, and *"real Vibe damage — like 3 or so"*.
+Mortars only — no blasters, no curtain.
 
-- ⚙️ **The gate** — `engine/systems/cooldowns.js`: `canFire(ns, id)` = in the
-  drafted kit **and** off cooldown. `firePatch` only starts the 2-round clock.
-  Every `*_DB_COST`, `FLAT_ABILITY_UNLOCK_DB` and `DB_UPGRADE_THRESHOLD` is gone
-  from `data/gameConstants.js`; `skillTree.js` lost `dbCost` and every "N Db" in
-  the descs.
-- 🎵 **The melody pays fans only** — `melodyCommit.js` has no Db bar, award or
-  `earned`; `melodyPayout.js` keeps style + craft fans and the red/blue stack-root
-  carrot. `ENDING_WEIGHT` is **dormant** (kept, read by nothing that pays) — so the
-  "end on the fifth" pressure is currently **off**. Open, Alex's call.
-- 🛒 **The shop is gone** — `ui/UpgradeModal.jsx` deleted; `upgradesPending`,
-  `pivotPending`, the Db header and the "⬆ UPGRADES · SOON" button removed; the
-  `AbilityWallet` is now just the two drafted abilities + rounds left (anchor
-  renamed `db-bar` → `ability-wallet`). HUD/MatchSurface Db cell removed.
-- 🤖 **Bots + finder** — `evaluate.js` lost the Db horizon/kit terms;
-  `playFinder.js` goals are `drive / sustain / fans` (the `db` goal and its
-  ceiling are gone; tie-breaks shifted — `test:playfinder` documents the new
-  picks). Crowd coach / bubble no longer talk about Db (the crowd speaks a little
-  less often).
-- 🪕 **Open — the Cursed Shamisen's bite.** The Iwato curse used to touch the
-  rival's Db; it now bites fans only. Alex flagged the rules may want a rewrite —
-  **not compensated in code**, see `STATE_OF_PLAY.md` §7.
-- 🧪 **Evidence** — 82 suites, isolated baseline worktree vs this tree: **25 red →
-  22 red**, every remaining red one also red on the baseline with the same first
-  failure (`test:legal`, `test:harness`, `test:skilltree` turned green).
-  `test:slime` and `test:eleven` now get *further* — the Db gate was failing them
-  first — and stop at assertions that fail identically on baseline when given Db
-  (pre-existing, not this change). `check:bundle` 4 warnings (= baseline); lint
-  343 errors (baseline 357).
-- ⚠️ **Removals only, no new visuals** — nothing here went through a `.scratch`
-  preview because nothing new was drawn; the wallet rows are styled as before.
+- 🎲 **The rules — pyro v2** (`data/stageEffects.js`, `engine/systems/stageFx.js`):
+  `PYRO_TURN_ENDED` (every armed mortar fires; `caught` = whoever stands on one),
+  `PYRO_TURN_STARTED` (re-arm on fresh hexes, sized `PYRO_ROUND_HEXES` 5/10/13 by
+  show round), `PYRO_CHARGE_STRUCK` (a forced move entered one: it is spent, the
+  state remembers who in `pyro.struck`). The round tick is only the show clock.
+  `PYRO_DAMAGE` 1 → **3**. ⚠️ **Versioned**: only an activation carrying
+  `pyroVersion: 2` runs them — the client opts in; a replay log recorded before
+  keeps the old round-clock cadence, bit for bit (`test:stagefx` unchanged, 90).
+- 💥 **The stop** — `battleFlow.js` `knockback` ends the slide ON an armed mortar
+  (read inline: `stageFx.js` already imports `battleFlow`) and hands the client's
+  `hexHazards` hook `pyroStruck`; the client's own pushes (`battleKnockback`, the
+  one-hex push, the TV scatter) ask `strikePyroCharge` first. Walking / sliding /
+  Shukuchi do not set one off — you are simply standing on it at your turn's end.
+  The END TURN volley runs before the round block, the re-arm after it, so a show's
+  last volley closes it and no armed mortar is left to fizzle.
+- 🎬 **The look** — one tracked copy of each preview module, which the `.scratch`
+  pages now import: `board/pyroMortars.js` (Astra's mortar, blasters/curtain as
+  options; parity-checked against her original over 4,218 frames, Δ = 0),
+  `board/pyroShove.js` (the reaction + Alex's 10-lever dial-in + a show clock that
+  turns hit-stop and slow motion into a real↔show mapping + the deploy / volley /
+  retract cue builders), `board/pyroBlast.js` (the hit's fire), `audio/pyroSfx.js`
+  (my voices byte-for-byte, on the SFX fader). `board/pyroStage.js` puts it on the
+  board: each wave a set (the wave number is its identity), the reaction started by
+  `standeeSteps`' new `onLand` hook so the approach stays the game's skate, the
+  struck mortar redrawn on the reaction's own clock so it freezes with the piece;
+  the renderer adds the lens shake and zoom punch around its draw and puts the
+  camera back.
+- 🐛 **Fixed on the way** — the struck mortar's crown was heard 1.15 s after the
+  bang (the page's own shell) while Astra's burst is SEEN at 1.5 s; a frame landing
+  before the stage's first tick would have deployed a wave at second 0 and dropped
+  its machinery; the piece kept the daze's last micro-tilt after the hand-back.
+- 🧪 **Evidence** — `test:pyrorules` **92** (mutation-checked: disable the stop,
+  it goes red), `test:pyroshove` **116,482** (the page's 98,738-assertion check ported;
+  it is ~102k now because airMs 950 → 1100 lengthens every sampled timeline),
+  `test:pyrostage` **62** (the real GLB arena; mutation-checked on the pose),
+  `test:pyrojourney` **8** (the real `Game` by its own controls: a new set every
+  END TURN, 5 → 10 → 13, the show ending; mutation-checked on the volley).
+  Every suite, isolated baseline worktree (56b7656) vs this tree: **87 suites on both, plus the 4 new ones: 21 red before and 21 red after — the same 21, each with the same first failure** (the known combat-fixture, Db-cut and missing-`.scratch`-file reds), and every passing suite reports the same count on both.
+  Bundle (case-tolerant twin, see below): **0 warnings**, before and after.
+- ⚠️ **This machine is case-sensitive** — the client's three case-mismatched PNG
+  imports (`STATE_OF_PLAY` 🚩, Alex's call) stop `check:bundle` and every suite that
+  bundles the client. The evidence above used temporary untracked symlinks for those
+  three files in both trees; nothing about them is committed.
+- ⏳ **Not seen on real hardware.** The cloud browser is software-rendered: nobody
+  has seen this on a real GPU or heard it on speakers.
 
-**Next:** Alex's calls on (1) whether the ending should pay anything again,
-(2) the Shamisen's bite now that there is no Db to drain, (3) whether the
-Intergalactic abilities want a sacrifice on top of the cooldown.
+**Next — Alex's calls:** (1) the end state (`dazed`), hit-stop on every mortar hit,
+and the shell + burst in a hit — shipped at their defaults; (2) the **Burn** was
+kept as it was — he set only the damage; (3) should a vortex DRAG stop on a mortar
+(it does not — a pull, not a push); (4) the page's "sympathy" volley is now
+page-only (in the game the others fire at END TURN, by the rule); (5) a real-GPU
+look and a listen.
 
 ---
 
@@ -209,13 +230,14 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 86 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 87 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `52-dbcut` | 2026-10-02 | **LIVE — §A above.** Db cut entirely: abilities gated by kit + 2-round cooldown only, melody pays fans only, upgrade shop and old event cards / Major-Minor bonus removed. `test:loadouts`, `test:skilltree`, `test:playfinder`. |
+| `53-pyro` | 2026-10-02 | **LIVE — §A above.** Pyro v2: Astra's mortars fire at every END TURN (5/10/13 by show round), a shove stops on one, 3 Vibe; the pyro-shove preview ported into `board/pyroMortars.js` / `pyroShove.js` / `pyroBlast.js` / `pyroStage.js` and `audio/pyroSfx.js`. `test:pyrorules`, `test:pyroshove`, `test:pyrostage`. |
+| `52-dbcut` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Db cut entirely: abilities gated by kit + 2-round cooldown only, melody pays fans only, upgrade shop and old event cards / Major-Minor bonus removed. `test:loadouts`, `test:skilltree`, `test:playfinder`. |
 | `51-iwatoport` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Iwato curse goes into the game: take up, three strings from the next turn (up to 3 a turn, from the hand), the cast, the cursed palette everywhere, exorcism in the commit, the arena stage, the infected wheel, the sound, and the loadout pop-out. `test:shamisen`, `test:shamisenjourney`. |
 | `50-iwatocurse` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Cursed Shamisen redesigned as the Iwato curse (strings, cast, a cursed Scale Wheel, exorcism); its five animated moments built for the dial-in. `test:cursedshamisen`. |
 | `49-abilitypopouts` | 2026-10-01 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Hover an ability in the loadout and a pop-out plays it — Shukuchi's blink and the Bushido strike, the game's own code on real standees. `test:abilitydemo`. |

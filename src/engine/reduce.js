@@ -17,6 +17,7 @@ import {
   DEBUFFS_TICKED, BURN_TICKED,
   HEADLINER_CHANGED,
   STAGE_FX_DRAWN, STAGE_FX_ACTIVATED, STAGE_FX_TURN_TICKED, STAGE_FX_ROUND_TICKED,
+  PYRO_TURN_ENDED, PYRO_TURN_STARTED, PYRO_CHARGE_STRUCK,
   BOARD_SYNCED,
   SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, THRASH_TOKENS_SPAWNED, FLAMING_DECAYED,
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
@@ -51,6 +52,7 @@ import {
 import {
   applyStageFxDrawn, applyStageFxActivated,
   applyStageFxTurnTicked, applyStageFxRoundTicked,
+  applyPyroTurnEnded, applyPyroTurnStarted, applyPyroChargeStruck,
 } from "./systems/stageFx.js";
 import {
   applyBoardSynced,
@@ -139,6 +141,9 @@ function reduce(state, action, rng) {
     case STAGE_FX_ACTIVATED:     return applyStageFxActivated(state, action, rng);
     case STAGE_FX_TURN_TICKED:   return applyStageFxTurnTicked(state, action, rng);
     case STAGE_FX_ROUND_TICKED:  return applyStageFxRoundTicked(state, action, rng);
+    case PYRO_TURN_ENDED:        return applyPyroTurnEnded(state, action);
+    case PYRO_TURN_STARTED:      return applyPyroTurnStarted(state, action, rng);
+    case PYRO_CHARGE_STRUCK:     return applyPyroChargeStruck(state, action);
 
     // -- Phase 6a: board state --
     case BOARD_SYNCED:           return applyBoardSynced(state, action);

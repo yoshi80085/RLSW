@@ -26,9 +26,10 @@ import { CORNER_LABELS } from '../../src/data/corners.js';
 import { STANDEE_MOVE, planStep, stepPose, reducedPose } from '../../src/board/standeeMotion.js';
 import { createHazardActors } from '../stage-hazards/actors.js';
 import { shovePlan } from '../stage-hazards/motion.js';
-import { PYRO_SHOVE, reactionAt, timeline, timeRate, cues, shakeAt } from './shoveReaction.js';
+import { PYRO_SHOVE, reactionAt, timeline, timeRate, cues, shakeAt, deployCues, retractCues, volleyCues } from './shoveReaction.js';
 import { createBlastFx, createMortar } from './blastFx.js';
 import { createBlastSfx } from './blastSfx.js';
+import { playPyroCue } from '../../src/audio/pyroSfx.js';
 import { createPyro } from '../stage-pyro/pyro.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -273,7 +274,6 @@ const decoysB = [0, 1, 2].map(() => { const m = createMortar(); scene.add(m.grou
 let SC = null, SC_pending = false;
 // ── Astra's mortars (stage-pyro/pyro.js), one set per lane, rebuilt only when the direction changes ──
 let pyroA = null, pyroB = null, pyroDir = -1;
-const sm01 = v => { v = Math.max(0, Math.min(1, v)); return v * v * (3 - 2 * v); };
 function disposePyro(q) {
   if (!q) return; scene.remove(q.root); const gs = new Set(), ms = new Set();
   q.root.traverse(o => { if (o.geometry) gs.add(o.geometry); if (o.material) ms.add(o.material); }); gs.forEach(g => g.dispose()); ms.forEach(m => m.dispose());
@@ -284,15 +284,9 @@ function rebuildPyro() {
   pyroA = createPyro(scene, nums); pyroB = createPyro(scene, nums); pyroB.root.position.copy(GHOST_OFFSET);
   const h = stage.clientHeight * renderer.getPixelRatio(); pyroA.resize(h); pyroB.resize(h);
 }
-// ⚠️ createPyro does not expose its parts, so read them by position: mortar group children are
-// [base, warning ring, barrel, 6 petals, exhaust flame]. A different shape means Astra restructured it: skip, don't crash.
-function tweakMortar(q, age, retract) {
-  const g = q.root.children[0]; if (!g || g.children.length !== 10) { if (!tweakMortar.warned) { tweakMortar.warned = true; console.warn('pyro-shove: stage-pyro mortar shape changed; barrel/flame tweaks skipped'); } return; }
-  const barrel = g.children[2], flame = g.children[9];
-  // the standee's weight presses the barrel down at CONTACT (her own lowering starts after the bang, which would clip it through the piece)
-  if (retract && age > 0 && barrel.position.y > -0.87) barrel.position.y += (-0.87 - barrel.position.y) * sm01(age / 0.12);
-  flame.scale.y *= L.column; flame.visible = L.column > 0.01;
-}
+// 📌 2026-10-02: the barrel-under-the-standee and flame-height tweaks that lived here (reading the
+// mortar by CHILD POSITION) are now part of the tracked module — `cue.contact` and `look.column` in
+// src/board/pyroMortars.js — so the preview and the game cannot drift apart on them.
 function plan() {
   const step = { style:L.pushStyle, kind:'shove', yaw0:0, yaw1:0, speed:L.pushSpeed };
   return planStep(step, STANDEE_MOVE);
@@ -321,33 +315,12 @@ const wake = () => { sfx.ensure(); applyMix(); unlock.hidden = true; };
 unlock.addEventListener('click', wake);
 window.addEventListener('pointerdown', wake, { capture:true }); window.addEventListener('keydown', wake, { capture:true });
 const applyMix = () => sfx.setMix(L.volume, L.bass);
-function playCue(c) {
-  switch (c.type) {
-    case 'plate': sfx.plate(); break;
-    case 'whine': sfx.whine(c.dur, L.sirenWhine); break;
-    case 'boom': sfx.boom(L.boom, L.tail); break;
-    case 'crackle': sfx.crackle(L.crackle); break;
-    case 'shell': sfx.shell(); break;
-    case 'crown': sfx.crown(); break;
-    case 'land': case 'bounce': sfx.land(c.power, L.rattle, L.dust); break;
-    case 'burn': sfx.burn(c.dur, 0.6); break;
-    case 'unlock': sfx.unlock(L.mechVol * 0.7, c.pan); break;
-    case 'lift': sfx.lift(L.mechVol * 0.6, c.pan); break;
-    case 'lock': sfx.lock(L.mechVol * 0.7, c.pan); break;
-    case 'release': sfx.release(L.mechVol * 0.7, c.pan); break;
-    case 'retract': sfx.retract(L.mechVol * 0.6, c.pan); break;
-    case 'seal': sfx.seal(L.mechVol * 0.7, c.pan); break;
-    case 'launch': sfx.launch(L.launchVol, c.pan); break;
-    case 'burst': sfx.crown(0.7 * L.launchVol, c.pan); break;
-    case 'flame': sfx.flame(L.flameVol, c.pan); break;
-    case 'curtain': sfx.curtain(L.curtainVol, c.pan); break;
-  }
-}
+// 📌 The cue → voice mapping is the game's own (`playPyroCue`, src/audio/pyroSfx.js).
+function playCue(c) { playPyroCue(sfx, c, L); }
 
 // ── the clock ────────────────────────────────────────────────────────────────
 let S_ = 0, playing = true, holdMs = 0, stoppedAtIgnite = false, lastCue = 0, loopWait = 0, END = 5;
 let TL = timeline(L), CUES = [];
-const PANS = [0, -0.7, 0.7, 0.35];
 // ⭐ The whole firing sequence, in scene seconds: Astra's cue (deploy → fire[] → retract, blasters, curtain) retimed around MY bang.
 let SEQ = null;
 function seqTimes() {
@@ -358,21 +331,20 @@ function seqTimes() {
   const curtainEnd = L.curtainOn === 'on' ? showAt + 0.9 + 6.6 : 0;
   return { bang, deployedAt, fireAt, endAt, showAt, end:Math.max(endAt + 1.5, curtainEnd) };
 }
+// 📌 Built from the SHIPPED timeline helpers (src/board/pyroShove.js) — the same ones the game's
+// pyroStage plays — so the page and the arena cannot disagree about when a latch clicks.
 function seqCues() {
-  if (!SEQ) return []; const out = [], n = 1 + SC.armed.length;
-  for (let i = 0; i < n; i++) {
-    const pan = PANS[i], d = SEQ.deployedAt + i * 0.05, e = SEQ.endAt + i * 0.05;
-    out.push({ at:d + 0.02, type:'unlock', pan }, { at:d + 0.38, type:'lift', pan }, { at:d + 1.86, type:'lock', pan }, { at:e + 0.02, type:'release', pan }, { at:e + 0.08, type:'retract', pan }, { at:e + 1.3, type:'seal', pan });
-    if (i > 0 && Number.isFinite(SEQ.fireAt[i])) out.push({ at:SEQ.fireAt[i], type:'launch', pan }, { at:SEQ.fireAt[i] + 1.5, type:'burst', pan });
-  }
+  if (!SEQ) return []; const n = 1 + SC.armed.length;
+  const out = [...deployCues(SEQ.deployedAt, n, L), ...retractCues(SEQ.endAt, n, L), ...volleyCues(SEQ.fireAt, L, { skip:[0] })];
   if (L.cannonsOn === 'on') out.push({ at:SEQ.showAt, type:'flame', pan:0 });
   if (L.curtainOn === 'on') out.push({ at:SEQ.showAt + 0.9, type:'curtain', pan:0 });
   return out;
 }
-function pyroCue(struckAt) {
-  if (!SEQ) return { deployedAt:-10, fireAt:[struckAt, Infinity, Infinity, Infinity], endAt:Infinity, showAt:Infinity, hit:SC.mortarHex.num };
+function pyroCue(struckAt, contactAt) {
+  const contact = contactAt == null ? undefined : { [SC.mortarHex.num]:contactAt };
+  if (!SEQ) return { deployedAt:-10, fireAt:[struckAt, Infinity, Infinity, Infinity], endAt:Infinity, showAt:Infinity, hit:SC.mortarHex.num, contact };
   const shift = struckAt - SEQ.bang;
-  return { deployedAt:SEQ.deployedAt, fireAt:SEQ.fireAt.map(f => f + shift), endAt:SEQ.endAt, showAt:SEQ.showAt, hit:SC.mortarHex.num };
+  return { deployedAt:SEQ.deployedAt, fireAt:SEQ.fireAt.map(f => f + shift), endAt:SEQ.endAt, showAt:SEQ.showAt, hit:SC.mortarHex.num, contact };
 }
 function recompute() {
   ensurePieces(); buildScenario(); TL = timeline(L); SEQ = seqTimes();
@@ -509,9 +481,9 @@ function frame(now) {
   decoys.forEach(d => { d.group.visible = !useA; }); decoysB.forEach(d => { d.group.visible = !useA && showB; });
   if (useA) {
     const seq = !!SEQ, st = { mortars:true, cannons:seq && L.cannonsOn === 'on', fireworks:L.shell === 'on' && L.crown > 0, guides:true, width:Math.max(0.5, Math.min(1.8, L.fireball || 0.5)),
-      height:7, burst:3.6 * Math.max(0.3, L.crown), density:Math.max(0.05, L.sparks), stagger:0.18, palette:'gold', curtain:seq && L.curtainOn === 'on' };
-    pyroA.update(S, st, pyroCue(SC.TC + TL.ti)); tweakMortar(pyroA, age, true);
-    if (showB) { pyroB.update(S, st, pyroCue(SC.TC)); tweakMortar(pyroB, 0, false); }
+      height:7, burst:3.6 * Math.max(0.3, L.crown), density:Math.max(0.05, L.sparks), stagger:0.18, palette:'gold', curtain:seq && L.curtainOn === 'on', column:L.column };
+    pyroA.update(S, st, pyroCue(SC.TC + TL.ti, SC.TC));
+    if (showB) pyroB.update(S, st, pyroCue(SC.TC));
   }
   // tiles: armed mortars glow, the struck hex flashes
   const pulse = 0.22 + 0.08 * Math.sin(time * 3);
