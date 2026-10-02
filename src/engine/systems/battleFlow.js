@@ -48,7 +48,7 @@ import { characterId } from "../../data/spiritIdentity.js";
 import {
   damageApplied, knockdownResolved, fameChanged,
   noteSheetPatched, thrashTokensSpawned, randomBatchDrawn,
-  spiritsSynced, headlinerChanged, posed, poseRoundBanked,
+  spiritsSynced, headlinerChanged, posed, poseRoundBanked, pyroChargeStruck,
 } from "../actions.js";
 import { isPosing, poseRounds, posePayout } from "./limelight.js";
 import {
@@ -56,6 +56,7 @@ import {
   thrashFame, sonicFame, sonicVolleyFame, isRearHit,
 } from "./combat.js";
 import { HEX_BY_NUM } from "../../board/hexMap.js";
+import { PYRO_VERSION } from "../../data/stageEffects.js";
 import { neighborInDirection, straightNeighborInDirection, angleTo, angleDiff } from "../../board/hexGeometry.js";
 import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js";
 import {
@@ -411,6 +412,25 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRi
       yield log(`🎤 ${nameOf(state, targetId)} knocked off the Limelight!${wasPosing ? ' — pose over, guard back up' : ''}`);
     }
     if (nextHex.edge) yield log(`⚠️ ${nameOf(state, targetId)} skids onto the EDGE — #${nextHex.num}!`);
+
+    // 🎆 PYRO v2 (Alex, 2026-10-02): a shove that ENTERS an armed mortar STOPS on
+    // it — "doesn't matter if the push would have pushed the Spirit past the
+    // mortar" — and that charge fires on the Spirit. The engine spends the
+    // charge and ends the slide; the client's hazard hook applies the hit, the
+    // same split every stage hazard uses (`hexHazards` is client-owned).
+    // ⚠️ Read inline, not through stageFx.js's `isArmedPyroHex`: that module
+    // already imports this one, and the cycle is not worth one line.
+    const pyro = state.stageFx?.pyro;
+    if (pyro?.v === PYRO_VERSION && pyro.phase === "armed" && pyro.hexes.includes(nextHex.num)) {
+      yield log(`🎆 ${nameOf(state, targetId)} is shoved onto an armed mortar on #${nextHex.num} — it FIRES!`);
+      state = yield act(pyroChargeStruck(targetId, nextHex.num));
+      state = yield hook('hexHazards', { spiritId: targetId, hexNum: nextHex.num, pyroStruck: true });
+      const after = spiritOf(state, targetId);
+      const endedByKnockdown = !after || after.knockedOut || (after.vibe ?? 0) <= 0
+        || (after.lives ?? 1) < (live.lives ?? 1)
+        || (after.knockdownCount ?? 0) !== (live.knockdownCount ?? 0);
+      return { path, endedByKnockdown, stoppedOnPyro: nextHex.num };
+    }
 
     // Rules, not decoration — and they can end the slide.
     state = yield hook('hexHazards', { spiritId: targetId, hexNum: nextHex.num });

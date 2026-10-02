@@ -157,6 +157,10 @@ import { SHUKUCHI_CD, SHUKUCHI_MAX_HOPS,
 import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
          shukuchiHopsLeft, SHUKUCHI_SKILL } from "./engine/systems/shukuchi.js";
 import { shukuchiHopped } from "./engine/actions.js";
+// 🎆 Pyro v2 (2026-10-02): the mortars fire every END TURN and stop a shove.
+import { pyroTurnEnded, pyroTurnStarted, pyroChargeStruck } from "./engine/actions.js";
+import { isArmedPyroHex } from "./engine/systems/stageFx.js";
+import { PYRO_VERSION } from "./data/stageEffects.js";
 // 🧪 Testing Grounds levers — real engine actions so an exported sandbox log still replays.
 import { sandboxSeatTaken, sandboxRefilled, marqueeCardWon, marqueeCardArmed, marqueeCardPlayed, marqueeKindSet } from "./engine/actions.js";
 import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
@@ -5489,8 +5493,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             setTimeout(() => checkGravityVortex(rival.id, dest.num), 80);
             // Pushed into the inferno?
             setTimeout(() => checkFlamingDisc(rival.id, dest.num), 100);
-            // 🎇 …or into a stage hazard?
-            setTimeout(() => checkStageFxHex(rival.id, dest.num), 130);
+            // 🎇 …or into a stage hazard? (🎆 an armed mortar fires on them —
+            // a one-hex shove already ends there, so there is no slide to stop)
+            setTimeout(() => { if (!strikePyroCharge(rival.id, dest.num)) checkStageFxHex(rival.id, dest.num); }, 130);
             // Knocked off the limelight?
             if (rival.num === LIMELIGHT_HEX) dispatch(posed(rival.id, false));
           });
@@ -5798,7 +5803,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // spawning *underneath* a standee would out it as an empty tile.
     const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum),
       ...shadowHexes];
-    const st = dispatch(stageFxActivated(fxId, occupied, rounds)).stageFx;
+    // 🎆 Pyro runs on Alex's v2 rules (data/stageEffects.js) — opted in HERE, so
+    // a replay recorded before them keeps the old round-clock cadence.
+    const st = dispatch(stageFxActivated(fxId, occupied, rounds, { pyroVersion: PYRO_VERSION })).stageFx;
     if (fxId === 'smoke_machine') {
       addLog(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${howLong(SMOKE_ROUNDS)}).`);
     }
@@ -5806,7 +5813,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`🔺 Lasers rake the stage — they thread AROUND the Spirits, but crossing a beam costs ${LASER_DAMAGE} Vibe. New pattern every round (${howLong(LASER_ROUNDS)}).`);
     }
     if (fxId === 'pyrotechnics') {
-      addLog(`🎆 Pyro charges prime under ${st.pyro?.hexes.length ?? 0} empty hexes — they glow red and BLOW next round! (${rounds != null ? howLong() : `${PYRO_WAVES} waves`})`);
+      addLog(st.pyro?.v === PYRO_VERSION
+        ? `🎆 ${st.pyro.hexes.length} mortars rise from the stage — they FIRE at the end of every turn, and anyone shoved onto one stops there and takes ${PYRO_DAMAGE} Vibe + BURN! (${howLong(3)})`
+        : `🎆 Pyro charges prime under ${st.pyro?.hexes.length ?? 0} empty hexes — they glow red and BLOW next round! (${rounds != null ? howLong() : `${PYRO_WAVES} waves`})`);
     }
     if (fxId === 'animatronics') {
       addLog(`🤖 ${st.animatronics.length} animatronics wake on the stage edge — they stalk the nearest Spirit once a round (${howLong(ANIMATRONIC_ROUNDS)})!`);
@@ -5825,12 +5834,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // push), right beside checkFlamingDisc. Reads the ENGINE slice directly
   // (synchronously fresh) because pushes resolve inside setTimeout chains —
   // Phase 6b retired the stageFxHazardRef mirror.
-  function checkStageFxHex(spiritId, hexNum) {
+  function checkStageFxHex(spiritId, hexNum, { pyroStruck = false } = {}) {
     const { laser: lf, pyro: pf, animatronics: bots } = engineRef.current.stageFx;
     const inBeam = lf && hexInBeams(hexNum, lf.beams);
+    // 🎆 v2 mortars never burn on ENTRY — only the legacy 'erupting' phase does.
+    // A v2 hit arrives here as `pyroStruck` (the engine already spent the charge).
     const inFlames = pf?.phase === 'erupting' && pf.hexes.includes(hexNum);
     const onBot = bots?.some(b => b.num === hexNum);
-    if (!inBeam && !inFlames && !onBot) return;
+    if (!inBeam && !inFlames && !onBot && !pyroStruck) return;
     const sp = spirits.find(s => s.id === spiritId);
     // 😎 DIVINE MISSION blessing — one hazard parts around them, then it's spent.
     if (engineRef.current.noteStates?.[spiritId]?.divineShield) {
@@ -5848,6 +5859,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       triggerEffectFlash(spiritId, '🔥', 'PYRO!', '#ff7722');
       applyVibeDamage(spiritId, PYRO_DAMAGE, 'Pyrotechnics');
       setNoteField(spiritId, { burn: { turnsLeft: PYRO_BURN_TURNS } });
+    }
+    if (pyroStruck) {
+      pyroHit(spiritId, name => `🎆 ${name} is shoved onto an armed mortar on #${hexNum} — it FIRES! ${PYRO_DAMAGE} Vibe + BURN!`);
     }
     if (onBot) {
       addLog(`🤖 ${sp?.name} walks into an animatronic on #${hexNum} — ${ANIMATRONIC_DAMAGE} Vibe!`);
@@ -5895,6 +5909,46 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         addLog(`🤖 An animatronic winds down and is hauled offstage.`);
       }
     }
+  }
+
+  // 🎆 ONE PYRO HIT — the volley, the finale and a shove onto a charge all land
+  // through here, so the number, the Burn and the knockdown check cannot drift
+  // apart. ⁉️ The Burn is the existing rule kept as it was: Alex set the damage
+  // (3, 2026-10-02) and did not mention the Burn — flagged, not decided.
+  function pyroHit(id, line, delay = 0) {
+    const sp = engineRef.current.spirits.find(s => s.id === id);
+    setTimeout(() => {
+      addLog(line(sp?.name));
+      triggerEffectFlash(id, '🔥', `PYRO! −${PYRO_DAMAGE}`, '#ff7722');
+      applyVibeDamage(id, PYRO_DAMAGE, 'Pyrotechnics');
+      setNoteField(id, { burn: { turnsLeft: PYRO_BURN_TURNS } });
+    }, delay);
+  }
+
+  // 🎆 PYRO v2 — END TURN: every armed mortar fires; anyone standing on one is
+  // caught. Runs on EVERY player's turn end (Alex: "not a full round").
+  function firePyroVolley() {
+    const r = dispatch(pyroTurnEnded()).stageFx.lastPyro;
+    if (r?.event !== 'fired') return;
+    addLog(`🎆 END OF TURN — ${r.hexes.length} mortar${r.hexes.length !== 1 ? 's' : ''} FIRE!`);
+    r.caught.forEach((id, i) => pyroHit(id, name => `🔥 ${name} is standing on a mortar when it fires — ${PYRO_DAMAGE} Vibe + BURN!`, 350 + i * 450));
+  }
+  // 🎆 PYRO v2 — before the NEXT turn starts, a spent set re-arms on fresh hexes
+  // (sized by the show's round). After the round clock, so the last volley of a
+  // show closes it and no armed mortar is left behind to fizzle.
+  function rearmPyro() {
+    const occupied = [...engineRef.current.spirits.filter(sp => !sp.knockedOut).map(sp => sp.num), ...amps.map(a => a.hexNum), ...shadowHexes];
+    const r = dispatch(pyroTurnStarted(occupied)).stageFx.lastPyro;
+    if (r?.event === 'armed') addLog(`🎆 ${r.hexes.length} mortars rise and arm for the next turn.`);
+  }
+  // 🎆 PYRO v2 — a forced move ENTERS an armed mortar: the engine spends the
+  // charge (it STOPS the shove — the caller ends its slide on a `true`), and
+  // the hit lands. Every client push loop asks this before taking a step.
+  function strikePyroCharge(spiritId, hexNum) {
+    if (!isArmedPyroHex(engineRef.current, hexNum)) return false;
+    dispatch(pyroChargeStruck(spiritId, hexNum));
+    checkStageFxHex(spiritId, hexNum, { pyroStruck: true });
+    return true;
   }
 
   // Per-ROUND tick (once per full round, alongside the Disco Inferno tick):
@@ -6441,6 +6495,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         addLog(`💥 ${target.name} crashes to a stop at #${curNum}!`);
         return;
       }
+      // 🎆 PYRO v2 — an armed mortar is a STOP: the shove lands on it and ends
+      // there, however many hexes it had left (Alex, 2026-10-02).
+      const onMortar = isArmedPyroHex(engineRef.current, nextHex.num);
       const fromNum = curNum;
       let aborted = false;
       // Fresh-state guard: if the target was KO'd, respawned, or relocated since
@@ -6467,6 +6524,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         // 🕳️ Knocked INTO the vortex's reach — being shoved there counts.
         checkGravityVortex(targetId, nextHex.num);
         checkFlamingDisc(targetId, nextHex.num);
+        if (onMortar && strikePyroCharge(targetId, nextHex.num)) return;
         checkStageFxHex(targetId, nextHex.num);
         if (step < spaces) stepOnce();
       }, 240);
@@ -6682,8 +6740,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     setTimeout(() => checkGravityVortex(defenderId, pushHex.num), 80);
     // Pushed into the Disco Inferno?
     setTimeout(() => checkFlamingDisc(defenderId, pushHex.num), 100);
-    // 🎇 …or into a stage hazard?
-    setTimeout(() => checkStageFxHex(defenderId, pushHex.num), 130);
+    // 🎇 …or into a stage hazard? (🎆 an armed mortar fires on them — a
+    // one-hex push already ends there, so there is no slide to stop)
+    setTimeout(() => { if (!strikePyroCharge(defenderId, pushHex.num)) checkStageFxHex(defenderId, pushHex.num); }, 130);
     // Clear pose if pushed off limelight
     if (defender.num === LIMELIGHT_HEX && pushHex.num !== LIMELIGHT_HEX) {
       dispatch(posed(defenderId, false));
@@ -9142,7 +9201,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         checkPoisonSlime(e.spiritId, e.hexNum);
         checkGravityVortex(e.spiritId, e.hexNum);
         checkFlamingDisc(e.spiritId, e.hexNum);
-        checkStageFxHex(e.spiritId, e.hexNum);
+        checkStageFxHex(e.spiritId, e.hexNum, { pyroStruck: !!e.pyroStruck });
       },
       demolishFans:          (e) => demolishFans(e.targetId, e.attackerId, e.hexNum),
       knockOut:              (e) => knockOut(e.spiritId, null, undefined),
@@ -9613,6 +9672,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Positional boredom: fans drift only after lingering on the outer edge; tick recovery lag.
     tickFans(acting.id, acting.num);
 
+    // 🎆 PYRO v2 — the END TURN volley. Every player's turn, not every round
+    // (Alex, 2026-10-02): the one board clock that is deliberately per turn.
+    firePyroVolley();
+
     if (report.roundCompleted) {
       // ── BOARD TOKENS: scatter fresh Lost Chords each round (engine rng) ───
       // The stage resonates with overlapping frequencies — harmonic interference
@@ -9704,6 +9767,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // 🪦 The glow-and-debt Shamisen ticked here, on the ROUND clock. The Iwato
       // curse counts the cursed Spirit's OWN turns instead (`endTurn`).
     }
+
+    // 🎆 PYRO v2 — the mortars come back before the next turn starts. AFTER the
+    // round block, so a show whose clock just ran out stays down.
+    rearmPyro();
 
     // 🧪 POISON SLIME decay — seeded with the living Spirit count and ticked per
     // 🧪 THE SLIME ROAD IS *NOT* TICKED HERE — see `applyTurnEnded`.

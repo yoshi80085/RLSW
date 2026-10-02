@@ -104,8 +104,33 @@ export const PYRO_WAVE_HEXES = [5, 8];    // hexes per wave — later waves stay
 // as its show lasts. If the show ends while a wave is ARMED, that wave blows as
 // the finale in the same tick instead of fizzling — a glowing hex that never
 // goes off would teach players to ignore the glow.
-export const PYRO_DAMAGE     = 1;         // Vibe lost in an eruption
+// ⭐ 2026-10-02 (Alex): "real Vibe damage — like 3 or so". Was 1. One number for
+// every pyro hit: caught when a volley fires, shoved onto a charge, and the
+// legacy walk-into-flames hazard old replays still route through.
+export const PYRO_DAMAGE     = 3;         // Vibe lost to a pyro hit
 export const PYRO_BURN_TURNS = 2;         // Burn status applied (reuses the Burn tick — the victim's OWN turns)
+
+// ── 🎆 PYRO v2 — THE MORTARS (Alex, 2026-10-02) ──────────────────────────────
+// "Once the Stage effect triggers, the mortars arm — they fire under 2
+// conditions: 1. end of a player's turn (not a full round) … coming back before
+// the start of the next player's turn, or 2. if a player gets pushed into it —
+// doesn't matter if the push would have pushed the Spirit past the mortar — it
+// STOPS on the mortar and takes damage. 1st round about 5 mortars, 2nd 10 or so,
+// 3rd 13 or so."
+//   ⏱️ fire   — every END TURN (`pyroTurnEnded`): every armed charge blows; anyone
+//              standing on one is caught.
+//   ⏱️ re-arm — before the NEXT turn starts (`pyroTurnStarted`), sized by the
+//              show's round. Between the two, the round clock can end the show,
+//              so the last volley closes it and no armed charge is left to fizzle.
+//   💥 shove  — a forced move that ENTERS an armed hex stops on it; that charge
+//              fires on the Spirit and is spent until the re-arm.
+//   🚶 walking onto one does NOTHING by itself — you are simply standing on it
+//              when your own turn ends.
+// ⚠️ VERSIONED. Only an activation that carries `pyroVersion: 2` runs these
+// rules; a replay log recorded before them has no field and keeps the old
+// round-clock arm → erupt → re-arm cadence above, bit for bit.
+export const PYRO_VERSION      = 2;
+export const PYRO_ROUND_HEXES  = [5, 10, 13];   // armed charges per show round — later rounds stay at the last size
 
 // ── 🤖 ANIMATRONICS ──────────────────────────────────────────────────────────
 // ⏱️ ROUND CLOCK: they take one step per ROUND now, not per player-turn. 5
