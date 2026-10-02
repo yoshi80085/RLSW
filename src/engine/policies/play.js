@@ -139,38 +139,12 @@ export const HARNESS_GAPS = {
   // the match. That one was not an unpaid bonus; it was a live penalty welded
   // on, on a Spirit who never chose it. It is a rule in `battleFlow.js` now.
 
-  // ── 🎤 NEW 2026-08-17 — the riff-off runs, with one modelled part ──────────
-  //
-  // ⚠️ THE RULES ARE REAL; THE HANDS ARE NOT. Both charts come out of
-  // `applyRiffOffStarted` exactly as they do online, and the verdict is
-  // `applyRiffResolved`'s. What no state can supply is the PERFORMANCE — for a
-  // human that is fingers on a falling-notes highway — so the two results arrays
-  // come from `riffOff.js: simulateRiffPerformance`, whose single assumption is
-  // that a Spirit plays the duel as well as they played their last melody.
-  // ⚠️ ANY BENCH READING ABOUT RIFF-OFF FREQUENCY OR PAYOUT IS A READING OF THAT
-  // CURVE AS MUCH AS OF THE GAME. Quote it that way.
-  riffPerformance: 'the duel runs; both sides are PLAYED by simulateRiffPerformance (perfScore-driven)',
-
-  // ~~Round 2 escalation is not driven headlessly: the Round-1 verdict closes
-  // the duel.~~
-  //
-  // ✅ CLOSED 2026-08-18 — the key is DELETED, not softened, so `harnessCheck`'s
-  // "declared, not silently absent" sweep keeps meaning what it says.
-  // `transition.js`'s `riffOff` case now escalates on the engine's own
-  // `verdict.close`, exactly where the client's `fireBeamClash` does, capped at
-  // two rounds. That restores the 2 FP sudden-death bonus, the extra damage
-  // band, and the both-paid consolation — which `bothStrong` gates on
-  // `round >= 2`, so before this it could not fire at all.
-  //
-  // ⚠️ WHAT IS LEFT IS A DIFFICULTY GAP, NOT A RULES GAP. Round 2's chart is
-  // sped up to 0.58× the gaps and `simulateRiffPerformance` has no tempo term,
-  // so both sides play sudden death as well as they played Round 1. That
-  // OVER-states clean quality in Round 2 specifically, which matters most at the
-  // `RIFF_BOTH_PAID_QUALITY` bar (75%): the consolation fires more often here
-  // than it would with human hands on a chart that just got half again as fast.
-  // Declared rather than corrected — a tempo penalty would be a number nobody
-  // has measured, sitting in the one place tuning cannot see it.
-  riffRound2Speed: 'sudden death IS driven; its 0.58× chart is played at Round-1 difficulty (no tempo term)',
+  // The rules and charts are shared with the live arena. Bot hands are a
+  // seeded physical-error model derived from the last melody's perfScore.
+  riffPerformance: 'arena duels use seeded timing errors and the same judge as humans; not measured student performance',
+  // Tempo now narrows real input windows, including for bots. Keep the empirical
+  // calibration gap explicit; this curve has not been fitted to player data.
+  riffRound2Speed: 'tempo-aware arena timing is implemented; physical jitter curve still needs playtest calibration',
 
   // The Overcharge modal (choose floor / ceiling / chord assist on a Charge Zone)
   // is a player decision the headless path does not guess at: it takes the

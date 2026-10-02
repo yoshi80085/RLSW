@@ -19,13 +19,5 @@ export function firePatch(ns, skillId) {
 export function tickCooldowns(ns) {
   return Object.fromEntries(Object.entries(ns?.abilityCd ?? {}).map(([id, left]) => [id, Math.max(0, left - 1)]));
 }
-// The existing Cursed Shamisen effect accelerates the OTHER selected ability.
-export function tickShamisen(ns) {
-  return Object.fromEntries(Object.entries(ns?.abilityCd ?? {}).map(([id, left]) =>
-    [id, id === 'cursed_shamisen' ? left : Math.max(0, left - 1)]));
-}
-export function resetAllCooldowns(ns, unlockedSkills = []) {
-  const cd = { ...(ns?.abilityCd ?? {}) };
-  for (const id of unlockedSkills) if (ABILITY_CD[id]) cd[id] = ABILITY_CD[id];
-  return cd;
-}
+// 🪦 `tickShamisen` and `resetAllCooldowns` went with the glow-and-debt Shamisen
+// (2026-10-02): the Iwato curse speeds up and resets nothing. §2.3.00.

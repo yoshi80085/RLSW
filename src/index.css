@@ -1,5 +1,7 @@
 @import "./ui/SpiritDraft.css";
 @import "./ui/SeatPortrait.css";
+@import "./ui/AbilityDemo.css";
+@import "./ui/CursedWheel.css";
 :root {
   --text: #6b6375;
   --text-h: #08060d;

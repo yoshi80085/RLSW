@@ -27,6 +27,7 @@ export const ATTACK_TILES = Object.freeze({
   colors:{
     swing:'#ff4a3d', sonic:'#4f7dff', blaster:'#ff3dac', tentacle:'#5cff6a',
     psycho_bushido:'#ffb347', gravity_control:'#9b5cff', displace:'#c77dff', shukuchi:'#e8f4ff',
+    cursed_shamisen:'#8f4dff',   // 🎸 the curse's own violet (`CURSED_SHAMISEN.edgeColor`)
   },
   brightness:2.6,           // the rim's glow (bloom picks it up past ~1)
   fill:0.8,                 // the hex's own wash, as a share of its strength

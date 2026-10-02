@@ -7,7 +7,29 @@ import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
 import { playBarrageChord, playBarrageFoley, playSustainChord, playShieldChord, playChordClash, barrageDelay } from './audio/sonicBarrageAudio.js';
 import { playSwingCharge, playSwingStrike } from './audio/swingStrikeAudio.js';
 import { swingBeamPower } from './board/swingClashVisuals.js';
-import { BARRAGE_LAUNCH, barrageContact, barrageLanded, SONIC_GATE, SONIC_DICE } from './board/sonicBarrageTiming.js';
+import { BARRAGE_LAUNCH, barrageContact, barrageLanded, SONIC_GATE, SONIC_DICE, beatsFor } from './board/sonicBarrageTiming.js';
+// ⚡ Psycho Bushido's sound — the strike laid on the Sonic's staged clock (2026-10-01).
+import { createBushidoSfx, scheduleBushidoStrike, bushidoLandingSfx } from './audio/bushidoSfx.js';
+import { arenaDieTiming } from './board/arenaDiceSequence.js';
+// One of each per page, like the arena's landing sfx — built on first use.
+let bushidoSfxOne = null, bushidoLandOne = null;
+const bushidoSfx = () => (bushidoSfxOne ??= createBushidoSfx());
+const bushidoLand = () => (bushidoLandOne ??= bushidoLandingSfx());
+// 🎸 The Iwato curse's sound (2026-10-02) — plucks, the cast's score, the burn.
+import { createShamisenCurseSfx, scheduleCast, midiHz } from './audio/shamisenCurseSfx.js';
+let shamisenSfxOne = null;
+const shamisenSfx = () => (shamisenSfxOne ??= createShamisenCurseSfx());
+/** A root as a MIDI note in the shamisen's low octave (D → 50); its strings sit an octave up. */
+const shamisenMidi = root => 48 + Math.max(0, pitchIndex(root));
+/** His Drive dice as the table throws them: kept, then dropped — `arenaDieTiming`'s order. */
+function bushidoLandings(v) {
+  const kept = (v.diceVals ?? []).map((value, i) => ({ value, sides:v.dicePool?.[i] ?? 6 }));
+  const dropped = (v.droppedDiceVals ?? []).map((value, i) => ({ value, sides:v.droppedDicePool?.[i] ?? 6 }));
+  return [...kept, ...dropped].map((d, index) => {
+    const tm = arenaDieTiming(d.value, index, 0, SONIC_DICE.poolStart);
+    return { t:tm.delay + tm.flight, amt:Math.min(1, d.value / Math.max(1, d.sides === 11 ? 12 : d.sides)) };
+  });
+}
 import { BATTLE_INTRO } from './board/battleRollGate.js';
 import { bushidoLane, bushidoDrawPatch, bushidoBlockers } from "./engine/systems/bushido.js";
 import boardImg from "./board.png";
@@ -49,6 +71,8 @@ import {
 import { Riffbook } from "./ui/Riffbook.jsx";
 import { BoardFX } from "./ui/BoardFX.jsx";
 import { BoardViewport } from "./ui/BoardViewport.jsx";
+import { RiffArenaBattle } from './ui/RiffArenaBattle.jsx';
+import { arenaSeatControl } from './riff/arenaDuel.js';
 import { SonicRollPrompt } from "./ui/SonicRollPrompt.jsx";
 import { arenaFrame } from "./board/arenaFrame.js";
 import { MatchSurface, HudRegion } from "./ui/MatchSurface.jsx";
@@ -108,12 +132,18 @@ import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineM
 // player sees and the hex an ability will accept have to be the same read.
 import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
 import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
-import { ABILITY_CD, ABILITY_DB_COST, cooldownLeft, canFire, firePatch, tickShamisen, resetAllCooldowns } from "./engine/systems/cooldowns.js";
+import { ABILITY_CD, ABILITY_DB_COST, cooldownLeft, canFire, firePatch } from "./engine/systems/cooldowns.js";
+// 🎸 THE IWATO CURSE — the Cursed Shamisen's rules (`RONIN_ABILITY_DESIGN.md` §2.3.00).
+import { SHAMISEN_SKILL, CAST_RANGE as SHAMISEN_RANGE, STRINGS as SHAMISEN_STRINGS, CURSE_TURNS, EXORCISE_NOTES,
+         hasShamisen, stringsOf, shamisenRoot, canTakeUp, takeUpPatch, tuningOpen, tuneCheck, tunePatch, stringVoicing,
+         castCheck, castPatches, isCursed, exorciseWindow, livePalette, endCursedTurn, curseScene } from "./engine/systems/iwatoCurse.js";
+import { CURSED_SHAMISEN, planCast, isIwato, iwatoNames } from "./board/cursedShamisen.js";
+import { CursedWheel } from "./ui/CursedWheel.jsx";
 import { PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
          PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
-         PSYCHO_BUSHIDO_STACK_COST, psychoBushidoBonus, SHADOW_ILLUSION_TURNS,
+         PSYCHO_BUSHIDO_STACK_COST, psychoBushidoD8s, SHADOW_ILLUSION_TURNS,
          SHADOW_ILLUSION_SUSTAIN_DRAIN, PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD,
-         CURSED_SHAMISEN_CD, CURSED_SHAMISEN_DURATION, CURSED_SHAMISEN_PAYOFF_COST,
+         CURSED_SHAMISEN_CD,
          DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD,
          SUNBEAM_CD } from "./data/gameConstants.js";
 import { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS,
@@ -770,6 +800,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // The acting client's orchestration sets them; remote clients need to
       // mirror the overlay so all players see and participate in battles.
       const aType = frame.action?.type;
+      // Arena duels derive their entire presentation from the versioned engine
+      // slice below. Legacy overlay gates must not rewrite its shared clock.
+      if(next.battle?.arenaVersion)return;
 
       // ── RIFF-OFF: remote client opens the overlay when the engine battle starts
       if (aType === "RIFF_OFF_STARTED") {
@@ -864,9 +897,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // ── MELEE: remote client opens the battle overlay on a swing/sonic roll
       if (aType === "ATTACK_ROLLED") {
         const eb = next.battle;
-        if (eb && frame.action.kind === 'sonic') startSonicPresentation(eb,true);
+        // ⚡ A Psycho Bushido is a staged Sonic-shaped bout (the shield, then the draw).
+        if (eb && (frame.action.kind === 'sonic' || frame.action.kind === 'bushido')) startSonicPresentation(eb,true);
         if (eb?.swingClash) startSwingPresentation(eb,true);
-        if (eb && frame.action.kind !== 'sonic' && !eb.swingClash) {
+        if (eb && frame.action.kind !== 'sonic' && frame.action.kind !== 'bushido' && !eb.swingClash) {
           const { attackerId, defenderId } = frame.action;
           const isSonic = frame.action.kind === 'sonic';
           playBattleMusic(isSonic ? riffOffSong : battleSong, 0.7);
@@ -967,7 +1001,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           // results out of the engine and moves this to the card the duel is
           // actually on — including parking a player who has already performed
           // on the waiting card, so a rebuild can't hand them a second run.
-          phase: 'riff_intro',
+          phase: eb.arenaVersion?'riff_arena':'riff_intro',
+          ...(eb.arenaVersion?{arenaVersion:1,arenaData:eb}:{}),
           attackerId: eb.attackerId, defenderId: eb.defenderId,
           ...riffSidesFromEngine(eb),
           turn: 'attacker', noteIdx: -1, countdown: 3, round: eb.round ?? 1,
@@ -1316,6 +1351,52 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // flashing note lives here (not in React state) so reaction times are
   // measured against the real flash timestamp, not a render cycle.
   const riffEngineRef = useRef(null);
+  const arenaRiffProjection=useRef(null);
+  const arenaRiffResolved=useRef('');
+  useEffect(()=>{
+    const b=engineState.battle;
+    if(!b?.arenaVersion){if(battleStateRef.current?.arenaVersion)setBattleState(null);return;}
+    const arenaKey=`${engineState.turn.count}:${b.attackerId}:${b.defenderId}`;
+    const final=b.verdict&&!b.verdict.close;
+    setBattleState(p=>({...p,riffOff:true,sonicAttack:true,arenaVersion:1,arenaKey,arenaData:b,
+      phase:'riff_arena',attackerId:b.attackerId,defenderId:b.defenderId,round:b.round,
+      ...riffSidesFromEngine(b),atkResults:b.atkResults??[],defResults:b.defResults??[],
+      ...(b.verdict??{}),arenaImpactAt:final?(p?.arenaImpactAt??(Date.now()-b.arenaStartedAt)/1000):null}));
+    const controls=arenaSeatControl(b,engineState.spirits,netRef.current);
+    if(!controls.conductor||netSyncRef.current)return;
+    const token=`${arenaKey}:${b.round}:${b.arenaClock}`;
+    if(b.atkResults&&b.defResults&&!b.verdict&&arenaRiffResolved.current!==token){
+      arenaRiffResolved.current=token;
+      recordRiffResults(b.attackerId,b.atkResults);recordRiffResults(b.defenderId,b.defResults);
+      dispatch(riffResolved());return;
+    }
+    if(b.verdict?.close){dispatch(riffRound2Started({round:b.round,at:Date.now()}));return;}
+    if(final){
+      try{playBeamBreak(b.round>=2);}catch{/* spectacle cannot block aftermath */}
+      const timer=setTimeout(()=>{if(engineRef.current.battle===b)closeRiffOff();},2200);
+      return()=>clearTimeout(timer);
+    }
+  },[engineState.battle]);
+  function startArenaRiffClock(){
+    const b=engineRef.current.battle;if(!b?.arenaVersion)return;
+    if(!arenaSeatControl(b,engineRef.current.spirits,netRef.current).conductor)return;
+    try{getRiffAudio();getAudioCtx();}catch{/* audio cannot prevent the duel starting */}
+    dispatch(riffRound2Started({clockOnly:true,round:b.round,at:Date.now()}));
+    // The arena's call and answer ARE the music, as in the approved preview.
+    // A prerecorded riff masks the player's short phrases and their rig voices.
+    stopBattleMusic();
+  }
+  function submitArenaRiff(side,results){
+    const b=engineRef.current.battle;if(!b?.arenaVersion||netSyncRef.current)return;
+    if(!arenaSeatControl(b,engineRef.current.spirits,netRef.current).own[side])return;
+    dispatch(riffResultsSubmitted(side===0?'attacker':'defender',results,{round:b.round,clock:b.arenaClock}));
+  }
+  function soundArenaRiff(side,note,result){
+    if(!result.hit){try{if(result.grade==='wrong')playRiffWrong(note.key);}catch{/* optional */}return;}
+    const b=engineRef.current.battle;if(!b?.arenaVersion)return;
+    const seat=side===0?b.attackerId:b.defenderId;
+    playNoteSound(null,{seat,freq:82.4069*2**(note.pitch/12),holdTime:Math.max(.2,(note.sustain??0)/1000),fadeTime:.2,volume:.19});
+  }
   // 🎯/🎸/🎹 instrument used to read notes in riff-off battles (toggle on the
   // countdown card). NEON is the standard: notes land on the real neck, in the
   // position you actually play, and it is the only view a real guitar can be
@@ -1475,7 +1556,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const net = netRef.current;
     if (!net) return;
     const eb = engineState.battle;
-    if (eb?.kind !== 'riffOff') return;
+    if (eb?.kind !== 'riffOff' || eb.arenaVersion) return;
     const bs = battleState;
     if (!bs?.riffOff || bs.attackerId !== eb.attackerId) return; // overlay not up / not this duel
     const atkIn = !!eb.atkResults, defIn = !!eb.defResults;
@@ -1961,6 +2042,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [voiceRollFx, setVoiceRollFx] = useState(null);
   // 🔓 The seat-unlock moment (ui/SeatUnlockBurst.jsx + arenaVisuals SEAT_UNLOCK).
   const [seatUnlockFx, setSeatUnlockFx] = useState(null);
+  // 🔥 The exorcism's moment on the Scale Wheel: `{ spiritId, key }` for a few
+  // seconds after a melody lifts the Iwato curse (the wheel burns clean).
+  const [exorciseFx, setExorciseFx] = useState(null);
   // 🔊 Amp deck thump — { id, key } bumps a 300ms speaker-thump on that
   // Spirit's corner stack when their Sonic beam fires (AMP_DECK_DESIGN.md §3.2)
   const [deckThump, setDeckThump] = useState(null);
@@ -2792,7 +2876,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }));
   }
 
-  const currentScale = playableScale(rootNote, scaleMode);
+  // 🌑 Curse-aware (`iwatoCurse.js` livePalette): under the Iwato curse this IS
+  // Iwato on the Ronin's root, so every note-colour, the live discord check and
+  // the wheel read the same palette the commit will score. Uncursed it is
+  // exactly `playableScale(rootNote, scaleMode)`.
+  const currentScale = acting && isCursed(actingNoteState) ? livePalette(acting.id, actingNoteState) : playableScale(rootNote, scaleMode);
   const intervals = getIntervalNotes(rootNote, scaleMode);
   const { fourth: fourthNote, fifth: fifthNote,
           tritone: tritoneNote, majorThird: majorThirdNote,
@@ -3650,6 +3738,32 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // `true` — every caller that predates this — still means Drive.
       const dest = stackCommitDest
         || (typeof _forceChordMode === 'string' ? _forceChordMode : 'drive');
+      // 🪕 THE THIRD DESTINATION — the Cursed Shamisen's strings (2026-10-02).
+      // ⭐ Same budget, same stock slot, same flight as a stack commit: Alex —
+      // the sacrifice is "a note that could have been used for his Drive or
+      // Sustain", so a string is paid for in exactly the coin those are.
+      // `iwatoCurse.js` `tuneCheck` says which notes and when.
+      if (dest === 'strings') {
+        const note = noteStock[idx];
+        const check = tuneCheck(actingNoteState, note);
+        if (!check.ok) { addLog(`🎸 ${check.reason[0].toUpperCase()}${check.reason.slice(1)}.`); return; }
+        const next = tunePatch(actingNoteState, note);
+        const i = stringsOf(actingNoteState).length;
+        const voicing = stringVoicing({ ...actingNoteState, ...next });
+        setNoteField(acting.id, {
+          ...next,
+          usedStockIdx: usedAdd(usedStockIdx, idx),
+          stackCommitsThisTurn: (actingNoteState?.stackCommitsThisTurn ?? 0) + 1,
+        });
+        if (typeof _flyEvent === 'object' && _flyEvent) fireBurst('out', { seat: `hand:${idx}`, letter: note });
+        // The string plucks in its own octave — a repeat rings an octave higher.
+        shamisenSfx().pluck(midiHz(shamisenMidi(shamisenRoot(actingNoteState)) + 12 + voicing.ivs[i] + 12 * voicing.octaves[i]),
+          { delay: CURSED_SHAMISEN.tuneMs * 0.75 / 1000, detune: CURSED_SHAMISEN.detune });
+        const left = SHAMISEN_STRINGS - i - 1;
+        addLog(`🪕 ${note} → string ${i + 1} (${voicing.labels[i]}${voicing.octaves[i] ? ', an octave up' : ''}). ${left > 0 ? `${left} to tune.` : 'All three strings sing — the curse is ready to cast.'}`);
+        if (left === 0 && stackCommitDest === 'strings') setStackCommitDest(null);
+        return;
+      }
       const stack = dest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
       const destCap = dest === 'sustain' ? actingStackCapSustain : actingStackCapDrive;
       if (stack.length >= destCap) {
@@ -3958,6 +4072,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const open = {
         driveOpen:   budgetLeft > 0 && (actingNoteState?.driveStack   ?? []).length < actingStackCapDrive,
         sustainOpen: budgetLeft > 0 && (actingNoteState?.sustainStack ?? []).length < actingStackCapSustain,
+        stringsOpen: budgetLeft > 0 && tuningOpen(actingNoteState),   // 🪕 the Shamisen's strings
       };
       // ⏎ Enter = Continue to Melody (Alex, 2026-09-28). The returned `true`
       // preventDefaults the keydown, so a focused button is not ALSO clicked.
@@ -4249,6 +4364,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
     }
     commit.logs.forEach(addLog);
+
+    // 🔥 THE EXORCISM'S MOMENT — the lift itself is already in `patch`.
+    if (report.exorcised) {
+      const exKey = `${acting.id}:${Date.now()}`;
+      // The curse is already gone from the patch; the wheel still needs its key to burn.
+      const was = actingNoteState?.iwatoCurse ?? {};
+      setExorciseFx({ spiritId: acting.id, key: exKey, roninRoot: was.roninRoot ?? 'C', by: was.by ?? null });
+      setTimeout(() => setExorciseFx(prev => (prev?.key === exKey ? null : prev)), Math.max(CURSED_SHAMISEN.ofudaBurnMs, 2400) + 600);
+      shamisenSfx().exorcise(midiHz(64));
+      triggerEffectFlash(acting.id, '🔥', 'EXORCISED!', '#ffd27a');
+    }
 
     // ── 3. PRESENTATION — everything the kernel cannot know ──────────────────
     // 🎤 Show the voice roll as a spinning-then-settling d6 so the player SEES
@@ -4595,7 +4721,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
-    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Activate the curse (${CURSED_SHAMISEN_DB_COST} Db) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db per round to protect yourself, but rivals can't see whether you paid.`);
+    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Take it up, and from your next turn tune its ${SHAMISEN_STRINGS} strings with Iwato notes in the chord step. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes (${CURSED_SHAMISEN_DB_COST} Db, your Action Token) — their scale becomes Iwato for ${CURSE_TURNS} turns.`);
     // 🪦 THE SIX THEORY UNLOCK LOGS AND THE DISCORD-GRANT TABLE WENT WITH THE
     // BRANCH (2026-09-02). They taught the pardon ladder at the moment of
     // purchase; the ladder is universal and free now (`music/context.js`), so
@@ -6757,10 +6883,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function applyVibeDamage(targetId, dmg, sourceLabel, attackerId) {
     // 👤 Ronin being attacked dismisses shadow
     if (characterId(targetId) === 'cosmic_ronin' && dmg > 0) dismissShadowIllusion('the Ronin was attacked', targetId);
-    // 🎸 Cursed Shamisen — if Ronin takes Vibe damage while glowing and unpaid,
-    // ALL cooldowns reset. ⚠️ MUST fire AFTER the shadow dismiss but BEFORE the
-    // engine's damage slice, so the reset reads the pre-damage cooldown map.
-    if (characterId(targetId) === 'cosmic_ronin' && dmg > 0) checkShamisenCursePenalty(targetId);
+    // 🪦 The glow-and-debt Shamisen's "a hit resets every cooldown" lived here
+    // until 2026-10-02. ⁉️ Whether a hit detunes a string is proposed, not ruled.
     // 💥 Dramatise the hit: float a red number, shake the victim, push the camera in.
     if (dmg > 0) {
       const tgtNow = spirits.find(s => s.id === targetId);
@@ -7701,10 +7825,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // 🗡️ SHREDDING RONIN — REWORKED SIGNATURE ARSENAL
   // ═══════════════════════════════════════════════════════════════════════════
 
-  // 🌀 PSYCHO BUSHIDO — Iaijutsu dash. Charge in a straight line from facing.
-  // Remaining AP after reaching the target converts to bonus Drive. 2-round CD.
-  // The Ronin warps to the hex adjacent to the target along the charge line,
-  // then initiates a swing with Drive boosted by leftover AP.
+  // ⚡ PSYCHO BUSHIDO — the iaijutsu draw (2026-10-01): a rival 3–5 hexes straight
+  // ahead raises a Sustain shield; the Ronin's Drive dice (the range turning d6s
+  // into d8s) burst it; he arrives on the hex before the rival at the draw.
+  // See `resolvePsychoBushido` below.
   // 🌀 SHUKUCHI ARPEGGIO — one hop, and the client half of §2.5.0a/§2.5.0b.
   //
   // ⚠️ THE Db AND THE CLOCK ARE PAID ONCE, ON THE FIRST HOP — and the branch
@@ -7853,89 +7977,54 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       return;
     }
 
-    // ⭐ THE LADDER — +2 / +3 / +4 ACROSS THE 3–5 WINDOW. Alex, 2026-09-04e.
+    // ⚡ THE DRAW IS A BURST NOW, NOT A SWING (Alex, 2026-10-01): "the Rival puts
+    // up a shield that Ronin has to 1st Burst through". The Rival's Sustain
+    // throws a shield; his Drive rig — the range turning d6s into d8s, two at 3,
+    // three at 4, four at 5 (`bushidoUpgrade`) — hits it one die at a time on
+    // the Sonic's ledger; the strength that gets through is the damage, the push
+    // is the Sonic's (one hex per die through, along his facing), and a shield
+    // that holds costs him nothing more. It plays on the Sonic's staged roll —
+    // the Rival raises the shield, he throws, charges on his dice, rumbles, and
+    // draws on the launch beat (`startSonicPresentation`, `bushidoStrikeVisuals`).
     //
-    // ⚠️ THE SIGN IS STILL THE THING TO GUARD. This was `apLeft - distToTarget`
-    // and it was exactly backwards: an ADJACENT rival paid the MAXIMUM bonus and
-    // the full-length charge paid nothing — "the ability rewarded standing still
-    // and called it lightning." Alex found it by reading the payout table,
-    // 2026-08-20 (`SEQUENCING.md` §B8). The ladder keeps the sign the right way
-    // round by construction, and `psychoBushidoBonus` is the only place it lives.
-    //
-    // 🎯 WHY A LADDER AND NOT THE FLAT +3 THE RESPEC FIRST ASKED FOR. §2.1 says
-    // the ability IS the distance gradient; the respec said a bright line teaches
-    // "the ultimate beginner" better than a curve nobody notices. A window that
-    // REFUSES the close charge and still pays more the further out you start is
-    // the only shape that is both, and it is what Alex took.
-    // 📌 `distToTarget <= PSYCHO_BUSHIDO_MAX_RANGE`, so the top rung is +4 and
-    // this can never exceed ATK_BONUS_CAP on its own; it can still clip when
-    // stacked with moshDrive, and `initiateSwing` logs it when it does.
-    const bonusDrive = psychoBushidoBonus(distToTarget);
-
-    // Warp Ronin to the hex just before the target
+    // ⭐ HE DRAWS FROM WHERE HE STANDS. The warp to the hex before the Rival is
+    // NOT dispatched here: it happens at the draw, inside `resolveSonicSequence`,
+    // right before the push — so the board shows him crouched on his own hex
+    // through the whole roll, and the kernel does the same (roll, warp, push).
+    const d8s = psychoBushidoD8s(distToTarget);
     const landHex = HEX_BY_NUM[targetStep.to];
-    if (landHex && landHex.num !== originHex.num) {
-      dispatch(spiritWarped(acting.id, landHex.num, 0));
-    }
 
-    // ⭐ SPEND THE DASH'S SHARE OF A FLAT 3 AP, and do NOT touch the Action
-    // Token here. `initiateSwing` refuses a strike with either already spent, and
-    // this used to pay the whole bill up front — dash, AP and token — and then
-    // ask for a blow the turn could no longer afford.
-    //
-    // ⚠️ THE RONIN NO LONGER ENDS THE TURN AT ZERO, AND THAT IS THE CHANGE. The
-    // dash used to swallow `apLeft`; it now takes 2 and leaves the Swing its 1,
-    // so a fast Ronin can charge AND still walk. That is the respec's real gift
-    // and it is the first thing to look at if the ability reads as too strong —
-    // `PSYCHO_BUSHIDO_AP_COST` is the one dial, and the 4-round cooldown and the
-    // Drive-stack bill are the brakes that were put on in exchange.
-    dispatch(beatsSpent(Math.max(0, PSYCHO_BUSHIDO_AP_COST - 1), false));
+    // 👤 Attacking dismisses the double (initiateSwing did this for the old strike).
+    dismissShadowIllusion('the Ronin attacked', acting.id);
+    // ⚡ THE WHOLE BILL, ONCE: 3 AP and the Action Token, with the blow.
+    dispatch(beatsSpent(PSYCHO_BUSHIDO_AP_COST, true));
+    setAction(null);
 
-    // 🌀 THE BONUS LANDS BEFORE THE BLOW, which is the whole point of the
-    // ability. Read from the live sheet, not the render-scoped `ns` — that is the
-    // same overwrite that BOT_STRATEGY_HANDOFF §7 records against the retired
-    // `applyWaNoKoe`. 🪦 That ability is cut; the read-order trap is not.
+    // 💿🕒🎸 The draw's own bill — Db, the clock, two notes off the TOP of the
+    // Drive stack — paid BEFORE the dice, so the chord he throws is what survives.
+    // Read from the live sheet, not the render-scoped `ns`.
     const liveNs = engineRef.current.noteStates[acting.id] ?? {};
-    // 💿🕒 One helper pays the Db and starts the clock, and it is the SAME helper
-    // `transition.js` calls — see `engine/systems/cooldowns.js`. The cooldown
-    // used to be a bare `2` written here, which is how the number and
-    // `PSYCHO_BUSHIDO_CD` in gameConstants managed to describe the same rule in
-    // two places for months.
-    // ⭐ AND THE DRIVE STACK PAYS TOO — `PSYCHO_BUSHIDO_STACK_COST` off the FRONT.
-    //
-    // ⚠️ THE FRONT, BECAUSE THAT IS WHERE EVERY OTHER DRIVE SPEND IN THE GAME
-    // TAKES FROM. `attackParams.js` slices `SWING_DRIVE_SPEND` off the head on
-    // every Swing, and `music/stackSlots.js` documents the consequence as the
-    // intended mechanic: eating your foundation hands the root to the next note
-    // up and moves your hunt with it. A second direction for one stack is the
-    // drift, not the safety. `spendDriveStack` in `transition.js` is the same
-    // rule — and the kernel and the client MUST charge identically or the
-    // searcher is playing a cheaper game than the player.
-    //
-    // 🚩 SO A DRAW COSTS 4 NOTES, NOT 2: this bill, and then the strike's own
-    // Swing spend on top of it. It is also paid BEFORE the blow is rolled, so the
-    // chord backing the strike is whatever survives. Uncosted on purpose (§B10).
     const curStack = liveNs.driveStack ?? [];
     const spentNotes = Math.min(curStack.length, PSYCHO_BUSHIDO_STACK_COST);
     setNoteField(acting.id, bushidoDrawPatch(liveNs, distToTarget));
+    // 🥊 He dashed into melee: his guard is down until his next turn, as after a Swing.
+    setNoteField(acting.id, { swingExposed: true });
 
-    triggerEffectFlash(acting.id, '🌀', 'BUSHIDO!', seatColor(acting.id));
-    addLog(`🌀 PSYCHO BUSHIDO! ${attacker.name} draws from ${distToTarget} hexes — +${bonusDrive} bonus Drive on the strike. (−${PSYCHO_BUSHIDO_DB_COST} Db, −${PSYCHO_BUSHIDO_AP_COST} AP${spentNotes > 0 ? `, −${spentNotes} off the Drive stack` : ''})`);
-    // ⚠️ THE STACK BILL GETS ITS OWN LINE WHEN IT BITES. It is the only price in
-    // the game paid in PROGRESSION currency, and a player who loses a seat he was
-    // two notes from opening deserves to be told which attack took it.
+    botArmCard(attacker);   // 🃏 see initiateSonicAttack
+    const params = attackParams(engineRef.current, attacker.id, targetId, 'bushido', { bushido: { dist: distToTarget } });
+    const { _derived, ...rollOptions } = params;
+    if (_derived.consumedSmashExposed) setNoteField(targetId, { smashExposed: false });
+    const rolled = maybeCodeInjection(dispatch(attackRolled('bushido', attacker.id, targetId,
+      { ...rollOptions, bushidoDist: distToTarget, bushidoTo: landHex?.num ?? null })), attacker.id, targetId).battle;
+    burnChargesAfterBattle([attacker.id, targetId], 'the draw spent it');
+    logCardPlayed(rolled, attacker);
+
+    triggerEffectFlash(acting.id, '⚡', 'BUSHIDO!', seatColor(acting.id));
+    addLog(`⚡ PSYCHO BUSHIDO! ${attacker.name} draws on ${defender.name} from ${distToTarget} hexes — ${rigPoolLabel(rolled.rolledPool ?? rolled.dicePool)} (${d8s} d6 → d8), Drive ${rolled.atkTotal} against a ${rolled.shieldValue} Sustain shield. (−${PSYCHO_BUSHIDO_DB_COST} Db, −${PSYCHO_BUSHIDO_AP_COST} AP${spentNotes > 0 ? `, −${spentNotes} off the Drive stack` : ''})`);
     if (spentNotes > 0) {
-      addLog(`🎸 The draw burns his foundation — ${spentNotes} note${spentNotes > 1 ? 's' : ''} off the bottom of his Drive stack, and the strike will spend more. What is left is what he is hunting from now.`);
+      addLog(`🎸 The draw burns ${spentNotes} note${spentNotes > 1 ? 's' : ''} off the top of his Drive stack.`);
     }
-
-    // 🌀 SYNCHRONOUS, AND THAT IS THE FIX. The delay was there so "the warp
-    // settles", but a warp settles in ENGINE state the instant it is dispatched —
-    // what the 100ms actually bought was a re-render, and the deferred callback
-    // still held the OLD closure, so it read pre-dash values however long it
-    // waited. `initiateSwing` now reads `engineRef.current`, which the warp, the
-    // AP spend and the Drive buff have all already reached.
-    setAction(null);
-    initiateSwing(targetId);
+    startSonicPresentation(rolled);
   }
 
   // Returns hex nums along Ronin's facing line within AP range (for highlighting)
@@ -8191,149 +8280,49 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     return true;
   }
 
-  // ── 🎸 CURSED SHAMISEN — the curse is a debt ──────────────────────────────
-  // `RONIN_ABILITY_DESIGN.md` §2.3 is the spec.
-  //
-  // 🪦 2026-08-26 REWORK: the Shamisen is NO LONGER a board token. It is a
-  // self-buff that speeds up ALL OTHER ability cooldowns while active.
-  //   · Activate: 2 Db, 3-round cooldown.
-  //   · For CURSED_SHAMISEN_DURATION rounds, all other cooldowns get +1 extra
-  //     tick per round (charge at 2× speed).
-  //   · Ronin GLOWS while active — a visible target. The glow stays regardless
-  //     of payment.
-  //   · If Ronin loses ANY Vibe in battle while glowing AND has NOT paid the
-  //     debt that round, ALL cooldowns RESET to full duration.
-  //   · Each round, Ronin may pay CURSED_SHAMISEN_PAYOFF_COST Db to protect
-  //     himself. Rivals CANNOT TELL whether he paid — that is the bluff.
-  //
-  // State on ns: `shamisenCurse: { turnsLeft, paidThisRound }`
-  //   turnsLeft > 0 ⟹ curse is active, Ronin glows.
-  //   paidThisRound  ⟹ protected from the reset penalty this round.
+  // ── 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02) ─────────────────────
+  // `RONIN_ABILITY_DESIGN.md` §2.3.00 is the spec; `engine/systems/iwatoCurse.js`
+  // holds every rule, and these two functions only apply its patches and play
+  // the moment. The other halves: tuning is a third chord-step destination
+  // (`clickNoteStock`, dest 'strings'); the curse's turns end in `endTurn`; the
+  // exorcism is in the melody commit's own patch; the picture is the arena's
+  // (`curseScene` → `board/cursedShamisenArena.js`).
+  // 🪦 The glow-and-debt Shamisen (`shamisenCurse`, the 1 Db/round debt, the
+  // cooldown accelerator and the reset-on-hit) is gone with its constants.
 
-  function resolveCursedShamisen() {
-    const ns = noteStates[acting.id] ?? {};
-    const dbPts = ns.dbPoints ?? 0;
-
-    // Already active?
-    if ((ns.shamisenCurse?.turnsLeft ?? 0) > 0) {
-      addLog('🎸 The curse is already playing!');
-      return;
-    }
-
-    // On cooldown?
-    const shamCd = cooldownLeft(ns, 'cursed_shamisen');
-    if (shamCd > 0) {
-      addLog(`🎸 The strings are still dead — ${shamCd} turn${shamCd > 1 ? 's' : ''} before the curse will play again.`);
-      return;
-    }
-
-    // Can afford?
-    if (dbPts < CURSED_SHAMISEN_DB_COST) {
-      addLog(`🎸 Not enough Db to activate the curse — costs ${CURSED_SHAMISEN_DB_COST} Db.`);
-      return;
-    }
-
-    // ✅ Activate: pay Db, start cooldown, set curse state
-    setNoteField(acting.id, {
-      ...firePatch(ns, 'cursed_shamisen'),
-      shamisenCurse: { turnsLeft: CURSED_SHAMISEN_DURATION, paidThisRound: false },
-    });
-
-    triggerEffectFlash(acting.id, '🎸', 'CURSED!', '#cc44ff');
-    addLog(`🎸 ${acting.name} strikes the CURSED SHAMISEN! All ability cooldowns charge at double speed for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ The Ronin GLOWS — take any Vibe damage while the debt is unpaid and ALL cooldowns reset.`);
-
-    // 🔊 Play a haunting strum
-    playShamisenStrum();
+  // 🪕 TAKE IT UP — free, off cooldown; the strings open on his NEXT turn.
+  function takeUpShamisen() {
+    const ns = engineRef.current.noteStates[acting.id] ?? {};
+    if (!canTakeUp(ns)) return;
+    setNoteField(acting.id, takeUpPatch(ns));
+    const root = ns.rootNote ?? 'C';
+    triggerEffectFlash(acting.id, '🎸', 'SHAMISEN', CURSED_SHAMISEN.edgeColor);
+    addLog(`🎸 ${acting.name} takes up the CURSED SHAMISEN, tuned to ${root}. From next turn the chord step can string it with Iwato notes — ${iwatoNames(root).join(' ')} — up to ${SHAMISEN_STRINGS} a turn. Everyone can count the strings.`);
+    // One low open string, so the take-up is heard as well as seen.
+    shamisenSfx().pluck(midiHz(shamisenMidi(root)), { vel: 0.7, dark: 0.55 });
   }
 
-  // 💰 Pay off the curse debt for this round (1 Db).
-  function payShamisenDebt() {
-    const ns = noteStates[acting.id] ?? {};
-    const curse = ns.shamisenCurse;
-    if (!curse || curse.turnsLeft <= 0) return;
-    if (curse.paidThisRound) { addLog('🎸 Already paid the debt this round.'); return; }
-    const dbPts = ns.dbPoints ?? 0;
-    if (dbPts < CURSED_SHAMISEN_PAYOFF_COST) {
-      addLog(`🎸 Not enough Db to pay the debt — costs ${CURSED_SHAMISEN_PAYOFF_COST} Db.`);
-      return;
-    }
-    setNoteField(acting.id, {
-      dbPoints: dbPts - CURSED_SHAMISEN_PAYOFF_COST,
-      shamisenCurse: { ...curse, paidThisRound: true },
-    });
-    addLog(`🎸 ${acting.name} pays ${CURSED_SHAMISEN_PAYOFF_COST} Db to appease the curse. The debt is covered this round — but the glow remains.`);
-  }
-
-  // 🎸 Tick the Cursed Shamisen once per round. Called from the round-end block.
-  //   · Decrement turnsLeft
-  //   · Reset paidThisRound for the new round
-  //   · Apply the extra cooldown tick to all OTHER abilities
-  function tickCursedShamisen(ownerId) {
-    const ns = noteStates[ownerId] ?? {};
-    const curse = ns.shamisenCurse;
-    if (!curse || curse.turnsLeft <= 0) return;
-
-    const newTurns = curse.turnsLeft - 1;
-
-    // ⚡ Extra cooldown tick: all OTHER abilities charge 1 faster
-    const boostedCd = tickShamisen(ns);
-
-    if (newTurns <= 0) {
-      // Curse expired naturally
-      setNoteField(ownerId, {
-        shamisenCurse: null,
-        abilityCd: boostedCd,
-      });
-      addLog('🎸 The curse fades. The Shamisen falls silent — cooldowns return to normal.');
-    } else {
-      // Curse continues — reset paidThisRound for the new round
-      setNoteField(ownerId, {
-        shamisenCurse: { turnsLeft: newTurns, paidThisRound: false },
-        abilityCd: boostedCd,
-      });
-      addLog(`🎸 The curse plays on (${newTurns} round${newTurns > 1 ? 's' : ''} left). Cooldowns tick double.`);
-    }
-  }
-
-  // ⚠️ Called from applyVibeDamage when Ronin takes ANY Vibe damage while
-  // the curse is active. If he has NOT paid the debt this round, ALL cooldowns
-  // reset to their full duration.
-  function checkShamisenCursePenalty(ownerId) {
-    const ns = noteStates[ownerId] ?? {};
-    const curse = ns.shamisenCurse;
-    if (!curse || curse.turnsLeft <= 0) return;
-    if (curse.paidThisRound) {
-      addLog('🎸 The curse BITES — but the debt is paid this round. The Ronin is protected.');
-      return;
-    }
-    // ⚠️ UNPAID AND HIT: reset ALL cooldowns to full
-    const skills = ns.unlockedSkills ?? [];
-    const resetCd = resetAllCooldowns(ns, skills);
-    setNoteField(ownerId, {
-      abilityCd: resetCd,
-      shamisenCurse: null,  // curse ends on penalty
-    });
-    addLog('🎸💔 The curse BITES! The Ronin took damage with an unpaid debt — ALL cooldowns RESET to full. The Shamisen screams and falls silent.');
-    triggerEffectFlash(ownerId, '🎸', 'CURSED!', '#ff2244');
-  }
-
-  // 🔊 Simple audio feedback for the curse
-  function playShamisenStrum() {
-    try {
-      const actx = window._rlswAudioCtx || (window._rlswAudioCtx = new (window.AudioContext || window.webkitAudioContext)());
-      // A quick dissonant strum: two notes a tritone apart
-      [0, 0.08].forEach((delay, i) => {
-        const osc = actx.createOscillator();
-        const gain = actx.createGain();
-        osc.type = 'sawtooth';
-        osc.frequency.value = i === 0 ? 220 : 311; // A3 and D#4 — tritone
-        gain.gain.setValueAtTime(0.12, actx.currentTime + delay);
-        gain.gain.exponentialRampToValueAtTime(0.001, actx.currentTime + delay + 0.6);
-        osc.connect(gain).connect(actx.destination);
-        osc.start(actx.currentTime + delay);
-        osc.stop(actx.currentTime + delay + 0.7);
-      });
-    } catch (e) { /* audio is best-effort */ }
+  // ⚡ THE CAST — three strings, a rival within reach, the Action Token, Db and the clock.
+  function resolveIwatoCast(targetId) {
+    const live = engineRef.current;
+    const ns = live.noteStates[acting.id] ?? {};
+    const rival = spirits.find(sp => sp.id === targetId);
+    if (!rival || rival.knockedOut || rival.id === acting.id) return;
+    const check = castCheck({ ns, rivalNs: live.noteStates[targetId], from: HEX_BY_NUM[acting.num], to: HEX_BY_NUM[rival.num],
+      tokenUsed: live.turn.actionTokenUsed });
+    if (!check.ok) { addLog(`🎸 ${check.reason}`); return; }
+    const voicing = stringVoicing(ns);
+    const root = shamisenRoot(ns);
+    const patches = castPatches(ns, acting.id, `${acting.id}>${targetId}@${live.turn.count}`);
+    // ⚡ The bill, once: the Action Token (no AP), then the Db and the clock.
+    dispatch(beatsSpent(0, true));
+    setAction(null);
+    setNoteField(acting.id, patches.ronin);
+    setNoteField(targetId, patches.rival);
+    addLog(`🎸 ${acting.name} plays the CURSED SHAMISEN — ${voicing.labels.join(' · ')} — and the ghost-fire crosses to ${rival.name}. 呪 For their next ${CURSE_TURNS} turns their scale IS Iwato on ${root} (${iwatoNames(root).join(' ')}): every other note is discord — no Db, no fans. 🔥 They can exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`);
+    triggerEffectFlash(targetId, '呪', 'CURSED!', CURSED_SHAMISEN.edgeColor);
+    // 🔊 The cast's score, built on HIS strings (the same beat plan the arena draws).
+    scheduleCast(shamisenSfx(), planCast(CURSED_SHAMISEN, voicing.ivs), shamisenMidi(root), CURSED_SHAMISEN);
   }
 
 
@@ -8392,7 +8381,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
       const isCurrent=()=>battleStateRef.current?.sonicId===sonicId;
       const mark=fields=>{if(!isCurrent())return;const next={...battleStateRef.current,...fields};battleStateRef.current=next;setBattleState(next);};
-      const planOf=v=>({...v,poolStart:[SONIC_GATE,0],shots:v.shots.map(s=>({...s,at:BARRAGE_LAUNCH+barrageContact(s.index)}))});
+      const planOf=v=>({...v,poolStart:[SONIC_GATE,0],shots:v.shots.map(s=>({...s,at:BARRAGE_LAUNCH+barrageContact(s.index,beatsFor(v))}))});
       let plan=planOf(verdict);
       // 🃏 A card played at the attacker's gate RE-THROWS the Drive dice in the
       // engine; the presentation adopts the new verdict before anyone sees it.
@@ -8429,7 +8418,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           T(()=>{
             phase('sonic_armed');
             awaitBattleRoll({id:battleCueId('sonic',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,cardSeat:true,
-              lead:'Fire the volley',sub:`${dice} Drive ${dice===1?'die':'dice'} against a ${verdict.shieldValue} shield`,
+              lead:verdict.bushido?'Draw — Psycho Bushido':'Fire the volley',
+              sub:verdict.bushido
+                ?`${dice} Drive ${dice===1?'die':'dice'} (the range turned ${verdict.bushidoDist?psychoBushidoD8s(verdict.bushidoDist):0} to d8s) against a ${verdict.shieldValue} shield`
+                :`${dice} Drive ${dice===1?'die':'dice'} against a ${verdict.shieldValue} shield`,
               label:`Roll ${dice}`,color:attacker?.color,
               onRoll:()=>{
                 mark({sonicDriveRollAt:performance.now(),phase:'sonic_roll'});
@@ -8437,9 +8429,20 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 // that lands on the shield CLASHES the two chords together,
                 // and the shield chord cuts when it breaks (or fades if it holds).
                 audio((ctx,destination)=>{
+                  if(verdict.bushido){
+                    // ⚡ NO RING BEAMS, SO NO BEAM CHORDS: his dice land on the
+                    // table's own foley, and the strike is his — the static that
+                    // grows with each die, the rumble, the draw, the thunder, the
+                    // sky, and each die hitting the shield (audio/bushidoSfx.js).
+                    stops.push(playBarrageFoley(ctx,plan,SONIC_GATE,1,{reduced,destination:ctx.destination,pools:[0],diceOnly:true}));
+                    const sfx=bushidoSfx();
+                    scheduleBushidoStrike(sfx,{battle:verdict,at:t=>t-SONIC_GATE,landings:bushidoLandings(verdict),launch:BARRAGE_LAUNCH,landing:bushidoLand()});
+                    stops.push(()=>sfx.stopAll());
+                  }else{
                   stops.push(playBarrageFoley(ctx,plan,SONIC_GATE,1,{reduced,destination:ctx.destination,pools:[0]}));
                   stops.push(playBarrageChord(ctx,plan,verdict.sonicChordNotes,SONIC_GATE,1,{reduced,destination}));
                   stops.push(playChordClash(ctx,plan,verdict.sonicChordNotes,verdict.sustainChordNotes,SONIC_GATE,{reduced,destination}));
+                  }
                   const broke=plan.shots[plan.breakIndex];
                   const end=(broke??plan.shots.at(-1))?.at??BARRAGE_LAUNCH;
                   shield?.release(barrageDelay(plan,end,SONIC_GATE,reduced)+(broke?0:.35),!!broke);
@@ -8543,7 +8546,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Phase R2: difficulty tier caps riff length
     const activePreset = RIFF_FALL_DIFFICULTY[riffDifficultyRef.current] ?? RIFF_FALL_DIFFICULTY[RIFF_FALL_DEFAULT];
     const maxLen = activePreset.maxLen ?? RIFF_LEN;
-    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, maxLen })).battle;
+    const eb = dispatch(riffOffStarted(attacker.id, defender.id, { slayer, eRush, melodyLine, maxLen, arenaVersion:1 })).battle;
     const atk = eb.atkRiff, def = eb.defRiff;
     const defGlitch = eb.defGlitch, defGhosts = eb.defGhosts;
     // Log: show whether the riff came from the player's melody or was random
@@ -8559,11 +8562,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // (E-Rush riff-off logic removed — Ronin rework)
 
     riffEngineRef.current = null;
-    playBattleMusic(riffOffSong, 0.7);
+    stopBattleMusic();
     setBattleState({
       riffOff: true, sonicAttack: true,   // sonicAttack → sonic-scale knockback
       oneLiner: null,                    // Phase R5.2: { attacker: {line,dropped}, defender: {line,dropped} }
-      phase: 'riff_intro',
+      phase: 'riff_arena', arenaVersion:1, arenaData:eb,
       attackerId: attacker.id, defenderId: defender.id,
       atkRiff: riffSideFrom(atk, { contour: atk.contour }),
       defRiff: riffSideFrom(def, { kind: def.kind }),
@@ -9521,6 +9524,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // sequence the client's pacing and the client's hooks. The rules moved; the
   // theatre stayed. Anything rule-shaped added below belongs in the engine.
   function resolveSonicSequence(scene) {
+    // ⚡ PSYCHO BUSHIDO ARRIVES HERE — at the draw, after the dice, before the
+    // push — so the push starts from the hex before the Rival. Only the owner
+    // runs this, and the warp travels to every other screen as an action, in
+    // order, ahead of the consequences. The kernel does the same: roll, warp, push.
+    if(scene.bushido&&scene.bushidoTo!=null){
+      const me=engineRef.current.spirits.find(s=>s.id===scene.attackerId);
+      if(me&&!me.knockedOut&&me.num!==scene.bushidoTo)dispatch(spiritWarped(scene.attackerId,scene.bushidoTo,0));
+    }
     const initialTarget=engineRef.current.spirits.find(s=>s.id===scene.defenderId);
     const active={...scene,sonicResolving:true};battleStateRef.current=active;setBattleState(active);
     runBattleFlowPaced(battleConsequences({state:engineRef.current,battle:scene,chordOf:spiritChord,
@@ -9886,6 +9897,25 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // actually suffered them for a turn.
     dispatch(debuffsTicked(acting.id));
 
+    // ── 🌑 THE IWATO CURSE COUNTS THE CURSED SPIRIT'S OWN TURNS ───────────────
+    // ⚠️ Here, at the end of THEIR turn — never on the round clock, or a rival
+    // who acts right after the Ronin would serve two cursed turns and one who
+    // acts right before him one (`iwatoCurse.js`). The exorcism, if they found
+    // one, already lifted it in the melody commit's patch.
+    {
+      const end = endCursedTurn(engineRef.current.noteStates?.[acting.id]);
+      if (end.patch) {
+        setNoteField(acting.id, end.patch);
+        if (end.ended === 'expired') {
+          addLog(`🌑 The Iwato curse on ${s?.name} runs out — their Scale Wheel is their own again.`);
+          shamisenSfx().expire(midiHz(60));
+        } else {
+          addLog(`🌑 ${s?.name} stays CURSED for ${end.turnsLeft} more turn${end.turnsLeft !== 1 ? 's' : ''} — and the window to exorcise it has closed.`);
+          shamisenSfx().burnOut();
+        }
+      }
+    }
+
     // ── 🔥 BURN TICK (Phase 6d — engine rule) ────────────────────────────────
     // 50% coin on engine rng: heads → 1 Vibe damage. Always decrements turnsLeft.
     // The engine handles the coin + damage + countdown; the client reads the report.
@@ -10030,8 +10060,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         }
       }
 
-      // 🎸 Cursed Shamisen — tick the curse state and apply extra cooldown ticks.
-      spirits.forEach(sp => tickCursedShamisen(sp.id));
+      // 🪦 The glow-and-debt Shamisen ticked here, on the ROUND clock. The Iwato
+      // curse counts the cursed Spirit's OWN turns instead (`endTurn`).
     }
 
     // 🧪 POISON SLIME decay — seeded with the living Spirit count and ticked per
@@ -11101,6 +11131,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       return;
     }
     if (action === "shukuchi") { resolveShukuchiHop(num); return; }
+    if (action === "cursed_shamisen") {
+      // 🎸 Any visible rival within reach. `resolveIwatoCast` re-checks every rule.
+      const rival = spirits.find(sp => sp.num === num && sp.id !== acting?.id && !sp.knockedOut && !isHiddenBySmoke(sp));
+      if (rival && attackReachFor('cursed_shamisen')?.near.includes(num)) resolveIwatoCast(rival.id);
+      else addLog(`🎸 Click a rival within ${SHAMISEN_RANGE} hexes to curse them.`);
+      return;
+    }
     if (action === "move") {
       // 🧪 THE SLIDE WINS THE TIE, and it has to. The retreat hex is adjacent, so
       // it is usually also a legal WALK — and walking there costs AP and re-faces
@@ -11228,7 +11265,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // fired right now (a greyed button still tells you how far it would go).
   // `targets` are the hexes in reach holding a VISIBLE rival; the Shadow's decoy
   // counts like a body, as it does on the buttons' own target counts.
-  const REACH_KINDS = ['swing','sonic','blaster','tentacle','psycho_bushido','gravity_control','displace','shukuchi'];
+  const REACH_KINDS = ['swing','sonic','blaster','tentacle','psycho_bushido','gravity_control','displace','shukuchi','cursed_shamisen'];
   function attackReachFor(kind) {
     if (!acting || !REACH_KINDS.includes(kind)) return null;
     const spHex = HEX_BY_NUM[acting.num];
@@ -11249,6 +11286,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           : rings >= DISPLACE_MIN_RINGS && rings <= DISPLACE_MAX_RINGS && !occupied.has(h.num)) near.add(h.num);
       }
     } else if (kind === 'shukuchi') near = shukuchiLandingSet();
+    // 🎸 The Iwato curse: every hex within its reach, any direction (`iwatoCurse.js` CAST_RANGE).
+    else if (kind === 'cursed_shamisen') { for (const h of ALL_HEXES) if (axialDist(h.q, h.r, spHex.q, spHex.r) <= SHAMISEN_RANGE) near.add(h.num); }
     near.delete(acting.num);
     // A warp or a hop LANDS — nobody is hit, so nothing is marked as a target.
     const lands = kind === 'displace' || kind === 'shukuchi';
@@ -11267,7 +11306,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const flatReachAll = !board3D && hoverPreview && !['swing','sonic','blaster'].includes(hoverPreview) ? attackReachFor(hoverPreview) : null;
   const flatReach = flatReachAll ? new Set(flatReachAll.near) : null;
   const flatReachHit = flatReachAll ? new Set(flatReachAll.targets) : null;
-  const flatReachHue = { tentacle:'#5cff6a', psycho_bushido:'#ffb347', gravity_control:'#9b5cff', displace:'#c77dff', shukuchi:'#e8f4ff' }[hoverPreview] ?? '#ffffff';
+  const flatReachHue = { tentacle:'#5cff6a', psycho_bushido:'#ffb347', gravity_control:'#9b5cff', displace:'#c77dff', shukuchi:'#e8f4ff', cursed_shamisen:CURSED_SHAMISEN.edgeColor }[hoverPreview] ?? '#ffffff';
   const reachHover = kind => ({
     onMouseEnter: () => setHoverPreview(kind),
     onMouseLeave: () => setHoverPreview(p => p === kind ? null : p),
@@ -11739,12 +11778,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       .track-note-edit:hover {
         transform: translateY(-3px) scale(1.06);
         filter: drop-shadow(0 0 8px #ff5566cc) saturate(1.25);
-      }
-      /* 🎸 CURSED SHAMISEN — button glow while the curse is active.
-         Purple throb so the Ronin's ability bar screams "I'm exposed". */
-      @keyframes shamisen-glow {
-        0%, 100% { box-shadow: 0 0 6px #aa44ff88, inset 0 0 4px #9933ff44; }
-        50%      { box-shadow: 0 0 16px #cc66ffcc, inset 0 0 10px #aa44ff88; }
       }
     `;
     document.head.appendChild(style);
@@ -12252,7 +12285,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           columns always sit side-by-side (never wrap onto the portrait); max
           620px lets it stretch toward full-screen on wide monitors. The board
           column flexes and the board SVG scales to whatever remains. */}
-      <MatchSurface immersive={board3D} spirit={acting} step={turnStep}
+      <MatchSurface immersive={board3D} riffArena={!!engineState.battle?.arenaVersion} spirit={acting} step={turnStep}
         turnNumber={engineState.turn.count} canAct={canAct} ap={moveStepsLeft} tutorial={!!activeTip}
         hud={acting ? {
           imageSrc: acting.imageSrc,
@@ -12296,11 +12329,25 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           const mine = isMyTurn && !netSync && !isBot(acting);
           const composing = mine && turnStep === 'melody' && !hasConfirmed;
           const next = turnStep === 'move_act' && hasConfirmed;
+          const wheel = { spiritId: acting.id, root: rootNote, opts: POCKET_WHEEL, next,
+            hand: mine ? noteStock : [],
+            available: i => !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i),
+            line: melodyLine, onPick: composing ? wheelPick : undefined, onHoverNote: wheelHoverNote };
+          // 🌑 THE IWATO CURSE ON THE WHEEL (`ui/CursedWheel.jsx`, moment ③): ink
+          // from the rim, their own scale cracked and grey, the five Iwato notes
+          // lit — the rule, taught by the picture. Public: a cursed rival's wheel
+          // reads cursed to everyone who looks at it on their turn.
+          const curse = actingNoteState?.iwatoCurse;
+          const exorcising = exorciseFx?.spiritId === acting.id;
+          const cursedWheel = isCursed(actingNoteState) || exorcising;
           return <ScaleWheelCard spiritId={acting.id} root={rootNote} next={next}>
-            <ScaleWheel spiritId={acting.id} root={rootNote} opts={POCKET_WHEEL} next={next}
-              hand={mine ? noteStock : []}
-              available={i => !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i)}
-              line={melodyLine} onPick={composing ? wheelPick : undefined} onHoverNote={wheelHoverNote} />
+            {cursedWheel
+              ? <CursedWheel {...wheel} roninRoot={curse?.roninRoot ?? exorciseFx?.roninRoot ?? 'C'}
+                  phase={exorcising ? 'exorcised' : 'cursed'} turnsLeft={curse?.turnsLeft ?? 0}
+                  since={exorcising ? exorciseFx.key : (curse?.key ?? 0)}
+                  canExorcise={exorciseWindow(actingNoteState)}
+                  roninColor={seatColor(curse?.by ?? exorciseFx?.by)} />
+              : <ScaleWheel {...wheel} />}
           </ScaleWheelCard>;
         })() : null}>
 
@@ -13618,7 +13665,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:actingHue}}
                     style={{borderColor: canDash ? actingHue : actingHueDim, color: canDash ? actingHueLight : actingHueDim}}
                     disabled={!canDash}
-                    title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The farther the draw, the harder the blow: +2 at ${PSYCHO_BUSHIDO_MIN_RANGE}, +3 at 4, +4 at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
+                    title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The Rival throws his Sustain as a shield and you must burst through it — what gets through is the damage, and pushes him back one hex per die. The farther the draw, the bigger your dice: ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} of your d6s become d8s at ${PSYCHO_BUSHIDO_MIN_RANGE}, ${psychoBushidoD8s(4)} at 4, ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_DB_COST} Db, ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
                     onClick={() => {
                       if (action === 'psycho_bushido') { setAction(null); }
                       else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }
@@ -13669,40 +13716,59 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               );
             })()}
             {/* 🪦 Exorcism UI — removed 2026-08-26 */}
-            {/* 🎸 CURSED SHAMISEN — cooldown accelerator with a curse */}
+            {/* 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02, §2.3.00).
+                ONE button walks the whole life of the curse, and its label says
+                which step he is on — take it up · strings open next turn · n/3
+                strings (tuned in the chord step) · cast. ⚠️ The refusals are in
+                the label for the same reason as Bushido's: recharging, skint,
+                out of actions and "tune first" have four different answers. */}
             {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
-              && (actingNoteState?.unlockedSkills ?? []).includes('cursed_shamisen') && (() => {
-              const curse   = actingNoteState?.shamisenCurse;
-              const active  = curse && curse.turnsLeft > 0;
-              const cd      = cooldownLeft(actingNoteState, 'cursed_shamisen');
-              const dbPts   = actingNoteState?.dbPoints ?? 0;
-              const poor    = dbPts < CURSED_SHAMISEN_DB_COST;
-              const canActivate = !active && cd <= 0 && !poor;
-              const canPay  = active && !curse.paidThisRound && dbPts >= CURSED_SHAMISEN_PAYOFF_COST;
+              && hasShamisen(actingNoteState) && (() => {
+              const ns     = actingNoteState ?? {};
+              const cd     = cooldownLeft(ns, SHAMISEN_SKILL);
+              const dbPts  = ns.dbPoints ?? 0;
+              const up     = !!ns.shamisen;
+              const tuned  = stringsOf(ns).length;
+              const strung = up && tuned >= SHAMISEN_STRINGS;
+              const poor   = dbPts < CURSED_SHAMISEN_DB_COST;
+              const canUp  = canTakeUp(ns);
+              const canCast = strung && !poor && cd <= 0 && !actionTokenUsed;
+              const armed  = action === 'cursed_shamisen';
+              const live   = canUp || canCast;
+              const hue    = CURSED_SHAMISEN.edgeColor;
+              const label  = !up ? (cd > 0 ? `Shamisen 🕒${cd}` : 'Take up Shamisen')
+                : !ns.shamisen.ready ? 'Shamisen · strings next turn'
+                : !strung ? `Shamisen · ${tuned}/${SHAMISEN_STRINGS} strings`
+                : cd > 0 ? `Curse 🕒${cd}`
+                : poor ? `Curse (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)`
+                : actionTokenUsed ? 'Curse (no action left)' : `Cast the curse (${CURSED_SHAMISEN_DB_COST} Db)`;
               return (
                 <>
-                <RailBtn className={canActivate ? 'btn active' : 'btn'}
-                  cooldown={{left:cd, max:ABILITY_CD.cursed_shamisen, color:'#cc44ff'}}
-                  style={{borderColor: canActivate ? '#cc44ff' : active ? '#cc44ff44' : '#1a2840',
-                          color: canActivate ? '#dd88ff' : active ? '#cc44ff' : '#1a2840',
-                          animation: active ? 'shamisen-glow 1.2s ease-in-out infinite' : 'none'}}
-                  disabled={!canActivate}
-                  title={`Cursed Shamisen — activate the curse (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown) to speed up ALL other ability cooldowns for ${CURSED_SHAMISEN_DURATION} rounds. ⚠️ You GLOW while it runs — take any Vibe damage and ALL cooldowns RESET to full. Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db/round to protect yourself (rivals can't see whether you paid).`}
-                  onClick={() => { if (canActivate) resolveCursedShamisen(); }}>
-                  🎸 {active
-                    ? `Cursed (${curse.turnsLeft})`
-                    : cd > 0 ? `Shamisen (🕒 ${cd}t)`
-                    : poor ? `Shamisen (${dbPts}/${CURSED_SHAMISEN_DB_COST} Db)` : 'Shamisen'}
-                </RailBtn>
-                {active && (
-                  <RailBtn className={canPay ? 'btn active' : 'btn'}
-                    style={{borderColor: canPay ? '#ffaa22' : '#1a2840', color: canPay ? '#ffcc44' : '#1a2840', fontSize: '0.85em'}}
-                    disabled={!canPay}
-                    title={`Pay ${CURSED_SHAMISEN_PAYOFF_COST} Db to protect yourself this round. Rivals cannot tell whether you paid — the glow stays either way.`}
-                    onClick={() => { if (canPay) payShamisenDebt(); }}>
-                    💰 Pay Debt{curse.paidThisRound ? ' ✓' : ` (${CURSED_SHAMISEN_PAYOFF_COST} Db)`}
+                  <div style={{position:'relative',display:'inline-block'}} {...(strung ? reachHover('cursed_shamisen') : {})}>
+                  <RailBtn className={live ? 'btn active' : 'btn'}
+                    cooldown={{left:cd, max:ABILITY_CD[SHAMISEN_SKILL], color:hue}}
+                    style={{borderColor: live ? hue : actingHueDim, color: live ? '#d9c2ff' : actingHueDim}}
+                    disabled={!live && !armed}
+                    title={!up
+                      ? `Cursed Shamisen — take it up (free). From your NEXT turn the chord step can tune its ${SHAMISEN_STRINGS} strings with Iwato notes (1 ♭2 4 ♭5 ♭7 on your root), up to ${SHAMISEN_STRINGS} a turn out of the same commits as Drive and Sustain. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes.`
+                      : !strung
+                      ? `The strings: ${tuned}/${SHAMISEN_STRINGS}, tuned to ${shamisenRoot(ns)}. ${ns.shamisen.ready ? 'Tune them in the chord step — the third destination beside Drive and Sustain.' : 'They open on your next turn.'} Every rival can count them.`
+                      : `Cast the Iwato curse on a rival within ${SHAMISEN_RANGE} hexes — ${CURSED_SHAMISEN_DB_COST} Db, your Action Token, ${CURSED_SHAMISEN_CD}-round cooldown. For their next ${CURSE_TURNS} turns their scale IS Iwato: every other note is discord (no Db, no fans), unless they exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`}
+                    onClick={() => {
+                      if (armed) { setAction(null); return; }
+                      if (canUp) { takeUpShamisen(); return; }
+                      if (canCast) {
+                        setAction('cursed_shamisen');
+                        addLog(`🎸 THE IWATO CURSE — click a rival within ${SHAMISEN_RANGE} hexes to curse them.`);
+                      }
+                    }}>
+                    🎸 {label}
                   </RailBtn>
-                )}
+                  </div>
+                  {armed && (
+                    <RailBtn className="btn" style={{borderColor:'#888',color:'#888'}}
+                      onClick={() => setAction(null)}>Cancel</RailBtn>
+                  )}
                 </>
               );
             })()}
@@ -14167,6 +14233,40 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                             </Bracket>
                           );
                         })}
+                        {/* 🪕 THE THIRD DESTINATION — the Cursed Shamisen's strings
+                            (2026-10-02, §2.3.00). Shown from the take-up on, so
+                            the turn he cannot yet tune still says WHEN he can.
+                            Same row grammar as Drive and Sustain: a destination
+                            switch and a fill count, in the curse's violet. The
+                            tuned notes themselves hang over him on the board. */}
+                        {actingNoteState?.shamisen && (() => {
+                          const sh    = actingNoteState.shamisen;
+                          const tuned = stringsOf(actingNoteState);
+                          const open  = tuningOpen(actingNoteState);
+                          const dis   = !open || budgetLeft <= 0;
+                          const on    = stackCommitDest === 'strings';
+                          const col   = CURSED_SHAMISEN.edgeColor;
+                          const labels = stringVoicing(actingNoteState).labels;
+                          return (
+                            <Bracket corner="sm" color={col} plate="🎸 STRINGS"
+                              plateRight={`${tuned.length} / ${SHAMISEN_STRINGS}`}
+                              className={on ? 'step-active' : ''}
+                              style={{marginBottom:6}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 9px"}}>
+                                <button type="button" className="stack-chip"
+                                  data-tip-anchor="strings-btn"
+                                  disabled={dis} aria-pressed={on}
+                                  onClick={()=>setStackCommitDest('strings')}
+                                  title={`Iwato on ${shamisenRoot(actingNoteState)}: ${iwatoNames(shamisenRoot(actingNoteState)).join(' ')}. Any of them, repeats too (a repeat rings an octave higher).`}
+                                  style={{flex:1, color: on ? col : undefined, background: on ? col : undefined}}>
+                                  {!sh.ready ? 'Strings open next turn'
+                                    : tuned.length >= SHAMISEN_STRINGS ? `Tuned · ${labels.join(' · ')}`
+                                    : tuned.length ? `Strings · ${labels.join(' · ')}` : 'Strings'}
+                                </button>
+                              </div>
+                            </Bracket>
+                          );
+                        })()}
                         {/* Note stock for stack editing — visible when a dest is selected and budget remains */}
                         {stackCommitDest && budgetLeft > 0 && (
                           <Bracket corner="sm" color="#8daee5" plate="STOCK"
@@ -14196,7 +14296,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                    the stacks, so "which stack pays this note" isn't a question yet
                                    — the answer changes with the very click you're about to make. */
                                 const showUnlockedD = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
-                                const hexBorder = showAsDiscord ? "#444455" : showUnlockedD ? UNLOCKED_DISCORD.border : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
+                                // 🪕 Tuning strings: the Iwato notes glow the curse's violet and
+                                // everything else greys — the grid answers "which of these can
+                                // go on a string" before the click, not after it.
+                                const tuningStrings  = stackCommitDest === 'strings';
+                                const iwatoHere      = tuningStrings && isIwato(note, shamisenRoot(actingNoteState));
+                                const hexBorder = tuningStrings ? (iwatoHere ? CURSED_SHAMISEN.edgeColor : "#444455")
+                                  : showAsDiscord ? "#444455" : showUnlockedD ? UNLOCKED_DISCORD.border : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
                                 // 🎨 ONE HUE, as everywhere else now. `hexText` and `hexBg`
                                 // are gone with the clip-path chip that needed three values
                                 // to say one thing; a NoteHex derives the rest from the hue.
@@ -14204,7 +14310,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                 const targetStack = stackCommitDest === 'sustain' ? sStack : dStack;
                                 const targetCh = stackCommitDest === 'sustain' ? sCh : dCh;
                                 const targetFull = stackCommitDest === 'sustain' ? sFull : dFull;
-                                const previewChord = !used && !targetFull ? spiritChord(acting?.id, [...targetStack, note]) : null;
+                                const previewChord = !used && !targetFull && !tuningStrings ? spiritChord(acting?.id, [...targetStack, note]) : null;
                                 const dDrive   = previewChord ? previewChord.drive   - targetCh.drive   : 0;
                                 const dSustain = previewChord ? previewChord.sustain - targetCh.sustain : 0;
                                 return (
@@ -15009,6 +15115,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             <SonicBarrageRecord battle={battleState} />
             <SeatUnlockBurst fx={seatUnlockFx} />
             <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} topView={topView} onTopView={setTopView}
+              riffProjectionRef={arenaRiffProjection}
+              riffOverlay={engineState.battle?.arenaVersion && <RiffArenaBattle
+                battle={engineState.battle} spirits={spirits} net={netRef.current} projectionRef={arenaRiffProjection}
+                onStart={startArenaRiffClock} onSubmit={submitArenaRiff} onNote={soundArenaRiff}
+                onProgress={live=>setBattleState(p=>p?.arenaVersion?{...p,arenaLive:live}:p)} />}
               quality={arenaQuality} onQualityLabel={setArenaQualityLabel} cameraRef={arenaCameraRef}
               sceneFrame={board3D ? arenaFrame({
                 spirits:spirits.filter(s => !isHiddenBySmoke(s)), noteStates, crowdSpirits:spirits,
@@ -15023,6 +15134,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 marquees:marqueeMarkerList(eventHexes, quadrantOf, playerColor, h => marqueeKindOf(engineState.board, h)),
                 // 🔓 The seat-unlock moment — the cabinet drop, the push-in, the stand.
                 unlock:seatUnlockFx,
+                // 🎸 The Iwato curse, read off the sheets alone (`iwatoCurse.js` curseScene).
+                shamisen:curseScene(spirits, noteStates),
                 shadowDecoy, shadowDecoys, vortices:gravityVortices, lite:liteFx,
                 // 🟪 The move tiles (board/moveTiles.js): the same `reachable` sets the
                 // SVG click layer uses, so the picture can never offer a step the
@@ -15892,20 +16005,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                 stroke="#ff5522" strokeWidth={1.6} strokeDasharray="4 5"
                                 style={{animation:'berserk-spin 2.4s linear infinite',
                                   transformOrigin:`${cx}px ${cy}px`}}/>
-                            </g>
-                          )}
-                          {/* 🎸 CURSED SHAMISEN GLOW — the Ronin is running
-                              the curse. Purple aura so everyone can see he's
-                              exposed — but nobody knows if he paid the debt. */}
-                          {characterId(sp.id) === 'cosmic_ronin' && (noteStates[sp.id]?.shamisenCurse?.turnsLeft ?? 0) > 0 && (
-                            <g style={{pointerEvents:'none'}}>
-                              <title>Cursed Shamisen active — cooldowns charging at 2× speed. If the Ronin takes Vibe damage and hasn't paid the debt this round, ALL cooldowns reset.</title>
-                              <circle cx={cx} cy={cy} r={baseR * 1.75} fill="#9933ff12"
-                                style={{animation:'shamisen-glow 1.2s ease-in-out infinite'}}/>
-                              <circle cx={cx} cy={cy} r={baseR * 1.35} fill="none"
-                                stroke="#aa55ff" strokeWidth={1.8}
-                                style={{animation:'shamisen-glow 1.2s ease-in-out infinite',
-                                  filter:'drop-shadow(0 0 6px #9933ff) drop-shadow(0 0 14px #7722cc)'}}/>
                             </g>
                           )}
                           {/* Base plate shadow */}

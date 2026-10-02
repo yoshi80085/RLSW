@@ -26,7 +26,7 @@ import { CAMERA_DIRECTOR, createCameraDirector, createCameraSubjects } from './c
 
 // The SVG remains the only gameplay input surface. WebGL consumes a filtered,
 // read-only presentation frame; neither camera nor effects can dispatch actions.
-export function mountArena(host, tacticalElement, { onReady, onError, onQuality, onCamera, onTopView }) {
+export function mountArena(host, tacticalElement, { onReady, onError, onQuality, onCamera, onTopView, onRiffProjection }) {
   const cleanups=[];
   let disposed=false,failed=false,raf=0,model=null,frame={},emissives=[];
   const dispose=()=>{
@@ -263,6 +263,12 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
        speedLines.update(sonicCamera.active&&!sonicCamera.manual?(directedShot?.lines??0):0,wallDt,reduced);
        if(speedLines.level>0)dirty=true;}
       reportCamera(topView?'top':sonicCamera.manual?'battle-manual':sonicCamera.active?'sonic':!autoCamera||!cameraShot||cameraShot.mode==='off'?'off':cameraShot.mode,cameraShot?.resumeInMs);
+      const anchors=visuals.riffAnchors();
+      if(anchors){camera.updateMatrixWorld();onRiffProjection?.(anchors.map(p=>{
+        const bridge=p.clone().add(new THREE.Vector3(0,3.05,0)).project(camera),foot=p.clone().project(camera);
+        return {x:(bridge.x+1)*host.clientWidth/2,y:(1-bridge.y)*host.clientHeight/2,
+          footY:(1-foot.y)*host.clientHeight/2,width:host.clientWidth,height:host.clientHeight};
+      }));}else onRiffProjection?.(null);
       // 🎭 So is a standee's landing light (standeeSteps.js) — the hex's fade must finish.
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
@@ -288,6 +294,10 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
           crowdSpeaker.style.top=`${THREE.MathUtils.clamp(rect.top+(1-p.y)*rect.height/2,rect.top+100,rect.bottom-24)}px`;
         }else delete crowdSpeaker.dataset.arenaCrowdSpeaker;
         for(const e of emissives)if(e.crack)e.material.emissiveIntensity=e.base*(reduced?1:1+.08*Math.sin(elapsed*.75));
+        // 🌑 THE SHAMISEN'S HUSH (cursedShamisenArena.js): the arena darkens while
+        // the Ronin casts — exposure, not the lights, so every material dims
+        // together and nothing in the rig has to be found and put back.
+        {const cl=visuals.curseLight();renderer.toneMappingExposure=1-.6*Math.min(1,cl.dim);}
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);
         smoke.begin();foreground.clear();markSolid([smoke.vent,crowd.group,...visuals.solidRoots()]);solid.render(scene,camera);foreground.render(foregroundScene,camera);
         smoke.composite();

@@ -2,7 +2,12 @@ import { HEX_BY_NUM } from '../board/hexMap.js';
 import { HEX_SIZE, SCALE } from '../board/constants.js';
 import { angleTo, pointyCorners } from '../board/hexGeometry.js';
 import { bushidoLane } from '../engine/systems/bushido.js';
-import { psychoBushidoBonus, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE } from '../data/gameConstants.js';
+import { psychoBushidoD8s, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE } from '../data/gameConstants.js';
+
+// ⚡ THE RUNG'S LABEL (2026-10-01): the range no longer pays bonus Drive — it
+// turns that many of his d6s into d8s — so the hex says "3d8", not "+3".
+// Exported so `bushidoOverlayCheck` reads the preview's "+3" through the same map.
+export const bushidoLabel = dist => `${psychoBushidoD8s(dist)}d8`;
 
 // Alex's three control-panel screenshots, 2026-09-05 22:18–22:19.
 // Values are in the preview's original board units; scale the group once.
@@ -87,7 +92,7 @@ export function BushidoOverlay({ spirit, blockers, targets, layer = 'lane', scal
       })}
       {lane.filter(s => s.dist >= PSYCHO_BUSHIDO_MIN_RANGE && !(stopped && s.num === last.num)).map(s => {
         const h = HEX_BY_NUM[s.num], dy = blockers.has(s.num) ? -HEX_SIZE * 0.62 : L.lab * 0.36;
-        return <text key={s.num} x={h.px} y={h.py + dy} textAnchor="middle" fontSize={L.lab} fontWeight="800" fill="#ffffff" stroke="#02040a" strokeWidth={L.lab * 0.11} paintOrder="stroke" opacity={(0.35 + 0.65 * power(s.dist)).toFixed(2)} fontFamily="ui-sans-serif,system-ui,sans-serif">+{psychoBushidoBonus(s.dist)}</text>;
+        return <text key={s.num} x={h.px} y={h.py + dy} textAnchor="middle" fontSize={L.lab} fontWeight="800" fill="#ffffff" stroke="#02040a" strokeWidth={L.lab * 0.11} paintOrder="stroke" opacity={(0.35 + 0.65 * power(s.dist)).toFixed(2)} fontFamily="ui-sans-serif,system-ui,sans-serif">{bushidoLabel(s.dist)}</text>;
       })}
     </>}
   </g>;

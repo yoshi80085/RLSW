@@ -99,11 +99,12 @@ const ACTION_LABELS = {
   move: 'Choose a lit hex', face: 'Choose a facing', swing: 'Choose a Swing target',
   smash: 'Choose a Smash target', sonic: 'Choose a Sonic target', shukuchi: 'Choose a Shukuchi landing',
   psycho_bushido: 'Choose a Bushido target', move_shadow: 'Move the Shadow',
+  cursed_shamisen: 'Choose a rival to curse',
 };
 // Layout owns only disclosure state. Game owns turns, permissions and all actions.
 // Keep these wrappers mounted in both views: conditional trees/portals here would
 // remount note controls and the live SVG while a player is composing or targeting.
-export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, tutorial, hud,
+export function MatchSurface({ immersive, riffArena = false, spirit, turnNumber, step, canAct, ap, tutorial, hud,
   scale = null, scaleOpen = false, onScaleToggle, children }) {
   const [selection, setSelection] = useState(null);
   const id = useId();
@@ -133,7 +134,7 @@ export function MatchSurface({ immersive, spirit, turnNumber, step, canAct, ap, 
   const [rootRef, pocketRef] = usePocketFloor(immersive);
   return <SurfaceContext.Provider value={context}>
     <div ref={rootRef} className="match-surface" data-match-layout={immersive ? 'immersive' : 'classic'}
-      data-match-step={step} data-hud-tutorial={tutorial || undefined}>
+      data-match-step={step} data-riff-duel={riffArena || undefined} data-hud-tutorial={tutorial || undefined}>
       <style>{SURFACE_CSS}</style>
       {immersive && <>
         <div className="match-phase-rail" aria-label="Turn progress">
@@ -239,6 +240,14 @@ export function HudRegion({ name, children }) {
 // The CSS is intentionally a layout contract, not a replacement skin. A later
 // presentation pass can restyle each named region without moving game handlers.
 const SURFACE_CSS = `
+  /* The arena duel owns the board's input and both tracks. Keep turn controls
+     mounted so the current hand survives, but clear their overlapping chrome. */
+  [data-riff-duel] .match-phase-rail,
+  [data-riff-duel] .match-player-pocket,
+  [data-riff-duel] .match-hud-bar,
+  [data-riff-duel] [data-hud-region],
+  [data-riff-duel] .match-note-stock,
+  [data-riff-duel] .immersive-arail { visibility:hidden; pointer-events:none; }
   .match-surface { display:grid; grid-template-columns:minmax(430px,480px) minmax(0,1fr); gap:12px; align-items:start; flex:1; min-width:0; }
   .match-hud-column { display:flex; flex-direction:column; gap:0; min-width:0; }
   [data-hud-region] { min-width:0; }

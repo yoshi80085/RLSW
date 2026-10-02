@@ -160,13 +160,13 @@ export function spiritsSynced(spirits) {
  *  maxLen (Phase R2): difficulty-tier cap on riff length.
  *  (The Phase R4 `tier` param is GONE — the 'acoustic' Acoustic Duel was cut,
  *  so every riff-off is the plugged-in, beam-crossed duel.) */
-export function riffOffStarted(attackerId, defenderId, { slayer = false, eRush = false, melodyLine = null, hasRiff = false, maxLen = 6 } = {}) {
-  return { type: RIFF_OFF_STARTED, attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen };
+export function riffOffStarted(attackerId, defenderId, { slayer = false, eRush = false, melodyLine = null, hasRiff = false, maxLen = 6, arenaVersion } = {}) {
+  return { type: RIFF_OFF_STARTED, attackerId, defenderId, slayer, eRush, melodyLine, hasRiff, maxLen, ...(arenaVersion?{arenaVersion}: {}) };
 }
 
 /** A performer submits their results array [{hit, rt, grade, noteIdx}]. */
-export function riffResultsSubmitted(role, results) {
-  return { type: RIFF_RESULTS_SUBMITTED, role, results };
+export function riffResultsSubmitted(role, results, arena = {}) {
+  return { type: RIFF_RESULTS_SUBMITTED, role, results, ...arena };
 }
 
 /** Both results are in — compute the verdict. */
@@ -175,8 +175,8 @@ export function riffResolved() {
 }
 
 /** Beams locked — sudden-death Round 2 with fresh, faster riffs. */
-export function riffRound2Started() {
-  return { type: RIFF_ROUND2_STARTED };
+export function riffRound2Started(arena = {}) {
+  return { type: RIFF_ROUND2_STARTED, ...arena };
 }
 
 /** The duel is over (or aborted) — clear the battle slice. */
@@ -218,10 +218,13 @@ export function attackRolled(kind, attackerId, defenderId,
   { atkStat, defStat, posing = false, halveDef = false, dicePool = null,
     atkFloor = 0, atkDie = 6, defDie = 6, sonicChordNotes = [], sustainChordNotes = [],
     swingChordLeft = [], swingChordSpent = [],
-    atkKeep = null, sustainPool = null, defKeep = null, atkFixed = null, cardId = null }) {
+    atkKeep = null, sustainPool = null, defKeep = null, atkFixed = null, cardId = null, bushidoDist = null, bushidoTo = null }) {
   return {
     type: ATTACK_ROLLED, kind, attackerId, defenderId,
     ...(kind === 'sonic' ? { sonicVersion: 2 } : {}),
+    // ⚡ Psycho Bushido rolls on the Sonic's shield ledger (combat.js), so it is
+    // always the staged, keep-the-best version; `bushidoDist` rides for the show.
+    ...(kind === 'bushido' ? { sonicVersion: 2, bushidoDist, bushidoTo } : {}),
     ...(kind === 'swing' ? { swingVersion: 2 } : {}),
     atkStat, defStat, posing, halveDef, dicePool, atkFloor, atkDie, defDie, sonicChordNotes, sustainChordNotes,
     // 🎲 Keep-the-best (dicePool.js): how many of the thrown dice count, and the

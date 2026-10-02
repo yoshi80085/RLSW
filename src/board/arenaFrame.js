@@ -8,7 +8,7 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 // for its viewer; this boundary also enforces it before copying actor data.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [] }) {
+  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null }) {
   spirits=spirits.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   shadowDecoys=shadowDecoys.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   const visible = new Set(spirits.map(s => s.id));
@@ -57,6 +57,9 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
     battle: battle && visible.has(battle.attackerId) && visible.has(battle.defenderId)
       ? { attackerId:battle.attackerId, defenderId:battle.defenderId,
           phase:battle.phase, sonic:!!battle.sonicAttack, round:battle.round ?? 1,
+          ...(battle.arenaVersion ? {riffArena:true,key:battle.arenaKey,time:battle.arenaLive?.time??0,
+            energy:[...(battle.arenaLive?.energy??battle.arenaData?.arenaEnergy??[0,0])],
+            impactAt:battle.arenaImpactAt,attackerWon:battle.attackerWon,tie:battle.tie}:{}),
           // ⚠️ The two ROLL marks MUST cross into the frame: `arenaVisuals`
           // runs both staged clocks off them, and a frame without them is a
           // battle frozen at t=0 (the 2026-09-24 "bugged out" report).
@@ -91,6 +94,8 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
             sustainChordNotes:[...(battle.sustainChordNotes ?? [])],
             hitCount:battle.hitCount, damage:battle.damage,
             fame:battle.sonicFame, knockback:battle.knockback,
+            // ⚡ A Psycho Bushido rides this volley frame: the lane and the landing.
+            ...(battle.bushido ? { bushido:true, bushidoDist:battle.bushidoDist, bushidoFrom:battle.bushidoFrom, bushidoTo:battle.bushidoTo } : {}),
           } : {}),
         } : null,
     slides:Object.values(slides).filter(s => visible.has(s.id)).map(s => ({
@@ -119,6 +124,17 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
     // 🎪 The lit marquees (public board state) — board/marqueeMarkers.js.
     marquees:(marquees ?? []).filter(m => Number.isFinite(m?.hex))
       .map(m => ({ hex:m.hex, corner:m.corner ?? null, color:m.color ?? null, community:!!m.community })),
+    // 🎸 THE IWATO CURSE (cursedShamisenArena.js). Public by design: rivals count
+    // the strings (Alex — "in plain sight"), and a curse is cast in front of
+    // everyone. Smoke still hides a Ronin's instrument; a curse on a hidden
+    // Spirit keeps its key (so it is not replayed) but loses its target.
+    shamisen:shamisen ? {
+      instruments:(shamisen.instruments ?? []).filter(i => visible.has(i.roninId))
+        .map(i => ({ roninId:i.roninId, color:i.color, strings:[...(i.strings ?? [])] })),
+      curses:(shamisen.curses ?? []).map(c => ({ key:c.key, roninId:c.roninId, color:c.color,
+        targetId:visible.has(c.targetId) ? c.targetId : null, ivs:[...(c.ivs ?? [])],
+        turnsLeft:c.turnsLeft, ended:c.ended ?? null })),
+    } : null,
     // The arm's visible trail is already public board geometry.
     tentacle:tentacle ? {key:tentacle.key, pts:tentacle.pts.map(p=>({x:p.x,y:p.y}))} : null,
   };

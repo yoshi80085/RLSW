@@ -264,6 +264,7 @@ export function BattleMeterOverlay({
   // When liteFx is on, strip GPU-punishing blend modes, filter animations and
   // heavy drop-shadows so the overlay runs smoothly on weaker hardware.
   const blend = liteFx ? 'normal' : 'screen';
+  if(battleState.arenaVersion)return null;
 
   return (() => {
         const attacker = spirits.find(s => s.id === battleState.attackerId);

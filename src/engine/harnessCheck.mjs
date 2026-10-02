@@ -280,7 +280,7 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
   ok(!HARNESS_GAPS.riffRound2,
      '⚡ sudden death is NO LONGER a gap — `transition.js` escalates on `verdict.close`, the client\'s own gate (§6.6.9)');
   ok(HARNESS_GAPS.riffRound2Speed,
-     '…but what replaced it is declared: the 0.58× Round-2 chart is played at Round-1 difficulty, because `simulateRiffPerformance` has no tempo term');
+     '…but what replaced it is declared: the tempo-aware bot timing curve still needs player calibration');
   ok(!HARNESS_GAPS.demolishFans,
      '🎤 the crowd scatter is NO LONGER a gap — `harnessHooks` implements it (2026-09-01)');
   ok(!HARNESS_GAPS.gainFans,

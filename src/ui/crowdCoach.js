@@ -27,7 +27,7 @@
 // Pure module — no React, no DOM, no rng.
 // =============================================================================
 import { detectSpiritStyle } from "../music/spiritStyle.js";
-import { paletteScaleFor } from "../music/notes.js";
+import { livePalette as paletteScaleFor } from "../engine/systems/iwatoCurse.js";   // 🌑 curse-aware
 import { scorePlay } from "../engine/policies/playFinder.js";
 
 const LETTERS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'];

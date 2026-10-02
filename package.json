@@ -18,10 +18,18 @@
     "build:seatportrait": "node .scratch/seatPortraitBuild.mjs",
     "dev:standeemove": "vite --open /RLSW/.scratch/standee-move-preview.html",
     "build:standeemove": "node .scratch/standeeMoveBuild.mjs",
+    "dev:bushidostrike": "vite --open /RLSW/.scratch/bushido-strike-preview.html",
+    "build:bushidostrike": "node .scratch/bushidoStrikeBuild.mjs",
+    "dev:abilitydemo": "vite --open /RLSW/.scratch/ability-demo-preview.html",
+    "build:abilitydemo": "node .scratch/abilityDemoBuild.mjs",
+    "dev:cursedshamisen": "vite --open /RLSW/.scratch/cursed-shamisen-preview.html",
+    "build:cursedshamisen": "node .scratch/cursedShamisenBuild.mjs",
     "lint": "eslint .",
     "preview": "vite preview",
     "test:sandbox": "node src/engine/sandboxCheck.mjs",
-    "test:all": "npm run test:vocab && npm run test:cards && npm run test:cardjourney && npm run test:marqueemarkers && npm run test:marqueejourney && npm run test:engine && npm run test:stagefx && npm run test:sandbox && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:buzzer && npm run test:fametrack && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:shukuchi && npm run test:shukuchiui && npm run test:bushido && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch && npm run test:journey && npm run test:battlejourney && npm run test:replayjourney && npm run test:bushidoui && npm run test:arena && npm run test:sonic && npm run test:spotlight && npm run test:sonicfx && npm run test:sonicjourney && npm run test:bgm && npm run test:mix && npm run test:dialtick && npm run test:headdial && npm run test:cameradirector && npm run test:movetiles && npm run test:standee && npm run test:standeemove && npm run test:spiritpicker && npm run test:seatportrait && npm run test:ronintone && npm run test:voiceleak && npm run test:commitstyles && npm run test:spiritsting && npm run test:stockdraw && npm run test:notekeys && npm run test:notekeysjourney && npm run test:numpadjourney && npm run test:scalewheel && npm run test:playfinder && npm run test:crowdcoach && npm run test:crowdbubble && npm run test:loadouts && npm run test:loadoutui && npm run test:dice && npm run test:battledirector && npm run test:battlelens && npm run test:beamlayer && npm run test:attacktiles && npm run test:topview && npm run test:swing",
+    "test:all": "npm run test:vocab && npm run test:cards && npm run test:cardjourney && npm run test:marqueemarkers && npm run test:marqueejourney && npm run test:engine && npm run test:stagefx && npm run test:sandbox && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:buzzer && npm run test:fametrack && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:shamisenjourney && npm run test:shukuchi && npm run test:shukuchiui && npm run test:bushido && npm run test:bushidoburst && npm run test:bushidoarena && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch && npm run test:journey && npm run test:battlejourney && npm run test:replayjourney && npm run test:bushidoui && npm run test:arena && npm run test:sonic && npm run test:spotlight && npm run test:sonicfx && npm run test:sonicjourney && npm run test:bgm && npm run test:mix && npm run test:dialtick && npm run test:headdial && npm run test:cameradirector && npm run test:movetiles && npm run test:standee && npm run test:standeemove && npm run test:spiritpicker && npm run test:abilitydemo && npm run test:cursedshamisen && npm run test:seatportrait && npm run test:ronintone && npm run test:voiceleak && npm run test:commitstyles && npm run test:spiritsting && npm run test:stockdraw && npm run test:notekeys && npm run test:notekeysjourney && npm run test:numpadjourney && npm run test:scalewheel && npm run test:playfinder && npm run test:crowdcoach && npm run test:crowdbubble && npm run test:loadouts && npm run test:loadoutui && npm run test:dice && npm run test:battledirector && npm run test:battlelens && npm run test:beamlayer && npm run test:attacktiles && npm run test:topview && npm run test:swing && npm run test:riffarena && npm run test:riffarenalive && npm run test:riffarenajourney",
+    "test:cursedshamisen": "node --import ./src/engine/testAssetStub.mjs src/board/cursedShamisenCheck.mjs && node --import ./src/engine/testAssetStub.mjs src/board/cursedShamisenArenaCheck.mjs",
+    "test:abilitydemo": "node --import ./src/engine/testAssetStub.mjs src/ui/abilityDemoCheck.mjs",
     "test:arch": "node --import ./src/engine/testAssetStub.mjs src/engine/architectureCheck.mjs",
     "test:b0": "node --import ./src/engine/testAssetStub.mjs src/engine/b0check.mjs",
     "test:battleflow": "node --import ./src/engine/testAssetStub.mjs src/engine/battleFlowCheck.mjs",
@@ -57,8 +65,11 @@
     "test:riffparity": "node --import ./src/engine/testAssetStub.mjs src/riff/riffOffParity.test.mjs",
     "test:score": "node --import ./src/engine/testAssetStub.mjs src/engine/actionScoreCheck.mjs",
     "test:bushido": "node --import ./src/engine/testAssetStub.mjs src/engine/bushidoCheck.mjs",
+    "test:bushidoburst": "node --import ./src/engine/testAssetStub.mjs src/engine/bushidoBurstCheck.mjs",
+    "test:bushidoarena": "node --import ./src/engine/testAssetStub.mjs src/board/bushidoArenaCheck.mjs",
     "test:shukuchi": "node --import ./src/engine/testAssetStub.mjs src/engine/shukuchiCheck.mjs",
     "test:shamisen": "node --import ./src/engine/testAssetStub.mjs src/engine/shamisenCheck.mjs",
+    "test:shamisenjourney": "esbuild src/engine/shamisenJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/shamisenJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/shamisenJourney.mjs",
     "test:skilltree": "node --import ./src/engine/testAssetStub.mjs src/engine/skillTreeCheck.mjs",
     "test:stackslots": "node --import ./src/engine/testAssetStub.mjs src/engine/stackSlotsCheck.mjs",
     "test:cardjourney": "esbuild src/engine/clientCardJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/cardJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/cardJourney.mjs",
@@ -100,7 +111,11 @@
     "test:battledirector": "node --import ./src/engine/testAssetStub.mjs src/board/battleDirectorCheck.mjs",
     "test:swing": "node --import ./src/engine/testAssetStub.mjs src/engine/swingClashCheck.mjs && esbuild src/engine/clientSwingJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/swingJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/swingJourney.mjs",
     "test:loadouts": "node --import ./src/engine/testAssetStub.mjs src/engine/loadoutCheck.mjs",
-    "test:loadoutui": "node scripts/check-loadout-ui.mjs"
+    "test:loadoutui": "node scripts/check-loadout-ui.mjs",
+    "dev:riffarena": "vite --open /RLSW/previews/riff-arena/",
+    "test:riffarena": "node previews/riff-arena/check.mjs",
+    "test:riffarenalive": "node --import ./src/engine/testAssetStub.mjs src/riff/arenaDuelCheck.mjs && esbuild src/ui/riffArenaMountCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/riffArenaMountCheck.mjs --log-level=warning && node node_modules/.cache/rlsw/riffArenaMountCheck.mjs",
+    "test:riffarenajourney": "esbuild src/engine/clientRiffArenaJourneyCheck.jsx --bundle --platform=node --packages=external --jsx=automatic --format=esm --outfile=node_modules/.cache/rlsw/riffArenaJourney.mjs --loader:.png=empty --loader:.jpg=empty --loader:.svg=empty --loader:.mp3=empty --loader:.wav=empty --log-level=warning && node node_modules/.cache/rlsw/riffArenaJourney.mjs"
   },
   "dependencies": {
     "react": "^19.3.0",
@@ -122,4 +137,3 @@
     "vite": "^8.0.10"
   }
 }
-

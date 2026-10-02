@@ -204,7 +204,8 @@ export const PSYCHO_BUSHIDO_MAX_RANGE = 5;  // ⭐ farther than this is out of t
 // ⭐ FLAT, NOT "EVERYTHING YOU HAVE LEFT". The dash used to bill `apLeft`, which
 // made the ability cost a different amount every time it was thrown and made the
 // close charge self-policing. The window does that job now, so the bill is a
-// number: 3 AP total, of which the Swing at the end spends `SWING_AP_COST`.
+// number: 3 AP total, paid in one go with the Action Token since the strike
+// stopped being a Swing (2026-10-01 — a Drive-vs-Sustain burst, `bushido.js`).
 // ⚠️ IT COMES OUT OF THE SAME `moveStepsLeft` POOL as walking, Shukuchi and the
 // Swing — "3 AP flat" and "movement consumed" in §2.1.1's table are one line,
 // not two. If they were two rules the flat number would mean nothing.
@@ -216,16 +217,21 @@ export const PSYCHO_BUSHIDO_AP_COST   = 3;
 // can cost you the chord you were building. ⚠️ Uncosted by design (the ledger
 // says so): balance is deferred (§B10), so this is recorded, not tuned.
 export const PSYCHO_BUSHIDO_STACK_COST = 2;
-// The bonus Drive by charge distance: 3 → +2, 4 → +3, 5 → +4.
-// 📌 ONE FUNCTION, READ BY THE KERNEL AND THE CLIENT BOTH. The bonus lived as a
-// bare `dist - 1` expression in three files; three copies of an arithmetic rule
-// is how `PSYCHO_BUSHIDO_CD` and a literal `2` described the same cooldown in
-// two places for months. Out of the window it pays 0 — a caller that has not
-// checked legality gets nothing rather than a negative or a NaN.
-export const PSYCHO_BUSHIDO_DRIVE_LADDER = [2, 3, 4];
-export function psychoBushidoBonus(dist) {
+// ⚡ THE RANGE TURNS d6s INTO d8s: 3 → two, 4 → three, 5 → four (Alex,
+// 2026-09-30: "Bushido essentially starts turning the d6 into d8's - the further
+// away the strike, the more dice turn to d8's"; his rulings 2026-10-01: it
+// REPLACES the old Drive bonus, only d6s upgrade, and a pool with fewer d6s than
+// the rung simply runs out). `engine/systems/bushido.js` `bushidoUpgrade` applies it.
+// 🪦 WAS `PSYCHO_BUSHIDO_DRIVE_LADDER` — +2/+3/+4 paid into `tempDrive`, which
+// `sonicRig.drivePowerBreakdown` caps at 2 DICE, so ranges 4 and 5 bought exactly
+// what range 3 did. Same numbers, now as upgrades the cap cannot flatten.
+// 📌 ONE FUNCTION, READ BY THE KERNEL AND THE CLIENT BOTH. Out of the window it
+// answers 0 — a caller that has not checked legality gets nothing rather than a
+// negative or a NaN.
+export const PSYCHO_BUSHIDO_D8_LADDER = [2, 3, 4];
+export function psychoBushidoD8s(dist) {
   const i = Math.round(dist) - PSYCHO_BUSHIDO_MIN_RANGE;
-  return PSYCHO_BUSHIDO_DRIVE_LADDER[i] ?? 0;
+  return PSYCHO_BUSHIDO_D8_LADDER[i] ?? 0;
 }
 
 // ─── 🌀 SHUKUCHI ARPEGGIO — 縮地, "shrinking the earth" ───────────────────────
@@ -289,12 +295,11 @@ export const SHADOW_ILLUSION_CD    = 2;   // rounds — was 3, respecced 2026-09
 // which fires at the start of the OWNER's turn, so it has ALWAYS been per round
 // by `cooldowns.js`'s convention. The doc was describing the code it already had.
 export const SHADOW_ILLUSION_TURNS = 2;
-// 🎸 CURSED SHAMISEN — the curse is a debt, not a board token. Activation speeds
-// up ALL OTHER ability cooldowns for CURSED_SHAMISEN_DURATION rounds. While
-// active, Ronin glows — if he loses ANY Vibe in battle, all cooldowns RESET to
-// full. He can pay 1 Db per round to protect himself, but the glow stays either
-// way: rivals must guess whether he paid.
-// `RONIN_ABILITY_DESIGN.md` §2.3 is the spec.
+// 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02, `RONIN_ABILITY_DESIGN.md`
+// §2.3.00): three strings tuned in the chord step, cast on a rival, whose palette
+// becomes Iwato for their next two turns. The rules are
+// `engine/systems/iwatoCurse.js`; the cooldown and Db are the universal ones in
+// `cooldowns.js` (2 and 5) — these two names are what the docs quote.
 export const CURSED_SHAMISEN_CD    = 2;   // rounds — gap between activations
 
 // 🌌🕳️💻☀️ INTERGALACTIC 0. He is the zoner: his kit is about doing a small thing
@@ -343,43 +348,10 @@ export const CURSED_SHAMISEN_DB_COST = 5;   // unchanged — it was already payi
 // fragile exactly while rivals cannot tell which body to hit.
 export const SHADOW_ILLUSION_SUSTAIN_DRAIN = 1;
 
-// ── 🎸 CURSED SHAMISEN — the curse is a debt ─────────────────────────────────
-// `RONIN_ABILITY_DESIGN.md` §2.3 is the spec.
-//
-// 🎯 THE FANTASY: Ronin plays a cursed instrument that speeds him up but puts a
-// target on his back. While the curse runs, ALL OTHER ability cooldowns tick
-// twice as fast (one extra tick per round). The Shamisen is NOT a board token —
-// it is an internal state on the Ronin. He glows while it is active.
-//
-// ⚠️ THE CURSE BITES: if Ronin loses ANY Vibe in battle while the curse is
-// active AND he has NOT paid his debt that round, ALL cooldowns (including the
-// Shamisen's own) RESET to their full duration. That is the punishment for being
-// caught with the curse running and unpaid.
-//
-// 💰 THE DEBT: each round while active, Ronin may spend 1 Db to "pay off" the
-// curse for that round. Payment protects him from the reset penalty, but the
-// glow stays either way — rivals CANNOT TELL whether he paid. That is the bluff.
-// Total safe cost: 2 Db activation + 3 Db payoff = 5 Db for guaranteed speed.
-// Total gamble cost: 2 Db activation + 0 payoff = 2 Db but you are exposed.
-//
-// 📌 THE SHAMISEN'S OWN COOLDOWN IS EXCLUDED FROM THE SPEED BOOST. Only
-// Psycho Bushido, Shadow Illusion, and Wa no Koe charge faster. This prevents
-// the recursive loop of using Shamisen to speed up Shamisen.
-//
-// 🪦 WHAT THIS REPLACED (2026-08-26): a board token with a 5-note feeding
-// phrase (♭3 → 2 → 1 → ♭6 → 5), growing aura, Sustain-stack fray, wandering AI,
-// and exorcism by spending Ronin's tonic. All of that is gone — the constants
-// `SHAMISEN_PHRASE`, `SHAMISEN_RING_MAX`, `SHAMISEN_FRAY`, and the functions
-// `feedShamisenPhrase`, `shamisenNextPc`, `shamisenResolvingPc`, `shamisenRings`
-// in `music/cadence.js` are deleted, along with the board-token code in the
-// client monolith.
-
-// How many rounds the curse lasts after activation.
-export const CURSED_SHAMISEN_DURATION    = 3;
-
-// Db per round to pay off the debt and avoid the reset penalty.
-// ⚠️ SEPARATE FROM `CURSED_SHAMISEN_DB_COST`, which is the activation price.
-export const CURSED_SHAMISEN_PAYOFF_COST = 1;
+// 🪦 THE GLOW-AND-DEBT SHAMISEN (2026-08-26 → 2026-10-02) is gone: its
+// `CURSED_SHAMISEN_DURATION` (3) and `CURSED_SHAMISEN_PAYOFF_COST` (1 Db/round)
+// went with it. The Iwato curse's own numbers (3 strings, 2 cursed turns, 3
+// Iwato notes to exorcise) live with its look in `board/cursedShamisen.js`.
 
 // 🫁 THE RIG BREATHES — SEQUENCING.md §5.H⁶, shipped 2026-08-20.
 //

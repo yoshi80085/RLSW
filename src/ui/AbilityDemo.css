@@ -1,0 +1,36 @@
+/* 🎬 The ability pop-out (Alex, 2026-10-01) — AbilityDemo.jsx + abilityDemo.js. */
+.ability-demo{position:fixed;z-index:40;display:flex;flex-direction:column;gap:6px;padding:10px 10px 11px;border-radius:14px;
+  background:linear-gradient(140deg,#233149f4,#0b1221f9);border:1px solid color-mix(in srgb,var(--demo-color) 70%,#8fa2c4);
+  box-shadow:0 22px 50px #000b;font-family:'Saira',sans-serif;color:#e8eef9;animation:ability-demo-in .2s ease-out both}
+.ability-demo.is-glow{box-shadow:0 22px 50px #000b,0 0 26px color-mix(in srgb,var(--demo-color) 30%,transparent)}
+.ability-demo.is-inline{position:relative;z-index:auto;margin:14px 0 4px;animation:none}
+.ability-demo.from-left::after,.ability-demo.from-right::after,.ability-demo.from-above::after{content:'';position:absolute;width:12px;height:12px;
+  background:#152037;border:1px solid color-mix(in srgb,var(--demo-color) 70%,#8fa2c4);transform:rotate(45deg)}
+.ability-demo.from-left::after{right:-7px;top:calc(var(--demo-arrow) - 6px);border-left:0;border-bottom:0}
+.ability-demo.from-right::after{left:-7px;top:calc(var(--demo-arrow) - 6px);border-right:0;border-top:0}
+.ability-demo.from-above::after{bottom:-7px;left:calc(var(--demo-arrow) - 6px);border-left:0;border-top:0}
+@keyframes ability-demo-in{from{opacity:0;transform:translateY(6px) scale(.97)}to{opacity:1;transform:none}}
+.ability-demo-head{display:flex;justify-content:space-between;align-items:center;gap:8px}
+.ability-demo-head .draft-eyebrow b{color:var(--demo-color);font-weight:600;letter-spacing:1px;margin-left:4px}
+.ability-demo-sound{border:1px solid #4a5874;background:#0d1524;color:#d6e2f5;border-radius:7px;width:30px;height:24px;cursor:pointer;font-size:13px;line-height:1}
+.ability-demo-sound[aria-pressed=true]{border-color:var(--demo-color)}
+.ability-demo-pic{position:relative;width:100%;border-radius:9px;overflow:hidden;background:radial-gradient(ellipse at 50% 35%,#1a2645,#05070f 75%);border:1px solid #2c3954}
+.ability-demo-canvas{position:absolute;inset:0;width:100%;height:100%;display:block}
+.ability-demo-chips{position:absolute;left:6px;right:6px;top:6px;display:flex;flex-wrap:wrap;gap:4px;pointer-events:none;z-index:2}
+.ability-demo-chip{font:10px 'Share Tech Mono',monospace;letter-spacing:1px;padding:2px 6px;border-radius:5px;background:#050b17cc;border:1px solid #3d4b66;color:#cfdcf2}
+.ability-demo-chip.is-ap{color:var(--demo-color)}.ability-demo-chip.is-on{border-color:#ffcf82;color:#ffcf82}.ability-demo-chip.is-off{opacity:.45}
+.ability-demo-dice{display:flex;align-items:center;gap:3px;padding:2px 5px;border-radius:6px;background:#050b17cc;border:1px solid #3d4b66;font:10px 'Share Tech Mono',monospace}
+.ability-demo-dice b{font-weight:400;letter-spacing:1px;color:#9fb0cc;margin-right:2px}
+.ability-demo-dice.is-rival{border-color:color-mix(in srgb,var(--demo-rival) 60%,#3d4b66)}.ability-demo-dice.is-you{border-color:color-mix(in srgb,var(--demo-color) 60%,#3d4b66)}
+.ability-demo-dice i{font-style:normal;min-width:17px;height:17px;display:inline-grid;place-items:center;border-radius:4px;border:1px solid #56647f;color:#dfe8f8;background:#0f1729;opacity:.55;transition:background .2s,border-color .2s}
+.ability-demo-dice i.is-blank{font-size:8px;color:#8a9ab5}
+.ability-demo-dice i.is-kept{opacity:1}.ability-demo-dice.is-rival i.is-kept{border-color:var(--demo-rival);color:#fff}.ability-demo-dice.is-you i.is-kept{border-color:var(--demo-color);color:#fff}
+.ability-demo-dice i.is-d8{border-color:#ffd23a;box-shadow:0 0 6px #ffd23a88;color:#ffe9a6;opacity:1}
+.ability-demo-dice em{font-style:normal;margin-left:4px;color:#ffcf82}
+.ability-demo-card{position:absolute;inset:auto 10px 10px 10px;z-index:3;display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-radius:9px;
+  background:#060c19e6;border:1px solid color-mix(in srgb,var(--demo-color) 55%,#3d4b66);opacity:0;transform:translateY(6px);transition:opacity .25s,transform .25s;pointer-events:none}
+.ability-demo-card.show{opacity:1;transform:none}
+.ability-demo-card strong{font:600 14px 'Saira',sans-serif;color:#f2f6ff}.ability-demo-card span{font-size:11px;color:#c4d1e7;line-height:1.5}
+.ability-demo-caption{min-height:2.6em;font-size:11.5px;line-height:1.35;color:#d7e2f4;padding:0 2px}
+.draft-skill.has-demo .draft-skill-pick strong::after{content:'▶ hover to watch';display:block;font:9px 'Share Tech Mono',monospace;letter-spacing:1px;color:#8ea2c2;margin-top:2px}
+@media(prefers-reduced-motion:reduce){.ability-demo{animation:none}.ability-demo-card{transition:none}}

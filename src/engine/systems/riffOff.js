@@ -13,6 +13,7 @@ import { melodyToRiff } from "../../riff/melodyRiff.js";
 import { voiceRiff, degreePitch } from "../../riff/guitarMap.js";
 import { applyPerformance, applyChords } from "../../riff/riffPerformance.js";
 import { marginToDamage } from "./combat.js";
+import {makeArenaExchange,prepareArenaExchange,shiftArenaExchange,arenaGap,arenaBotOffsets} from '../../riff/arenaDuel.js';
 
 // Grade → weight for the performance score (single source of truth; the
 // client imports riffStats from here for its live overlay too).
@@ -180,7 +181,20 @@ function performanceFor(riff, rng) {
  *  When melodyLine is provided (Phase R1), the attacker's riff is built from
  *  their committed melody instead of randomly generated. If the melody is too
  *  short (<4 notes), falls back to a random riff (reduced-pot flag set). */
-export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush, melodyLine, maxLen }, rng) {
+export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRush, melodyLine, maxLen, arenaVersion }, rng) {
+  if(arenaVersion===1){
+    const ids=[attackerId,defenderId],melodies=ids.map((id,i)=>{
+      const ns=state.noteStates?.[id]??{};return [...(ns.lastCommittedMelody??ns.committedMelody??(i===0?melodyLine:null)??[])];
+    });
+    const decorate=(riff,rand)=>performanceFor(riff,rand);
+    const current=makeArenaExchange({melodies,rng,decorate});
+    const next=prepareArenaExchange(current,{melodies,rng,decorate});
+    const withBots=e=>({...e,botOffsets:e.runs.map((r,i)=>arenaBotOffsets(r,state.noteStates?.[ids[i]]?.perfScore,rng))});
+    return {...state,battle:{kind:'riffOff',arenaVersion:1,attackerId,defenderId,round:1,
+      melodies,arenaExchange:withBots(current),arenaNext:withBots(next),arenaStartedAt:null,arenaClock:0,
+      arenaEnergy:[0,0],atkRiff:current.charts[0],defRiff:current.charts[1],fromMelody:current.charts[0].fromMelody,
+      defGlitch:[],defGhosts:null,atkResults:null,defResults:null,r1:null,verdict:null}};
+  }
   const len = Math.max(4, maxLen ?? RIFF_LEN_DEFAULT);
   let atk;
   let fromMelody = false;
@@ -243,8 +257,16 @@ export function applyRiffOffStarted(state, { attackerId, defenderId, slayer, eRu
 }
 
 /** RIFF_RESULTS_SUBMITTED — a performer's results array arrives. */
-export function applyRiffResultsSubmitted(state, { role, results }) {
+export function applyRiffResultsSubmitted(state, { role, results, round, clock }) {
   if (state.battle?.kind !== "riffOff") return state;
+  if(state.battle.arenaVersion){
+    const b=state.battle,side=role==='attacker'?0:1,key=side===0?'atkResults':'defResults';
+    if(!['attacker','defender'].includes(role)||round!==b.round||clock!==b.arenaClock||b[key]||b.verdict)return state;
+    const notes=b.arenaExchange.runs[side].notes;
+    if(!Array.isArray(results)||results.length!==notes.length||new Set(results.map(r=>r?.noteIdx)).size!==notes.length
+      ||results.some(r=>!r||!notes[r.noteIdx]||!Object.hasOwn(RIFF_GRADE_WEIGHT,r.grade)||r.hit!==(RIFF_GRADE_WEIGHT[r.grade]>0)
+        ||(r.hit&&(!Number.isFinite(r.rt)||r.rt<0))))return state;
+  }
   const key = role === "attacker" ? "atkResults" : "defResults";
   return { ...state, battle: { ...state.battle, [key]: results } };
 }
@@ -258,13 +280,16 @@ export function applyRiffResultsSubmitted(state, { role, results }) {
 export function applyRiffResolved(state) {
   const b = state.battle;
   if (b?.kind !== "riffOff" || !b.atkResults || !b.defResults) return state;
+  if(b.arenaVersion&&b.verdict)return state;
   const round = b.round ?? 1;
   const A = riffStats(b.atkResults);
   const D = riffStats(b.defResults);
   let attackerWon = false, margin = 0, tie = false, decidedBy = "performance";
-  const scoreGap = Math.abs(A.score - D.score);
-  if (scoreGap >= RIFF_TIE_EPS) {
-    attackerWon = A.score > D.score;
+  // Chord partners may give the two four-beat charts different gem counts.
+  // Compare normalized quality in arena duels; more charted gems isn't skill.
+  const scoreGap = b.arenaVersion ? Math.abs(A.quality-D.quality)*.04 : Math.abs(A.score - D.score);
+  if (scoreGap >= (b.arenaVersion ? .001 : RIFF_TIE_EPS)) {
+    attackerWon = b.arenaVersion ? A.quality>D.quality : A.score > D.score;
     margin = Math.max(1, Math.round(scoreGap * RIFF_MARGIN_SCALE));
   } else if (A.score === 0 && D.score === 0) {
     tie = true;
@@ -279,13 +304,13 @@ export function applyRiffResolved(state) {
     tie = true;
   }
   if (round >= 2) {
-    if (tie && !b.r1?.tie) {
+    if (tie && !b.arenaVersion && !b.r1?.tie) {
       tie = false;
       attackerWon = !!b.r1?.won;
       decidedBy = "Round 1 edge";
       margin = Math.max(1, b.r1?.margin ?? 1);
     }
-    if (!tie) { margin += 1; decidedBy += " · Round 2"; }
+    if (!tie) { margin += 1; decidedBy += b.arenaVersion ? ` · Exchange ${round}` : " · Round 2"; }
   }
   // Damage the winning riff deals — computed HERE (single source) so the client
   // reads verdict.damage instead of re-deriving it (Phase 3e). A tie deals none;
@@ -295,7 +320,7 @@ export function applyRiffResolved(state) {
   // than re-derived by the client's beam-clash code — in a networked duel both
   // peers must agree on whether the beams break or surge.
   const qualityGap = Math.abs(A.quality - D.quality);
-  const close = tie || riffIsClose(A, D);
+  const close = tie || (b.arenaVersion ? qualityGap<arenaGap(round) : riffIsClose(A, D));
   // `bothStrong` — did BOTH sides play well, all the way through sudden death?
   // Read by the payout (awardRiffFame) so a hard-fought duel pays the loser too.
   // Round 2 is part of the condition, not an extra check bolted on at the payout
@@ -306,6 +331,7 @@ export function applyRiffResolved(state) {
   const verdict = {
     round, attackerWon, margin, tie, decidedBy, damage,
     atkStats: A, defStats: D, qualityGap, close, bothStrong,
+    ...(b.arenaVersion?{gapLimit:arenaGap(round)}:{}),
   };
   return {
     ...state,
@@ -321,6 +347,30 @@ export function applyRiffResolved(state) {
 export function applyRiffRound2Started(state, _action, rng) {
   const b = state.battle;
   if (b?.kind !== "riffOff") return state;
+  if(b.arenaVersion){
+    const action=_action??{};
+    if(action.round!==b.round)return state;
+    if(action.clockOnly){
+      if(!Number.isFinite(action.at)||b.verdict)return state;
+      const pending=b.arenaExchange.runs.filter((_,i)=>!b[i===0?'atkResults':'defResults']);
+      if(!pending.length)return state;
+      // Initial start and explicit reconnect/resume share one epoch, relayed
+      // as an action. Saved performances remain scored; only pending play restarts.
+      const offset=Math.min(...pending.map(r=>r.firstHit))-1900;
+      return {...state,battle:{...b,arenaStartedAt:action.at-offset,arenaClock:b.arenaClock+1}};
+    }
+    if(!b.verdict?.close)return state;
+    let current=b.arenaNext;
+    const now=Number.isFinite(action.at)?action.at-b.arenaStartedAt:0;
+    const early=current.runs[current.caller].firstHit-current.runs[current.caller].preset.ok;
+    // Late network results get a visible fresh lead-in, never expired notes.
+    if(now>early)current=shiftArenaExchange(current,now+1600-current.runs[current.caller].firstHit);
+    let next=prepareArenaExchange(current,{melodies:b.melodies,rng,decorate:performanceFor});
+    next={...next,botOffsets:next.runs.map((r,i)=>arenaBotOffsets(r,state.noteStates?.[i===0?b.attackerId:b.defenderId]?.perfScore,rng))};
+    return {...state,battle:{...b,round:current.round,arenaExchange:current,arenaNext:next,
+      arenaEnergy:b.arenaEnergy.map((n,i)=>n+riffStats(b[i===0?'atkResults':'defResults']).score),
+      atkRiff:current.charts[0],defRiff:current.charts[1],atkResults:null,defResults:null,verdict:null}};
+  }
   // Keep the tier's riff length for sudden death. Measure it off the ROUND-1
   // chart's root notes, not its raw length — that length now includes chord
   // partners, and feeding it back in would grow the riff every round.

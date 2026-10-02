@@ -1,6 +1,6 @@
 import { HEX_BY_NUM, HEX_BY_QR } from '../../board/hexMap.js';
 import { neighborInDirection } from '../../board/hexGeometry.js';
-import { PSYCHO_BUSHIDO_MAX_RANGE, PSYCHO_BUSHIDO_STACK_COST, psychoBushidoBonus } from '../../data/gameConstants.js';
+import { PSYCHO_BUSHIDO_MAX_RANGE, PSYCHO_BUSHIDO_STACK_COST, psychoBushidoD8s, SONIC_BASE_DIE, SONIC_UPGRADED_DIE } from '../../data/gameConstants.js';
 import { firePatch } from './cooldowns.js';
 
 // ⭐ ONE OCCUPANCY POLICY, AND IT IS ALEX'S CALL OF 2026-09-05: ANY BODY BLOCKS.
@@ -50,13 +50,30 @@ export function bushidoLane(spirit, blocked = new Set()) {
   return lane;
 }
 
-// Apply after warp/AP payment and before the ordinary Swing reads its stats.
-// This is only the draw's bill: the Swing still pays its own stack and AP cost.
+// ⭐ THE DRAW'S BILL: the Db and the clock, and two notes off the TOP of the
+// Drive stack (Alex, 2026-09-27 — the root stays, the chord steps down).
+// 🪦 IT NO LONGER PAYS `tempDrive`. Until 2026-10-01 the range ladder went in
+// here as bonus Drive, which `sonicRig.drivePowerBreakdown` caps at 2 dice — so
+// ranges 4 and 5 bought what range 3 did. The range now turns d6s into d8s on
+// the strike's own pool (`bushidoUpgrade`, applied by `attackParams`).
+// 📌 `dist` stays in the signature so every caller keeps reading the same way.
 export function bushidoDrawPatch(ns, dist) {
+  void dist;
   return {
     ...firePatch(ns, 'psycho_bushido'),
-    tempDrive: (ns.tempDrive ?? 0) + psychoBushidoBonus(dist),
     // 🔝 Spent from the TOP (Alex, 2026-09-27) — the root stays, the chord steps down.
     driveStack: (ns.driveStack ?? []).slice(0, Math.max(0, (ns.driveStack ?? []).length - PSYCHO_BUSHIDO_STACK_COST)),
   };
+}
+
+/**
+ * ⚡ THE RANGE TURNS d6s INTO d8s (Alex, 2026-09-30/10-01). Range 3 → two,
+ * 4 → three, 5 → four (`psychoBushidoD8s`). Only d6s upgrade — a six-note
+ * chord's d8s, a charge-zone d10 and the Eleven die are left as they are — and
+ * a pool with fewer d6s than the rung runs out: a Drive-3 Ronin at range 5
+ * throws 3d8, not four. No dice are added; the pool keeps its length.
+ */
+export function bushidoUpgrade(pool = [], dist = 0) {
+  let left = psychoBushidoD8s(dist);
+  return pool.map(sides => (sides === SONIC_BASE_DIE && left > 0 ? (left--, SONIC_UPGRADED_DIE) : sides));
 }

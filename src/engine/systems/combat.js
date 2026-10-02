@@ -264,8 +264,17 @@ export function applyAttackRolled(state, action, rng) {
     swingChordLeft = [], swingChordSpent = [],
   } = action;
 
-  if (kind === 'sonic') {
-    const modern=action.sonicVersion===2;
+  // ⚡ PSYCHO BUSHIDO rolls HERE, on the Sonic's ledger (Alex, 2026-10-01: a
+  // Drive-vs-Sustain burst, not a Swing). What differs is three lines, marked ⚡:
+  // the damage is the strength that gets THROUGH the shield, the battle says
+  // it is a Bushido (so the show draws lightning, not ring beams), and the
+  // per-lap Sonic tally is not charged — this was not a Sonic.
+  // 📌 The knockback is the Sonic's on purpose (Alex: "the same as it would
+  // during a Sonic attack") — one hex per die through, along his facing,
+  // ring-outs allowed — and that lives in `battleConsequences`, untouched.
+  if (kind === 'sonic' || kind === 'bushido') {
+    const bushido = kind === 'bushido';
+    const modern=bushido||action.sonicVersion===2;
     const pool = Array.isArray(dicePool) ? [...dicePool]
       : Array.from({ length: Math.max(0, Math.floor(atkStat)) }, () => atkDie);
     const rolledSustain = posing || !modern ? []
@@ -305,7 +314,7 @@ export function applyAttackRolled(state, action, rng) {
       // real (2026-09-15); ⛔ THE BILL ITSELF IS STILL NOT BUILT, and neither is
       // R12's diminishing FP. 📌 This counter is the input BOTH of them want —
       // it is now correct and unread, rather than wrong and unread.
-      ...(defenderNotes ? { noteStates: {
+      ...(defenderNotes && !bushido ? { noteStates: {
         ...spent,
         [defenderId]: {
           ...defenderNotes,
@@ -313,7 +322,7 @@ export function applyAttackRolled(state, action, rng) {
         },
       } } : {}),
       battle: {
-        kind: 'attack', attackKind: 'sonic', sonicAttack: true, sonicVersion: modern ? 2 : 1, sustainPool, sustainRolls,
+        kind: 'attack', attackKind: bushido ? 'bushido' : 'sonic', sonicAttack: true, sonicVersion: modern ? 2 : 1, sustainPool, sustainRolls,
         attackerId, defenderId, atkStat, defStat, shieldValue,
         sonicFacing:state.spirits.find(s=>s.id===attackerId)?.facing ?? 0,
         ...volley,
@@ -330,6 +339,14 @@ export function applyAttackRolled(state, action, rng) {
         sonicChordNotes:[...(action.sonicChordNotes??[])],
         sustainChordNotes:[...(action.sustainChordNotes??[])],
         swingChordLeft: [], swingChordSpent: [], rerolled: false,
+        // ⚡ The Bushido's three differences (see the top of this branch). He
+        // draws FROM the hex he stands on now; the client moves him to the
+        // hex before the Rival at the draw, the kernel right after this roll.
+        ...(bushido ? {
+          bushido: true, bushidoDist: action.bushidoDist ?? null, bushidoTo: action.bushidoTo ?? null,
+          bushidoFrom: state.spirits.find(s => s.id === attackerId)?.num ?? null,
+          damage: volley.strengthThrough ?? 0,
+        } : {}),
       },
     };
   }
@@ -456,6 +473,9 @@ function resolveVolley(diceVals, shieldValue) {
  * One card per battle; a card that would change nothing is refused (not spent).
  * Swing (clash) and the staged Sonic (sonicVersion 2) only.
  */
+/** ⚡ A re-thrown Bushido keeps its own damage rule: the strength that gets THROUGH. */
+const bushidoDamage = b => (b.bushido ? { ...b, damage: b.strengthThrough ?? 0 } : b);
+
 export function applyMarqueeCardPlayed(state, { spiritId, idx }, rng) {
   const b = state.battle;
   if (!b || b.kind !== 'attack' || b.attackerId !== spiritId || b.cardPlayed) return state;
@@ -482,10 +502,10 @@ export function applyMarqueeCardPlayed(state, { spiritId, idx }, rng) {
       atkFixed: fixed, cardPlayed: cardId } };
   }
   const shieldValue = b.shieldValue ?? b.defTotal ?? 0;
-  return { ...state, noteStates, battle: { ...b,
+  return { ...state, noteStates, battle: bushidoDamage({ ...b,
     ...rollSonicVolley(r.pool, shieldValue, b.atkFloor ?? 0, rng, true, r.keep, fixed),
     rolledPool: r.pool, atkKeep: r.keep, atkStat: r.pool.length, shieldValue,
-    atkFixed: fixed, cardPlayed: cardId } };
+    atkFixed: fixed, cardPlayed: cardId }) };
 }
 
 export function applyAttackRerolled(state, action, rng) {
@@ -503,7 +523,7 @@ export function applyAttackRerolled(state, action, rng) {
     const shieldValue = b.shieldValue ?? b.defTotal ?? Math.max(0, b.defStat ?? 0);
     return {
       ...state,
-      battle: {
+      battle: bushidoDamage({
         ...b,
         ...rollSonicVolley(b.rolledPool ?? b.dicePool ?? [], shieldValue, b.atkFloor ?? 0, rng, b.sonicVersion===2,
           b.atkKeep ?? (b.rolledPool ?? b.dicePool ?? []).length, b.atkFixed ?? []),
@@ -512,7 +532,7 @@ export function applyAttackRerolled(state, action, rng) {
         preRerollWon: b.attackerWon,
         preRerollDamage: b.damage,
         preRerollDiceVals: b.diceVals,
-      },
+      }),
     };
   }
 

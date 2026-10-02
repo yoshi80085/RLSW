@@ -1,6 +1,10 @@
 import { characterId } from "../data/spiritIdentity.js";
+import { createRiffArenaVisuals } from './riffArenaVisuals.js';
 import { BARRAGE_LAUNCH, SONIC_GATE, SONIC_DICE, barrageSimulationTime, barrageHitstop } from './sonicBarrageTiming.js';
+import { createBushidoStrikeVisuals } from './bushidoStrikeVisuals.js';
+import { BUSHIDO_STRIKE } from './bushidoStrike.js';
 import { createSonicClashVisuals } from './sonicClashVisuals.js';
+import { createShamisenStage } from './cursedShamisenArena.js';
 import { gatedSequenceTime } from './battleRollGate.js';
 import { SWING_GATE, SWING_CHARGED, SWING_DICE_PHASES } from './swingTiming.js';
 import { createSwingClashVisuals, knockbackWobble } from './swingClashVisuals.js';
@@ -130,6 +134,24 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   const effects=[],rigs=new Map(),pawns=new Map(),seen=new Set();
   let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false,sonic=null,reducedMotion=false;
   let swing=null,battleShot=null;
+  // 🎸 The Iwato curse's instruments and curses (cursedShamisenArena.js) — the
+  // ghost shamisen over a Ronin who holds it, and every curse burning on a rival.
+  const shamisen=createShamisenStage({root,standee:id=>pawns.get(id)?.userData.standee??null});
+  let curseLight={dim:0,shake:0,tint:0,tintColor:null};
+  let riff=null;
+  const clearRiff=()=>{riff?.dispose();riff=null;};
+  function updateRiff(b){
+    if(!b?.riffArena){clearRiff();return;}
+    if(riff?.key===b.key)return;
+    clearRiff();
+    const seats=[b.attackerId,b.defenderId].map(id=>frame.spirits.find(s=>s.id===id));
+    const origins=seats.map(s=>{
+      const amp=rigs.get(AMP_ROLES[s.corner]?.drive)?.levels[0];if(!amp)return null;
+      amp.updateWorldMatrix(true,true);const box=new THREE.Box3().setFromObject(amp),origin=box.getCenter(new THREE.Vector3());origin.y=box.min.y+(box.max.y-box.min.y)*.62;return origin;
+    });
+    if(origins.some(p=>!p))return;
+    riff=createRiffArenaVisuals(beams,{key:b.key,spirits:seats,origins,positions:seats.map(s=>arenaPoint(s.num,.2))});
+  }
   const clearSwing=()=>{if(swing){actors.remove(swing.group);swing.dispose();swing=null;}for(const pawn of pawns.values())pawn.visible=true;};
   // 🎬 THE STAGE a director shot is framed on: the lane, its middle, the two
   // Spirits' own amps and stands, and the front side the lens keeps to.
@@ -301,8 +323,16 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   const clearSonic=()=>{
     if(!sonic)return;
     root.remove(sonic.dice.group);beams.remove(sonic.volley.group);
-    sonic.dice.dispose();sonic.volley.dispose();sonic=null;
+    sonic.dice.dispose();sonic.volley.dispose();
+    if(sonic.strike){sonic.strike.dispose();unposeBushido(sonic.strikePawn);}
+    sonic=null;
   };
+  // ⚡ The Ronin's piece is posed by the strike while it runs (crouch, lean, the
+  // rumble, "gone" in the dash); this puts the carrier back when it lets go.
+  function unposeBushido(pawn){
+    if(!pawn?.userData.bushidoPosed)return;
+    pawn.userData.bushidoPosed=false;pawn.scale.setScalar(1);pawn.rotation.x=0;
+  }
   function updateSonic(battle) {
     if(!battle?.volley){clearSonic();return;}
     // The Sonic's consequences run INSIDE the volley, so its aftermath begins
@@ -355,14 +385,44 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
          📌 A pre-staging battle (sonicVersion < 2, old replays) still draws the
          2026-09-15 one-beam-at-a-time sequence. `createSonicBarrageVisuals`
          stays in the repo for the battle preview; nothing live draws it. */
-      const volley=modern
+      // ⚡ PSYCHO BUSHIDO (2026-10-01): the same shield, built by the Rival's
+      // Sustain amp and as bright as his roll is strong — "make sure the amps are
+      // sending the Sustain shield power up" — but NO ring beams: his lightning
+      // (bushidoStrikeVisuals) lands on its contacts. He stands on his own hex
+      // through the roll, so the lane runs from `bushidoFrom`, and the shield
+      // stands just inside the hex he lands on. Alex's shieldSize ×1.5 (1.10 →
+      // 1.65) goes into its reach and height.
+      const bushido=modern&&battle.bushido&&battle.bushidoFrom!=null;
+      const bFrom=bushido?arenaPoint(battle.bushidoFrom,1):null;
+      const volley=bushido
+        ? createSonicClashVisuals({...common,attackerPosition:bFrom,battle,ampOrigins,sustainOrigin,clearance:1.15,beams:false,
+            shieldRadius:Math.min(1.35,.82*BUSHIDO_STRIKE.shieldSize),shieldSize:1.6*BUSHIDO_STRIKE.shieldSize,
+            buildStart:SONIC_DICE.landedAt[1]-BARRAGE_LAUNCH,buildEnd:SONIC_GATE-BARRAGE_LAUNCH})
+        : modern
         ? createSonicClashVisuals({...common,battle,ampOrigins,sustainOrigin,clearance:1.15,shieldRadius:2.4,shieldSize:2.1,
             buildStart:SONIC_DICE.landedAt[1]-BARRAGE_LAUNCH,buildEnd:SONIC_GATE-BARRAGE_LAUNCH})
         : createSonicSequenceVisuals({...common,ampOrigins,clearance:1.15,shieldRadius:2.4,shieldSize:2.1,strokeStyle:'rings',intensityMode:'margin',
             dice:battle.diceVals.map((value,i)=>({value,passed:battle.diceHits[i],sides:battle.dicePool[i]}))});
       root.add(dice.group);beams.add(volley.group);
+      let strike=null,strikePawn=null;
+      if(bushido){
+        const from=arenaPoint(battle.bushidoFrom,STANDEE_Y),target=arenaPoint(b.num,STANDEE_Y);
+        const to=battle.bushidoTo!=null?arenaPoint(battle.bushidoTo,STANDEE_Y):null;
+        if(from&&target&&to){
+          const dist=Math.max(1,battle.bushidoDist??Math.round(from.distanceTo(target)/from.distanceTo(to)));
+          const lane=Array.from({length:dist+1},(_,i)=>from.clone().lerp(target,i/dist));
+          const way=target.clone().sub(from).setY(0).normalize();
+          const shieldFace=target.clone().addScaledVector(way,-Math.min(1.35,.82*BUSHIDO_STRIKE.shieldSize)).setY(target.y+1.3);
+          strikePawn=pawns.get(battle.attackerId)??null;
+          const art=()=>strikePawn?.userData.standee?.parts?.find(m=>m.material?.map)??null;
+          const landings=dice.entries.filter(e=>e.pool===0).map(e=>({at:(e.delay+e.flight)*1000,face:e.value,
+            amt:Math.min(1,e.value/Math.max(1,e.die?.faces?.length??6)),idx:e.index}));
+          strike=createBushidoStrikeVisuals({battle,from,to,target,lane,shieldFace,landings,launch:BARRAGE_LAUNCH,color:a.color,art});
+          beams.add(strike.group);
+        }
+      }
       sonic={key:battle.key,attackerId:battle.attackerId,dice,volley,modern,phase:battle.phase,phaseStart:clock,phaseStart0:clock,launch:null,stage,diceCentre,
-        winner:(battle.breakIndex??-1)>=0?0:1};
+        winner:(battle.breakIndex??-1)>=0?0:1,strike,strikePawn,strikePose:null};
     }
     if(sonic.phase!==battle.phase){sonic.phase=battle.phase;sonic.phaseStart=clock;}
     if(battle.phase==='sonic_volley'&&sonic.launch==null) {
@@ -456,7 +516,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       // between looking at a Spirit and looking at its edge.
       pawn.userData.targetFacing=standeeYaw(spirit.facing);
       // 🎭 A HEX CHANGE IS A STEP. The knockback counter moving means it was a shove.
-      if(pawn.userData.standee&&pawn.userData.num!=null&&pawn.userData.num!==spirit.num&&!spirit.knockedOut&&!spirit.fallen)
+      // ⚡ …except the Bushido's arrival: the strike draws that move (the dash, the
+      // afterimages, the landing), so the step's blink would be a second one.
+      const bushidoWarp=next.battle?.bushido&&next.battle.attackerId===spirit.id;
+      if(pawn.userData.standee&&pawn.userData.num!=null&&pawn.userData.num!==spirit.num&&!spirit.knockedOut&&!spirit.fallen&&!bushidoWarp)
         standeeSteps.step(pawn,{id:spirit.id,from:pawn.userData.num,to:spirit.num,yaw:pawn.userData.targetFacing,
           shoved:pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount,bot:!!spirit.bot,color:spirit.color});
       if(pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount) pawn.userData.wobbleUntil=clock+1.7;
@@ -510,6 +573,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     updateHazards(frame);
     lasers.update(frame.laser,frame.laserRound,clock);
     updatePawns(frame);
+    shamisen.update(frame.shamisen??{});
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
     moveTiles.update(frame.reach,frame.spirits);
     attackTiles.update(frame.attack);
@@ -534,10 +598,11 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         const old=previous.spirits?.find(p=>p.id===s.id);
         if(old&&!s.knockedOut&&!old.knockedOut&&s.num!==old.num&&!frame.slides?.some(a=>a.id===s.id))trail(arenaPoint(old.num),arenaPoint(s.num),s.color,s.id);
       }
-      if(!frame.battle&&previous.battle&&!previous.battle.volley&&!previous.battle.swingClash)attack(previous.battle);
+      if(!frame.battle&&previous.battle&&!previous.battle.volley&&!previous.battle.swingClash&&!previous.battle.riffArena)attack(previous.battle);
     }
     updateSonic(frame.battle);
     updateSwing(frame.battle);
+    updateRiff(frame.battle);
     if(frame.thump)once(`thump:${frame.thump.id}:${frame.thump.key}`,()=>{
       for(const rig of rigs.values())if(rig.owner?.id===frame.thump.id&&rig.role==='drive')rig.thumpUntil=clock+.45;
     });
@@ -570,6 +635,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const dt=Math.min(.05,Math.max(0,time-lastTick));lastTick=time;clock=time;reducedMotion=reduced;
       lasers.tick(time,{reduced,lite:frame.lite});
       battleShot=null;
+      if(frame.battle?.riffArena){updateRiff(frame.battle);if(riff)battleShot=riff.update(frame.battle,camera,reduced,dt);}
       // 🔭 Warm the battle lens's view of the furniture between bouts (at most
       // every 3 s), so a bout's opening shot does not pay for building it.
       if(!sonic&&!swing&&!aftermath&&time-sightStamp>3){const sign=sightSignature();if(sign!==sightSign)sightMeshes(sign);else sightStamp=time;}
@@ -612,6 +678,17 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           const k=(1-stop.age/.5)*(stop.index===frame.battle.breakIndex?.2:.09),w=stop.age*60;
           battleShot={...battleShot,snap:true,pos:battleShot.pos.clone().add(new THREE.Vector3(Math.sin(w*1.3)*k,Math.sin(w*1.7+1)*k*.7,Math.cos(w*1.1)*k))};
         }
+        // ⚡ THE BUSHIDO: his charge, the rumble, the draw and the burst, on the
+        // bout's own gated clock. It hands back a pose for his piece (applied in
+        // the pawn loop below) and how hard the lens should tremble.
+        if(sonic.strike){
+          const res=sonic.strike.update(sonicTime(frame.battle),{reduced,pawn:sonic.strikePawn,camera});
+          sonic.strikePose=res.pose;
+          if(res.shake>.002&&battleShot){
+            const k=res.shake*.22,w=clock*60;
+            battleShot={...battleShot,snap:true,pos:battleShot.pos.clone().add(new THREE.Vector3(Math.sin(w*1.3)*k,Math.sin(w*1.7+1)*k*.7,Math.cos(w*1.1)*k))};
+          }
+        }
       }
       for(const pawn of pawns.values()) {
         const target=pawn.userData.target;
@@ -633,10 +710,20 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           // pulse and bob on here would fight its own lean, fall and sway — and
           // the tip-back under a high camera needs the camera, which only
           // `frame` is given. Nothing below this line may touch the group.
+          // ⚡ The Bushido's pose (bushidoStrikeVisuals) — on his carrier, like a step.
+          const bp=sonic?.strikePawn===pawn&&sonic.strikePose?.active?sonic.strikePose:null;
           standee.frame(time,{knockedOut:knocked,active:pawn.userData.active,
-            acting:pawn.userData.active,reduced,cameraPos:camera?.position ?? null,lift:stepping?.lift??0});
+            acting:pawn.userData.active,reduced,cameraPos:camera?.position ?? null,lift:stepping?.lift??0,
+            ...(bp?{lift:bp.y/Math.max(.05,bp.sy)}:{})});
           if(!stepping)pawn.position.y=target?.y ?? STANDEE_Y;
           pawn.rotation.z=wobble+(stepping?.roll??0);
+          if(bp&&!stepping){
+            pawn.userData.bushidoPosed=true;
+            pawn.position.set(bp.at.x+bp.jitter.x,bp.at.y+bp.y,bp.at.z+bp.jitter.z);
+            pawn.rotation.x=bp.pitch;pawn.rotation.z=wobble+bp.roll;
+            pawn.scale.set(bp.sxz*bp.vis,bp.sy*bp.vis,bp.sxz*bp.vis);
+          }else if(!bp)unposeBushido(pawn);
+          if(riff)riff.pose(pawn,pawn.userData.spiritId??[...pawns].find(([,p])=>p===pawn)?.[0]);
           continue;
         }
         pawn.rotation.z=THREE.MathUtils.damp(pawn.rotation.z,knocked?Math.PI*.48:wobble,10,dt);
@@ -645,6 +732,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         pawn.position.y=(target?.y ?? .2)+(knocked ? .02 : !reduced?Math.sin(time*2.4+pawn.position.x)*.025:0);
       }
       standeeSteps.update(performance.now(),dt);   // the landing ripples and sparkles
+      curseLight=shamisen.tick(time,{reduced,camera});
       if(swing){
         const t=swingTime(frame.battle);
         frame.battle.swingFocus=swing.update(t,{reduced});
@@ -682,7 +770,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           rig.owner?.id===b.attackerId?SWING_CHARGED.attacker.includes(b.phase)
           :rig.owner?.id===b.defenderId?SWING_CHARGED.rival.includes(b.phase):false);
         const energized=swingCharged||b?.sonicVersion===2&&(rig.role==='drive'
-          ?rig.owner?.id===b.attackerId&&b.phase==='sonic_volley'&&(b.focus?.time??0)<b.diceVals.length*.22
+          ?rig.owner?.id===b.attackerId&&b.phase==='sonic_volley'&&!b.bushido&&(b.focus?.time??0)<b.diceVals.length*.22
           // The Sustain cabinet feeds the shield from the moment the Rival's
           // own dice are down, which is now the FIRST thing that happens.
           :rig.owner?.id===b.defenderId&&['sonic_shield','sonic_armed','sonic_roll','sonic_reveal','sonic_volley'].includes(b.phase)&&(b.focus?.shieldHp??b.shieldValue)>0);
@@ -760,6 +848,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group,swing?.dice?.group,marqueeMarkers.solidRoot].filter(Boolean),
     /** 🎬 The director's shot for this frame, or null — `sonicCamera` flies it. */
     battleShot:()=>battleShot,
+    /** 🌑 How hushed the arena should be this frame — the Shamisen's cast (the renderer dims its exposure). */
+    curseLight:()=>curseLight,
+    riffAnchors:()=>riff?.poses??null,
     /** 🌀 What the Sonic beam may pass BEHIND: the attacking Spirit it loops round (beamLayer.js). */
     beamOccluders:()=>{const pawn=sonic&&pawns.get(sonic.attackerId);return pawn?[pawn]:[];},
     /** 🔭 Scene furniture the battle lens must see past (the renderer's grandstands, the truss). */
@@ -782,9 +873,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;standeeSteps.dispose();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0),shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
+    dispose(){disposed=true;shamisen.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     get disposed(){return disposed;},
   };
 }
-

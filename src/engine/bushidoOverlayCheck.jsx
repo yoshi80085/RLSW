@@ -1,8 +1,9 @@
 import { readFileSync, writeFileSync } from 'node:fs';
+import { PSYCHO_BUSHIDO_MIN_RANGE } from '../data/gameConstants.js';
 import assert from 'node:assert/strict';
 import { JSDOM } from 'jsdom';
 import { renderToStaticMarkup } from 'react-dom/server';
-import { BushidoOverlay, BUSHIDO_LOOK } from '../ui/BushidoOverlay.jsx';
+import { BushidoOverlay, BUSHIDO_LOOK, bushidoLabel } from '../ui/BushidoOverlay.jsx';
 
 // Execute the recovered preview itself as the independent reference. Its
 // controls are not initialized; apply the user's screenshots to its levers.
@@ -34,7 +35,12 @@ for (const scenario of ref.CASES) for (let dir = 0; dir < 6; dir++) {
   const lane = actual.document.querySelector('[data-bushido-layer="lane"]');
   const labels = actual.document.querySelector('[data-bushido-layer="labels"]');
   assert.deepEqual(leaves(lane, 'polygon,line'), leaves(expected.children[2], 'polygon,line'), `${scenario.n}, dir ${dir}: lane geometry/fill/edges`);
-  assert.deepEqual(leaves(labels, 'text'), leaves(expected.children[4], 'text'), `${scenario.n}, dir ${dir}: labels`);
+  // ⚡ The preview (09-05) labels a rung "+N" bonus Drive; since 2026-10-01 the
+  // rung is N d6s turned into d8s, so its text is mapped through `bushidoLabel`
+  // — the SAME rung, a different meaning. Everything else is still pixel-for-pixel.
+  const relabel = list => list.map(l => (/^\+\d+$/.test(l.text)
+    ? { ...l, text:bushidoLabel(PSYCHO_BUSHIDO_MIN_RANGE + Number(l.text.slice(1)) - 2) } : l));
+  assert.deepEqual(leaves(labels, 'text'), relabel(leaves(expected.children[4], 'text')), `${scenario.n}, dir ${dir}: labels`);
   const ring = [...expected.children[3].querySelectorAll('circle')].filter(el => el.getAttribute('fill') === 'none');
   const ringRoot = dom.window.document.createElement('div');
   ring.forEach(el => ringRoot.appendChild(el.cloneNode(true)));

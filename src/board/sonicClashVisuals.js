@@ -35,7 +35,7 @@
 
 import * as THREE from 'three';
 import { createSonicZigzagVisuals, FLIGHT_SECONDS, IMPACT_SECONDS } from './sonicZigzagVisuals.js';
-import { BARRAGE_FLIGHT, BARRAGE_SPACING, barrageContact } from './sonicBarrageTiming.js';
+import { BARRAGE_FLIGHT, BARRAGE_SPACING, barrageContact, beatsFor } from './sonicBarrageTiming.js';
 import { sonicSceneLabel } from './sonicDiceVisuals.js';
 
 export const SONIC_CLASH_LOOK = Object.freeze({
@@ -174,8 +174,14 @@ export function createSonicClashVisuals(options) {
 
   // ── the ring beams, one per Drive die ───────────────────────────────────────
   const dice = Math.max(1, battle.sustainRolls?.length ?? battle.sustainPool?.length ?? 1);
+  // ⚡ `beams: false` — a PSYCHO BUSHIDO (2026-10-01). The shield, its build from
+  // the Rival's Sustain amp, its cracks, its flash and its shatter all stay, on
+  // the Bushido's own beats (`beatsFor`); the ring beams do not exist — his
+  // lightning is drawn by `bushidoStrikeVisuals.js` and lands on these contacts.
+  const beams = options.beams !== false, B = beatsFor(battle);
   const shots = (battle.shots ?? []).map(shot => {
     const kind = hitKind(shot, battle, L);
+    if (!beams) return { shot, kind, visual:null, kick:null, at: barrageContact(shot.index, B), launch: shot.index * B.spacing };
     const visual = createSonicZigzagVisuals({
       ampOrigins: options.ampOrigins?.length ? [options.ampOrigins[shot.index % options.ampOrigins.length]] : undefined,
       attackerPosition: attacker, defenderPosition: defender, color: options.color, shieldColor: options.shieldColor,
@@ -198,7 +204,7 @@ export function createSonicClashVisuals(options) {
     }
     return { shot, kind, visual, kick, at: barrageContact(shot.index), launch: shot.index * BARRAGE_SPACING };
   });
-  const breakAt = battle.breakIndex >= 0 ? barrageContact(battle.breakIndex) : Infinity;
+  const breakAt = battle.breakIndex >= 0 ? barrageContact(battle.breakIndex, B) : Infinity;
   // Damage the cracks show after each landed hit, 0…1: a clean crack counts
   // extra, a mere burst barely marks it.
   let wear = 0;
@@ -275,6 +281,7 @@ export function createSonicClashVisuals(options) {
     // ── the beams and the amp kicks ──
     for (const s of shots) {
       const age = time - s.launch;
+      if (!s.visual) continue;
       s.visual.update(beamLocalTime(age, L), { camera, reduced });
       if (s.kick) {
         s.kick.visible = !reduced && age >= 0 && age < .45;
@@ -287,7 +294,7 @@ export function createSonicClashVisuals(options) {
     hpLabel.sprite.visible = hasShield && time >= buildStart && (!broken || breakAge < 1.4);
     // ── where the lens wants to be (used when the director is off) ──
     const current = shots.filter(s => time >= s.launch).at(-1) ?? shots[0];
-    focus = current ? current.visual.getFocus(beamLocalTime(time - current.launch, L), { reduced }) : null;
+    focus = current?.visual ? current.visual.getFocus(beamLocalTime(time - current.launch, L), { reduced }) : null;
   }
   return {
     group, update, getFocus: () => focus,
@@ -298,7 +305,7 @@ export function createSonicClashVisuals(options) {
         cracks: cracks.filter(c => c.visible).length, strength };
     },
     dispose() {
-      shots.forEach(s => s.visual.dispose());
+      shots.forEach(s => s.visual?.dispose());
       hpLabel.texture?.dispose();
       group.traverse(n => { n.geometry?.dispose(); for (const m of [n.material].flat().filter(Boolean)) m.dispose(); });
       group.clear(); group.removeFromParent();

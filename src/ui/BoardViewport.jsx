@@ -18,7 +18,7 @@ import { SVG_W, SVG_H } from '../board/constants.js';
 const VEIL_FADE_MS = 600;
 
 export function BoardViewport({ enabled = true, immersive = false, sceneFrame, autoCamera = true, topView = false, onTopView,
-  quality = 'auto', onQualityLabel, cameraRef, children }) {
+  quality = 'auto', onQualityLabel, cameraRef, children, riffOverlay, riffProjectionRef }) {
   const mount = useRef(null);
   const layer = useRef(null);
   const runtime = useRef(null);
@@ -69,6 +69,7 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       if (cancelled) return;
       setStatus('Loading arena…');
       runtime.current = mountArena(host, element, {
+        onRiffProjection: points => {if(riffProjectionRef)riffProjectionRef.current=points;},
         onReady: () => { if (!cancelled) setStatus('ready'); },
         onQuality: label => { if (!cancelled) latest.current.onQualityLabel?.(label); },
         onCamera: state => { if (!cancelled) setCameraState(state); },
@@ -137,6 +138,7 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
     `}</style>
     <div ref={mount} style={enabled ? { position: 'absolute', inset: 0 } : { display: 'contents' }} />
     <div ref={layer} className="arena-tactical">{children}</div>
+    {enabled && ready && riffOverlay}
     {enabled && !veilGone && <div className="arena-veil" data-state={ready ? 'out' : 'in'} aria-hidden={ready || undefined}>
       {!failed && <><span>Loading arena</span><div className="arena-veil-bar" /></>}
     </div>}

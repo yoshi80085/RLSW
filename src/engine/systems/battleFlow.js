@@ -908,8 +908,16 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   if (sonicAttack && battle.sonicVersion === 2) {
     state = yield fx('sonicBarrageLanded', { spiritId: defenderId });
   }
+  // ⚡ A PSYCHO BUSHIDO RESOLVES THROUGH THIS SAME BRANCH (combat.js rolls it on
+  // the Sonic's shield ledger): a shield that holds costs the Ronin nothing
+  // more — the Rival was only bracing, so there is no counter-blow (Alex,
+  // 2026-10-01) — and a burst pushes like a Sonic, one hex per die through.
   if (sonicAttack && hitCount <= 0) {
-    yield log(`🛡️ ${nameOf(state, defenderId)} absorbs the entire Sonic volley. No strength reaches the Rival.`);
+    yield log(battle.bushido
+      ? (battle.shieldRemaining === 0 && (battle.shieldValue ?? 0) > 0
+        ? `⚡ The draw breaks ${nameOf(state, defenderId)}'s shield — with nothing left to get through.`
+        : `🛡️ ${nameOf(state, defenderId)}'s shield holds against the draw. Nothing gets through.`)
+      : `🛡️ ${nameOf(state, defenderId)} absorbs the entire Sonic volley. No strength reaches the Rival.`);
     yield* clearBattleBuffs({ attackerId, defenderId });
     return { fameThisTurn };
   }

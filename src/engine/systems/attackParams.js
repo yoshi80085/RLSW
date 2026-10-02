@@ -32,6 +32,7 @@ import { characterId } from "../../data/spiritIdentity.js";
 import { readStack } from "../../music/vocabularies.js";
 import { sonicRig, sustainRig } from "./sonicRig.js";
 import { cardedRig } from "./marqueeCards.js";
+import { bushidoUpgrade } from "./bushido.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
   ATK_BONUS_CAP, CHARGE_FLOOR_BONUS,
@@ -266,6 +267,41 @@ export function attackParams(state, attackerId, defenderId, kind, view = {}) {
       sonicChordNotes:[...(nsA.driveStack??[])],
       sustainChordNotes:[...(nsD.sustainStack??[])],
       _derived: { ...base._derived, defInRig, poolBeforeCharge: pool },
+    };
+  }
+
+  if (kind === 'bushido') {
+    // ⚡ PSYCHO BUSHIDO — DRIVE AGAINST SUSTAIN (Alex, 2026-10-01): "the action
+    // is taking place at a speed that isn't really comparing 2 Drive actions,
+    // the Rival Spirit is definitely in a defensive position … the Rival puts up
+    // a shield that Ronin has to 1st Burst through." So it is shaped like a
+    // Sonic — the Rival's Sustain throws a shield, the attacker's kept dice hit
+    // it one by one (`resolveSonicBarrage`) — but the attacker throws his DRIVE
+    // RIG (the Swing's: no amp needed, the home light still counts) with the
+    // range turning d6s into d8s (`bushidoUpgrade`), before any armed card.
+    // 📌 `view.bushido` carries `{ dist }` from the caller — the range is the
+    // ability's, not something the sheet knows.
+    const dist = view?.bushido?.dist ?? 0;
+    const base0 = sonicRig(nsA, 0, 0, true, attackerId, homeSpotlightDrive(state, attackerId));
+    const rig = cardedRig({ ...base0, pool:bushidoUpgrade(base0.pool, dist) }, nsA);
+    const sonicDefStat=(v=>defenderPosing?posedSustain(v):Math.max(0,v))((nsD.smashExposed?0:(nsD.sustainStack?.length?spiritChord(defenderId,nsD.sustainStack).sustain:0))
+        -(nsD.swingExposed?1:0)+(nsD.tempSustain??0));
+    const shield=sustainRig(nsD,sonicDefStat);
+    return {
+      ...base,
+      atkStat:rig.pool.length,
+      defStat:sonicDefStat,
+      atkKeep:rig.keep ?? rig.pool.length,
+      atkFixed:rig.atkFixed,
+      cardId:rig.cardId,
+      sustainPool:shield.pool,
+      defKeep:shield.keep,
+      dicePool:[...rig.pool],
+      defDie: 6,
+      bushidoDist: dist,
+      sonicChordNotes:[...(nsA.driveStack??[])],
+      sustainChordNotes:[...(nsD.sustainStack??[])],
+      _derived: { ...base._derived, poolBeforeUpgrade: base0.pool },
     };
   }
 

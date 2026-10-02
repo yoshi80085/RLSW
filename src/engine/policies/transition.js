@@ -1,4 +1,5 @@
 import { characterId } from "../../data/spiritIdentity.js";
+import { arenaBotResults } from '../../riff/arenaDuel.js';
 import { bushidoDrawPatch } from "../systems/bushido.js";
 // ─── BOT TRANSITION ─────────────────────────────────────────────────────────
 // `applyBotAction(state, action, ctx) -> { state, view, ok, reason, logs }`
@@ -514,7 +515,9 @@ export function applyBotAction(state, action, ctx = {}) {
     case 'sonic': {
       const isTentacle = kind === 'tentacle';
       const isBushido  = kind === 'psychoBushido';
-      const rollKind   = (isTentacle || isBushido) ? 'swing' : kind;
+      // ⚡ Since 2026-10-01 the draw is its own roll — Drive against the Rival's
+      // Sustain shield, on the Sonic's ledger — not a Swing (combat.js).
+      const rollKind   = isBushido ? 'bushido' : isTentacle ? 'swing' : kind;
 
       // ⚠️ THE TRAIL IS SPENT BEFORE ANYTHING ELSE — and before `attackParams`,
       // so the stats are derived off the board the blow actually lands on.
@@ -542,14 +545,11 @@ export function applyBotAction(state, action, ctx = {}) {
         // the same charge; `legalActions` has already refused anything outside
         // the 3–5 window, so an out-of-window dist here would be a bug and the
         // helper answers 0 rather than inventing a rung.
-        if (action.to != null) pre = applyAction(pre, spiritWarped(spiritId, action.to, 0), rng);
-        // ⭐ THE BILL IS FLAT AND THE SWING PAYS ITS OWN SHARE OF IT. The dash
-        // takes `PSYCHO_BUSHIDO_AP_COST - SWING_AP_COST`; the strike below takes
-        // the rest, exactly as it does for a blow thrown standing still. This
-        // used to be `dist - 1` — the ground covered — so a long charge cost more
-        // than a short one. It no longer does, which is what "3 AP flat" means.
-        const dashAp = Math.max(0, PSYCHO_BUSHIDO_AP_COST - SWING_AP_COST);
-        if (dashAp > 0) pre = applyAction(pre, beatsSpent(dashAp, false), rng);
+        // ⚡ HE DRAWS FROM WHERE HE STANDS: the roll happens on his own hex (the
+        // client holds him there through the dice, the charge and the rumble)
+        // and the warp to the hex before the Rival follows the roll — below —
+        // before the consequences, so the push starts from where he lands.
+        // ⭐ THE BILL IS FLAT: 3 AP and the token, paid once with the strike.
         const nsSelf = pre?.noteStates?.[spiritId] ?? {};
         // ⚠️ `firePatch` PAYS THE Db AND STARTS THE COOLDOWN IN ONE PLACE, and
         // the searcher must use the same one the client does. A kernel that
@@ -570,13 +570,14 @@ export function applyBotAction(state, action, ctx = {}) {
         }
       }
 
-      const params = attackParams(pre, spiritId, action.targetId, rollKind, view);
+      const params = attackParams(pre, spiritId, action.targetId, rollKind, isBushido ? { ...view, bushido: { dist: action.dist ?? 0 } } : view);
       if (!params) return fail(state, view, 'illegal', 'attacker or defender not on the board');
-      const { _derived, ...rollOpts } = params;
+      const { _derived, ...rollOpts0 } = params;
+      const rollOpts = isBushido ? { ...rollOpts0, bushidoTo: action.to ?? null } : rollOpts0;
 
       // Pay first, exactly as the client does: AP off the shared pool, and the
       // Action Token — the one-attack-per-turn rule (§6a).
-      let next = applyAction(pre, beatsSpent(rollKind === 'swing' ? SWING_AP_COST : SONIC_AP_COST, true), rng);
+      let next = applyAction(pre, beatsSpent(isBushido ? PSYCHO_BUSHIDO_AP_COST : rollKind === 'swing' ? SWING_AP_COST : SONIC_AP_COST, true), rng);
 
       // ⚠️ The exposure is consumed by being READ. `attackParams` cannot clear
       // it (it is pure), so the clear happens here — miss it and the rival's
@@ -618,6 +619,8 @@ export function applyBotAction(state, action, ctx = {}) {
 
       next = applyAction(next, attackRolled(rollKind, spiritId, action.targetId, rollOpts), rng);
       const battle = next.battle;
+      // ⚡ …and now he arrives — after the roll, before the push (see above).
+      if (isBushido && action.to != null) next = applyAction(next, spiritWarped(spiritId, action.to, 0), rng);
 
       // The ordered aftermath — the same generator the UI drives, run to
       // completion synchronously. Identical order by construction; only the
@@ -663,15 +666,14 @@ export function applyBotAction(state, action, ctx = {}) {
     //
     // ⚠️ THE PERFORMANCE IS MODELLED, THE RULES ARE NOT. Both charts come out of
     // the engine exactly as they do online; the two RESULTS arrays come from
-    // `simulateRiffPerformance`, whose single assumption — a Spirit plays the
-    // duel as well as they played their last melody — is stated and defended in
-    // `riffOff.js`. Read that before quoting any riff-off number out of a bench.
+    // the seeded physical timing-error model in `riff/arenaDuel.js`. The same
+    // shrinking timing windows judge bots in the live client and the bench.
     //
     // ⚡ ROUND 2 IS DRIVEN HERE — 2026-08-18. `applyRiffResolved` sets
     // `verdict.close` when the two sets were within `RIFF_CLOSE_QUALITY_GAP`
     // (or dead-heated), and that flag is the client's escalation gate verbatim:
-    // `fireBeamClash` breaks the beams on `!tie && !close` and otherwise surges
-    // into sudden death, capped at two rounds.
+    // arena presentation breaks on `!close` and otherwise advances immediately.
+    // Live arena duels now continue beyond two rounds (2026-10-01).
     //
     // ⚠️ IGNORING IT WAS NOT "A SLIGHTLY CHEAPER DUEL", WHICH IS WHY IT MOVED.
     // Sudden death adds `RIFF_R2_BONUS` (2 FP) and a damage band to the winner,
@@ -683,11 +685,8 @@ export function applyBotAction(state, action, ctx = {}) {
     // existed, the flag that unlocks it was computed, and nothing headless read
     // it back.
     //
-    // 📌 What is still modelled rather than played: Round 2's chart runs at
-    // 0.58× the gaps and `simulateRiffPerformance` has no tempo term, so both
-    // sides play sudden death at Round-1 difficulty. Declared as
-    // `HARNESS_GAPS.riffRound2Speed` rather than corrected with a number nobody
-    // measured.
+    // 📌 The timing-error curve is a declared bot assumption, not a measured
+    // model of students. Tempo now matters; the empirical calibration is open.
     case 'riffOff': {
       const target = (state.spirits ?? []).find(sp => sp.id === action.targetId);
       if (!target) return fail(state, view, 'illegal', 'no such rival');
@@ -707,7 +706,7 @@ export function applyBotAction(state, action, ctx = {}) {
       next = applyRiffOffStarted(next, {
         attackerId: spiritId, defenderId: action.targetId,
         slayer: false, eRush: false,
-        melodyLine: ns.committedMelody ?? null,
+        melodyLine: ns.committedMelody ?? null, arenaVersion:1,
       }, rng);
 
       const b = next.battle;
@@ -725,11 +724,13 @@ export function applyBotAction(state, action, ctx = {}) {
         const chart = st.battle;
         st = applyRiffResultsSubmitted(st, {
           role: 'attacker',
-          results: simulateRiffPerformance(chart.atkRiff?.degrees?.length ?? 0, atkPerf, rng),
+          results: chart.arenaVersion?arenaBotResults(chart.arenaExchange.runs[0],chart.arenaExchange.botOffsets[0]):simulateRiffPerformance(chart.atkRiff?.degrees?.length ?? 0, atkPerf, rng),
+          round:chart.round,clock:chart.arenaClock,
         });
         st = applyRiffResultsSubmitted(st, {
           role: 'defender',
-          results: simulateRiffPerformance(chart.defRiff?.degrees?.length ?? 0, defPerf, rng),
+          results: chart.arenaVersion?arenaBotResults(chart.arenaExchange.runs[1],chart.arenaExchange.botOffsets[1]):simulateRiffPerformance(chart.defRiff?.degrees?.length ?? 0, defPerf, rng),
+          round:chart.round,clock:chart.arenaClock,
         });
         return applyRiffResolved(st);
       };
@@ -738,13 +739,12 @@ export function applyBotAction(state, action, ctx = {}) {
       let verdict = next.battle?.verdict;
       if (!verdict) return fail(state, view, 'illegal', 'duel produced no verdict');
 
-      // ⚡ THE BEAMS LOCK AND SURGE. Escalate at most once — `round >= 2` is the
-      // client's cap too, and `applyRiffResolved` leans on it: a Round-2 dead
-      // heat falls back to the Round-1 edge rather than looping forever looking
-      // for a winner. `applyRiffRound2Started` keeps `r1` for exactly that.
-      if (verdict.close && (next.battle?.round ?? 1) < 2) {
-        next = applyRiffRound2Started(next, null, rng);
-        if (next.battle?.round !== 2) return fail(state, view, 'illegal', 'sudden death would not start');
+      // Keep exchanging calls until a real quality gap breaks the lock.
+      while (verdict.close) {
+        // A bounded search must not hang on an adversarial/constant RNG. This
+        // is an unresolved forecast, never a fabricated winner or payout.
+        if(next.battle.round>=64)return fail(state,view,'simulation-budget','even riff duel still unresolved after 64 exchanges');
+        next = applyRiffRound2Started(next, {round:next.battle.round}, rng);
         next = playRound(next);
         verdict = next.battle?.verdict;
         if (!verdict) return fail(state, view, 'illegal', 'sudden death produced no verdict');

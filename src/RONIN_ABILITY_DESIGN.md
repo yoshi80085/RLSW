@@ -292,6 +292,8 @@ acted on yet.**
 
 ### 2.1 🌀 Psycho Bushido — the long-distance strike
 
+> ⚡ **2026-10-01 — THE STRIKE IS NOW A BURST, NOT A SWING** (Alex; built — `SEQUENCING.md` §A `47-bushidoburst`, `STATE_OF_PLAY.md` §3). The Rival throws his **Sustain** as a shield; the Ronin throws his **Drive**, with the range turning **2 / 3 / 4 d6s into d8s** at 3 / 4 / 5 (this **replaces** the +2/+3/+4 bonus Drive in §2.1.1 below — the 2-dice cap had flattened it). Damage = what gets through; the Rival is pushed like a Sonic; no counter-blow; the bill is 3 AP + token + 2 notes off the top. 📌 The distance gradient this section asks for survives — it now lives in the dice, not in a bonus the cap could swallow. ⚠️ The text below is the design history; where it disagrees, `STATE_OF_PLAY.md` is the state.
+
 **The inspiration is Zenitsu's lightning strike from an absurd distance.** Ronin's
 signature.
 
@@ -412,18 +414,178 @@ dial to turn."* **Cutting 3 turns to 2 turns that same dial the wrong way**, at 
 at together. 📌 The upkeep also moved from *per turn* to *per round* — cheaper in
 a 3-player match — which pulls the other way and may cover it.
 
-### 2.3 🎸 Cursed Shamisen — the siphon
+### 2.3 🎸 Cursed Shamisen — the Iwato curse
 
-> ⛔ **REWORKED AGAIN 2026-09-04 (Alex) — AND THIS IS THE THIRD VERB.** Board
-> token (cut 2026-08-26) → cooldown self-buff (ships today) → **cooldown THEFT.**
-> The ability no longer touches Ronin's own cooldowns directly at all: it reaches
-> into a **rival's** sheet and takes tempo off them.
+> ⛔ **REWORKED A FOURTH TIME 2026-10-02 (Alex) — AND THE SIPHON IS SUPERSEDED.**
+> Board token (cut 2026-08-26) → cooldown self-buff (cut 2026-10-02) → cooldown theft
+> (the siphon, 2026-09-04, never built) → **the Iwato curse** (§2.3.00, below —
+> ✅ **BUILT 2026-10-02**: rules, client, arena, wheel, sound, loadout pop-out).
+> ⭐ **It unblocks Chain A.** The siphon could only steal cooldown that exists, so it
+> waited on universal cooldowns and the parked Metalness rework (§2.3.0 item 1).
+> The curse touches notes, the Scale Wheel, Db and fans, which EVERY Spirit has
+> today. Metalness is no longer across the Ronin's path.
 >
-> 🪦 **§2.3.1–§2.3.7 below now describe the SHIPPED ability, not the designed
-> one.** They are kept because the shipped one is what runs in the build today and
-> `test:shamisen`'s 34 assertions stand on it. **Read §2.3.0 for the design.**
+> 🪦 §2.3.0 (the siphon) is kept as a record — its "read, not guess" reasoning is
+> worth keeping — and §2.3.1–§2.3.7 describe the glow-and-debt self-buff, 🪦
+> **removed 2026-10-02** (record only; `test:shamisen` now pins the curse and asserts
+> the old one stays gone).
 
-#### 2.3.0 ⭐ THE SIPHON — Alex, 2026-09-04
+#### 2.3.00 ⭐ THE IWATO CURSE — Alex, 2026-10-02
+
+The conversation, in his words: *"I thought it could affect the Rival's notes in
+some way … the Rival's note wheel becomes 'infected' - Db is not earned and fans
+are confused. Ronin loses 3-4 notes for a turn to 'cast' the curse … I'm also
+wondering though how this move could be 'earned'."* Then: tuning as *"a 3rd option
+during the chord stack commit phase"*; then the scale — *"The Ritsu sounds kind of
+'happy' … Isn't there a 'dark' Japanese scale?"* → *"Lets go with the Iwato - very
+haunting, just as the Cursed Shamisen should be."*
+
+🎵 **IWATO: 1 ♭2 4 ♭5 ♭7, always on the RONIN'S root.** Against his own palette
+(Hirajoshi + P4: 1 2 ♭3 4 5 ♭6) it shares only **1 and 4** — so ♭2, ♭5 and ♭7 are
+notes that are DISCORD for him and earn him nothing. 🎯 **The curse is built out of
+his own discord**: the Shamisen gives his junk notes a job. It is on HIS root, not
+the rival's, because on each rival's own root the scale would favour some Spirits
+and lock out others (Ritsu on Dorian was free; on Phrygian, unreachable).
+
+##### The four rules — ✅ DECIDED
+
+1. 🪕 **TUNING — the chord step gets a THIRD destination.** Drive (attack), Sustain
+   (defence), and — only for a Ronin who took the Shamisen into the match — **the
+   Shamisen's three strings**. A string takes **one Iwato note**. **One string per
+   turn** (the same shape as "one found seat per stack per round", 2026-09-30 — ⁉️ Alex
+   has since floated up to three in one turn, see below), and
+   tuned strings **persist between turns** like the stacks. 🎯 **This is what makes
+   it EARNED:** every note on a string is a note not adding a die to his attack or
+   holding up his shield, and the earliest he can cast is his third turn of tuning
+   — in plain sight, so rivals can count the strings and play around it.
+2. ⚡ **THE CAST spends the three strings** (plus the ability's Db and cooldown).
+   That IS Alex's "Ronin loses 3–4 notes … to cast the curse": the notes he pays are
+   the strings he spent three turns tuning.
+3. 🌑 **THE CURSE — the rival's Scale Wheel becomes Iwato for their next 2 turns.**
+   Every note in their hand that is not an Iwato note (on the Ronin's root) is
+   discord for those turns: **no Db, no fans** — the existing *"discord notes are
+   inert"* rule (2026-09-09) does the punishing, so there is no new penalty to
+   learn. A hand built for their own scale goes dead; a hand that happens to hold
+   Iwato notes still plays. (Alex picked this over "scale stays, Db stops" and over
+   "plus Sustain loss".)
+4. 🔥 **EXORCISM — on their VERY NEXT TURN only.** Commit a melody with **3
+   different Iwato notes** and the curse lifts. Miss it and it runs its 2 turns.
+   ⚠️ "Next turn", not "this round": if the Ronin acts after them in the round,
+   "this round" would give them no chance at all, and turn order would decide it.
+   📏 From a fresh 10-note hand drawn evenly, 3 of 5 given pitch classes turn up
+   ~67% of the time (4 of 5: ~27%) — so 3 is a real cure you can miss, or hunt
+   for on the board. ⚠️ Their weighted draw (half from their own palette) moves
+   this per Spirit and per key; measure before tuning.
+
+##### ✅ 2026-10-02 (later) — REPEATS RING IN OCTAVES, and the cast's melody is a score
+
+- **Any Iwato note may go on a string, repeats included** (Alex: *"any random note
+  from the scale is enough"*). ⚠️ That made D·D·D possible, and Alex: *"if the Ronin
+  player chose 3 of the same note - that wouldn't be haunting … They could perhaps be
+  presented as different octaves? … An open shamisen has 2 of the same notes."* (He
+  is right: honchōshi and niagari both tune the third string an octave over the
+  first.) **So a string that repeats a pitch already on a lower string is tuned an
+  octave above it** — D·D·D sounds low, middle, high. The RULES still see three Ds
+  (`stringOctaves`, `cursedShamisen.js`).
+- **The cast's melody is now a composed score built ON HIS STRINGS** (`CAST_SCORE`),
+  ~6 s: the first string struck low and left ringing · the second sliding up into
+  place (suri) · the first sighing down onto it · ♭5 trembled by the bachi · a slip
+  to the 4th · ♭7 under the root · the third string high and faint as the wisps
+  leave · home with the ♭2 beating against it, unresolved. Silence (ma) between
+  them; a low root/♭2 drone and a ghostly octave echo under it. Every one a lever.
+- ⁉️ **Still open from the same conversation** (Alex proposed, not yet ruled — ✅ the
+  tuning half was RULED 2026-10-02, see the port section below): tune
+  **up to all three strings in one turn**, paying from his hand or **sacrificing
+  stack notes** (any pitch?) · **the cast**: an act with the Action Token, within
+  **3 hexes** any direction (the Sonic beam's reach), unblocked · **the strings'
+  notes cross over and become the rival's CURSED STACK, and the exorcism is
+  playing those notes back** (cure odds: one distinct note ~58%, two ~32%, three
+  ~17%) · and if so, **both cursed turns** to exorcise rather than only the next.
+
+##### ✅ 2026-10-02 (port) — BUILT. Up to three strings a turn, from the hand, from the turn after
+
+Alex, answering the open tuning question: *"the way the sacrifice works is not that
+it comes directly from his stack but rather potentially a note that could have been
+used for his Drive or Sustain. But yes, up to 3 a turn - after the ability was
+selected, so I guess this means from the next turn."* That supersedes "one string per
+turn" in rule 1 above. **What shipped** (`engine/systems/iwatoCurse.js`, the client,
+the arena, the wheel, the sound, the loadout pop-out):
+
+1. 🪕 **TAKE UP** — a free act on the rail (off cooldown). The ghost shamisen appears
+   over him at once — rivals see it coming.
+2. 🎼 **TUNE from his NEXT turn** — the chord step's third row, **STRINGS**, beside
+   Drive and Sustain: up to **3 strings a turn**, one Iwato note each, **from the
+   hand**, out of the **same 3-commit budget** (Tab cycles Drive → Sustain → Strings).
+   Notes already on a stack are never touched. Repeats ring an octave up.
+3. ⚡ **CAST** — all three tuned: a rival **within 3 hexes, any direction**, the
+   **Action Token**, **5 Db**, the **2-round cooldown** (the universal ones). The
+   strings are spent and the instrument put away; the next curse starts from a new
+   take-up once the cooldown has run.
+4. 🌑 **CURSED for their next 2 turns**, counted at the END of each of THEIR turns
+   (never the round clock — turn order must not decide the curse). Their palette is
+   Iwato on his key everywhere a melody is scored (`livePalette`): the commit, the
+   finder, the crowd coach, the bot's style gain and the client's live check.
+5. 🔥 **EXORCISM** — on their first cursed turn only; the melody holding 3 different
+   Iwato notes **lifts it inside the commit itself** and is scored on the Iwato
+   palette, so it pays (fighting free is rewarded).
+
+📌 **Calls made in the port, not by Alex — say so if any is wrong:**
+- **The shamisen keeps the key it was taken up in** (`shamisen.root`). His root follows
+  his melody's last note every turn, so "Iwato on his root" would otherwise move under
+  strings already tuned. The take-up fixes it; strings, the cast and the rival's
+  curse all read that key.
+- **Range 3, no line of sight** (the hitodama float over bodies) — Alex has not ruled
+  on range; 3 is the Sonic beam's reach.
+- **No string snaps on a hit** (still only proposed).
+- **One curse per rival at a time**; the Ronin may take the shamisen up again while
+  an old curse is still burning down.
+
+⛔ **Not built:** bots never take the Shamisen up (a cursed bot does play — and may
+exorcise — because its finder reads the cursed palette). The arena's real crowd does
+not fall out of time (the preview's fans did), the corner spotlights do not stutter
+and the lens does not shake on the slap; the cast's hush is the arena's exposure.
+
+##### ⭐ THE ANIMATION IS PART OF THE DESIGN (Alex: *"The animation of it is really what captures the hearts of the players"*)
+
+Five moments, previewed and dialled in BEFORE the rules are ported (the Bushido's
+order). The preview is `.scratch/cursed-shamisen-preview.html`.
+
+1. **Tuning (every turn — the tell).** A ghostly shamisen hangs over the Ronin; a
+   string draws taut in violet-black and one Iwato note plucks with the sawari
+   buzz. Rivals can count the lit strings from across the board.
+2. **The cast (the Ronin's moment).** The arena hushes and goes cold violet, the
+   spotlights stutter; a slow detuned Iwato phrase over a deep temple bell; three
+   **hitodama** (ghost-fire wisps), one per string, drift to the rival; an
+   **ofuda** charm slaps onto their standee — 呪.
+3. **The infection (the rival's moment — the one that TEACHES the rule).** Ink
+   bleeds into their Scale Wheel from the rim, their own segments crack and grey,
+   the five Iwato notes light ghost-violet. In the arena their neon edge turns a
+   sick violet, the hitodama circle them, and their fans' glow sticks fall out of
+   time ("fans are confused", as a picture, not a second penalty).
+4. **Each cursed turn.** The hitodama ARE the countdown: one burns out per cursed
+   turn.
+5. **Exorcism or expiry.** Exorcised: the ofuda burns to ash, the wisps scatter,
+   the wheel snaps back with a bright chord and their crowd cheers — fighting free
+   should feel as good as casting. Expired: a quiet fade.
+
+##### ⁉️ OPEN — not decided
+
+- **Does a hit detune a string?** Proposed: a hit knocks the LAST tuned string
+  off (as a Swing frays a Sustain stack) — counterplay while he tunes. Not ruled.
+- **Db, cooldown, AP** for the cast — the flat 5 Db / 2-round cooldown norm, or
+  dearer? Balance is parked; it needs a number to be built.
+- **Range / targeting** — the siphon was Swing-shaped; the curse has no stated
+  area. Any rival? In line of sight? Within N hexes?
+- **Must the three strings be three DIFFERENT Iwato notes?** Proposed yes (a
+  chord, not one note thrice). 📌 Flavour for later: real shamisen tunings
+  (honchōshi 1-4-8, niagari 1-5-8, sansagari 1-4-♭7) as a stronger curse.
+- **What the exorcising melody pays.** Under the curse, Iwato notes ARE their
+  scale, so it pays normally — proposed: yes, fighting free is rewarded.
+- **Two curses at once**, a cursed rival who is knocked out, bots (the bot must
+  learn when a string is worth more than a Drive or Sustain note, and how to
+  exorcise).
+
+#### 2.3.0 🪦 THE SIPHON — Alex, 2026-09-04 *(SUPERSEDED 2026-10-02 by §2.3.00 — record only)*
 
 **Ronin plays the shamisen over an area, like a Swing.** The player then picks
 **one special ability belonging to a rival in that area**.

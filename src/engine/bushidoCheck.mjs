@@ -51,7 +51,7 @@ import { SWING_DRIVE_SPEND } from "./systems/attackParams.js";
 import {
   PSYCHO_BUSHIDO_CD, PSYCHO_BUSHIDO_DB_COST, PSYCHO_BUSHIDO_AP_COST,
   PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
-  PSYCHO_BUSHIDO_STACK_COST, PSYCHO_BUSHIDO_DRIVE_LADDER, psychoBushidoBonus,
+  PSYCHO_BUSHIDO_STACK_COST, PSYCHO_BUSHIDO_D8_LADDER, psychoBushidoD8s,
   SHADOW_ILLUSION_CD, SHADOW_ILLUSION_DB_COST, SHADOW_ILLUSION_TURNS,
   SHADOW_ILLUSION_SUSTAIN_DRAIN, FLAT_ABILITY_UNLOCK_DB,
 } from "../data/gameConstants.js";
@@ -132,7 +132,7 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(PSYCHO_BUSHIDO_CD, 4, '🕒 4-round cooldown — was 2');
   eq(PSYCHO_BUSHIDO_DB_COST, 1, '💿 still 1 Db a draw — the per-use price did not move');
   eq(PSYCHO_BUSHIDO_STACK_COST, 2, '🎸 …and 2 notes off the Drive stack, which is new');
-  eq(PSYCHO_BUSHIDO_DRIVE_LADDER, [2, 3, 4], '⭐ the ladder Alex settled 2026-09-04e');
+  eq(PSYCHO_BUSHIDO_D8_LADDER, [2, 3, 4], '⭐ the ladder Alex settled 2026-09-04e — since 2026-10-01 counted in d6s turned into d8s');
 
   eq(ABILITY_CD[BUSHIDO], PSYCHO_BUSHIDO_CD, '🕒 the cooldown table reads the constant');
   eq(ABILITY_DB_COST[BUSHIDO], PSYCHO_BUSHIDO_DB_COST, '💿 …and so does the per-use table');
@@ -140,7 +140,7 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   // ⚠️ THE WINDOW MUST BE AS WIDE AS THE LADDER IS LONG. A ladder with four rungs
   // and a three-hex window would make the fourth unreachable, and nothing else in
   // the repo could tell — the extra rung would simply never be read.
-  eq(PSYCHO_BUSHIDO_DRIVE_LADDER.length, PSYCHO_BUSHIDO_MAX_RANGE - PSYCHO_BUSHIDO_MIN_RANGE + 1,
+  eq(PSYCHO_BUSHIDO_D8_LADDER.length, PSYCHO_BUSHIDO_MAX_RANGE - PSYCHO_BUSHIDO_MIN_RANGE + 1,
     '⭐ one rung per legal distance — no rung is unreachable and no distance is unpriced');
   ok(PSYCHO_BUSHIDO_AP_COST <= PSYCHO_BUSHIDO_MIN_RANGE,
     '⚡ the bill is payable by a Spirit who can reach the near edge of the window at all');
@@ -150,23 +150,23 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
 // 2. THE LADDER — it rises, and it pays nothing outside the window.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  eq(psychoBushidoBonus(3), 2, '⭐ +2 at the near edge');
-  eq(psychoBushidoBonus(4), 3, '⭐ +3 in the middle');
-  eq(psychoBushidoBonus(5), 4, '⭐ +4 at full draw');
+  eq(psychoBushidoD8s(3), 2, '⭐ two d8s at the near edge');
+  eq(psychoBushidoD8s(4), 3, '⭐ three in the middle');
+  eq(psychoBushidoD8s(5), 4, '⭐ four at full draw');
 
   // ⭐ MONOTONIC, ASSERTED RATHER THAN ASSUMED. §B8: the bonus was once
   // `apLeft - dist`, which paid MOST for a charge of zero hexes — "the ability
   // rewarded standing still and called it lightning." A ladder makes the sign
   // structural, and this is the guard that keeps it that way.
   for (let d = PSYCHO_BUSHIDO_MIN_RANGE; d < PSYCHO_BUSHIDO_MAX_RANGE; d++) {
-    ok(psychoBushidoBonus(d + 1) > psychoBushidoBonus(d),
+    ok(psychoBushidoD8s(d + 1) > psychoBushidoD8s(d),
       `⭐ farther pays more: ${d + 1} hexes beats ${d} hexes (§B8 — the sign has flipped once already)`);
   }
 
   // 📌 Out of the window it pays 0, not a negative and not a NaN. A caller that
   // skipped the legality check gets nothing rather than an invented rung.
   for (const d of [0, 1, 2, 6, 9]) {
-    eq(psychoBushidoBonus(d), 0, `⭐ ${d} hexes is outside the window and pays 0`);
+    eq(psychoBushidoD8s(d), 0, `⭐ ${d} hexes is outside the window and pays 0`);
   }
 }
 
@@ -251,16 +251,13 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
       `🕒 the draw at ${d} starts the ${PSYCHO_BUSHIDO_CD}-round clock`);
     eq(ns.dbPoints, 10 - PSYCHO_BUSHIDO_DB_COST,
       `💿 …and pays ${PSYCHO_BUSHIDO_DB_COST} Db, exactly as the client does`);
-    // 🚩 FOUR NOTES, NOT TWO — the ability's bill plus the strike's own Swing
-    // spend, both off the front. This is the assertion that states the real price
-    // of a draw; nothing else in the repo does, and it is what makes the trade
-    // legible if anyone later asks why Bushido feels expensive.
-    eq((ns.driveStack ?? []).length, 0,
-      `🎸 a 4-note stack is emptied by a draw: ${PSYCHO_BUSHIDO_STACK_COST} for the ability, ${SWING_DRIVE_SPEND} for the strike`);
+    // 🚩 TWO NOTES, WHERE IT USED TO BE FOUR. Until 2026-10-01 the strike was a
+    // Swing and paid the Swing's own two on a hit; it is a Drive-vs-Sustain
+    // burst now (bushidoBurstCheck), so the draw's two are the whole stack bill.
+    eq((ns.driveStack ?? []).length, 4 - PSYCHO_BUSHIDO_STACK_COST,
+      `🎸 a 4-note stack keeps ${4 - PSYCHO_BUSHIDO_STACK_COST}: the draw's ${PSYCHO_BUSHIDO_STACK_COST}, and no Swing spend on top`);
 
-    // ⚡ TOTAL AP: the dash pays its share and the Swing pays the rest. Asserting
-    // the TOTAL rather than the dash is deliberate — the bill was split between
-    // two call sites precisely so neither could pay it twice.
+    // ⚡ TOTAL AP — paid once, with the strike, since the strike stopped being a Swing.
     eq(before - after.turn.moveStepsLeft, PSYCHO_BUSHIDO_AP_COST,
       `⚡ the whole draw at ${d} hexes costs ${PSYCHO_BUSHIDO_AP_COST} AP, dash and strike together`);
   }
@@ -377,7 +374,7 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   const patch = bushidoDrawPatch(ns, 5);
   eq(ns, before, 'draw calculation does not mutate the live sheet');
   eq(patch.driveStack, ['C', 'D'], 'draw spends from the front');
-  eq(patch.tempDrive, 6, 'draw adds its bonus to existing temporary Drive');
+  eq('tempDrive' in patch, false, '🪦 the draw no longer pays tempDrive — the range turns d6s into d8s instead (2026-10-01)');
   eq(patch.dbPoints, 9, 'draw pays one Db');
   eq(patch.abilityCd, { other: 2, psycho_bushido: 4 }, 'draw preserves other cooldowns');
 }
@@ -442,7 +439,7 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
     eq(nearer.length, 1,
       '🛡️ a BODY at 4 is not a screen, it is a nearer target — the draw retargets rather than refusing');
     eq(nearer[0].targetId, METAL, '🛡️ …and it is the NEARER body that gets hit');
-    eq(nearer[0].dist, 4, '🛡️ …at its own distance, so it is paid the +3 rung, not the +4');
+    eq(nearer[0].dist, 4, '🛡️ …at its own distance, so it gets three d8s, not four');
   }
 
   // ── 🖥️ THE CLIENT HALF. §B2: read the client, not the test.

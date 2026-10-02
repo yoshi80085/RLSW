@@ -31,12 +31,12 @@ import {
   CODE_INJECT_DB_COST,
   DISPLACE_CD, GRAVITY_CD, CODE_INJECT_CD, SUNBEAM_CD,
   PSYCHO_BUSHIDO_CD, SHADOW_ILLUSION_CD, CURSED_SHAMISEN_CD,
-  PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE, PSYCHO_BUSHIDO_AP_COST,
+  PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE, PSYCHO_BUSHIDO_AP_COST, psychoBushidoD8s,
   PSYCHO_BUSHIDO_STACK_COST, SHADOW_ILLUSION_TURNS,
   PSYCHO_BUSHIDO_DB_COST, SHADOW_ILLUSION_DB_COST, CURSED_SHAMISEN_DB_COST,
   SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS, SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
   SHADOW_ILLUSION_SUSTAIN_DRAIN,
-  CURSED_SHAMISEN_DURATION, CURSED_SHAMISEN_PAYOFF_COST,
+  SONIC_BEAM_REACH,
 } from "./gameConstants.js";
 
 export const SKILL_TREE = {
@@ -147,17 +147,17 @@ export const SKILL_TREE = {
         { id:'shukuchi',        label:'Shukuchi Arpeggio (縮地)', icon:'🌀', dbCost:6, gated:false,
           desc:`Shrink the earth — each step you take becomes a ${SHUKUCHI_HOP_RINGS}-hex LEAP, up to ${SHUKUCHI_MAX_HOPS} of them, and each leap still costs ${SHUKUCHI_AP_PER_HOP} Action Point exactly like walking. ⚠️ THREE LEAPS IS THREE OF YOUR STEPS — six hexes of ground for the price of three, not for free. You may take one, two or three, and each one picks its own direction. 🌀 NOTHING STOPS YOU IN THE AIR: bodies, hazards, walls and 🐙 poison slime all pass underneath, and only the hex you LAND on has to be empty. 🎵 Every landing picks up a Lost Chord note you touch down on. ⚠️ You end up facing the way you last leapt, so line up the strike with your final hop. ${SHUKUCHI_DB_COST} Db to call it, ${SHUKUCHI_CD}-round cooldown — and the clock starts on the FIRST leap, so a Ronin who hops once and thinks better of it has spent the whole ability.` },
         { id:'psycho_bushido',  label:'Psycho Bushido',  icon:'🌀', dbCost:6,  gated:false,
-          desc:`Iaijutsu draw — strike a rival standing ${PSYCHO_BUSHIDO_MIN_RANGE} to ${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT of you. ⭐ THE FARTHER THE DRAW, THE HARDER THE BLOW: +2 Drive at ${PSYCHO_BUSHIDO_MIN_RANGE} hexes, +3 at 4, +4 at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ TOO CLOSE AND YOU CANNOT DRAW AT ALL — there is no run-up, and a rival at 1 or 2 hexes is simply not a target. Any body in the lane blocks it, your own 👤 shadow included. ⚠️ The bonus powers the blow and expires with the battle — it does not join your Drive stack, and it shares the +5 ceiling with every other attack bonus. ${PSYCHO_BUSHIDO_DB_COST} Db a draw, ${PSYCHO_BUSHIDO_AP_COST} Action Points flat, ${PSYCHO_BUSHIDO_CD}-round cooldown — and ⭐ IT BURNS ${PSYCHO_BUSHIDO_STACK_COST} NOTES OFF THE BOTTOM OF YOUR DRIVE STACK before the strike — and the strike then spends more, like any Swing. Losing your foundation RE-POINTS what you are hunting on the board, so a draw is a choice about your chord as well as about your rival.` },
+          desc:`Iaijutsu draw — strike a rival standing ${PSYCHO_BUSHIDO_MIN_RANGE} to ${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT of you. ⚡ THEY BRACE, YOU BURST: the rival throws their Sustain as a shield, then you throw your Drive and charge on your dice — and each die you keep hits the shield in turn. Whatever gets THROUGH is the damage, and pushes them back a hex for every die that got through. If the shield holds, nothing happens to either of you. ⭐ THE FARTHER THE DRAW, THE BIGGER YOUR DICE: ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} of your d6s become d8s at ${PSYCHO_BUSHIDO_MIN_RANGE} hexes, ${psychoBushidoD8s(4)} at 4, ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ TOO CLOSE AND YOU CANNOT DRAW AT ALL — there is no run-up, and a rival at 1 or 2 hexes is simply not a target. Any body in the lane blocks it, your own 👤 shadow included. You arrive on the hex in front of them with your guard down. ${PSYCHO_BUSHIDO_DB_COST} Db a draw, ${PSYCHO_BUSHIDO_AP_COST} Action Points flat, ${PSYCHO_BUSHIDO_CD}-round cooldown — and ⭐ IT BURNS ${PSYCHO_BUSHIDO_STACK_COST} NOTES OFF THE TOP OF YOUR DRIVE STACK before the dice. Losing notes RE-POINTS what you are hunting on the board, so a draw is a choice about your chord as well as about your rival.` },
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', dbCost:6,  gated:false,
           desc:`Split into a second, identical Ronin, born stacked on your own hex (${SHADOW_ILLUSION_DB_COST} Db, ${SHADOW_ILLUSION_CD}-round cooldown) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. ⚠️ IT FEEDS ON YOU: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it comes apart the moment you have none to give — you are at your most fragile exactly while nobody can tell which body to hit. Lasts ${SHADOW_ILLUSION_TURNS} turns. Pops if it is struck, if you attack, or if you are attacked. Whoever swings at it burns their AP and Action Token for nothing.` },
-        // ⚠️ THE SHAMISEN'S `desc` NAMES BUSHIDO AND SHADOW ILLUSION AND STOPS,
-        // AND THAT IS NOW THE WHOLE LIST. It used to name Wa no Koe too, which
-        // had no cooldown to accelerate — `tickShamisen` only walks entries that
-        // already exist in `abilityCd`, so there was never anything to speed up.
-        // 🪦 Wa no Koe was CUT 2026-09-04 (`RONIN_ABILITY_DESIGN.md` §2.4). The
-        // kit is three until 🌀 Shukuchi lands; add it here when it does.
+        // 🎸 THE IWATO CURSE (2026-10-02, `RONIN_ABILITY_DESIGN.md` §2.3.00). The
+        // numbers in this text are the rules' own: 3 strings / 2 cursed turns / 3
+        // Iwato notes to exorcise are `board/cursedShamisen.js`, the reach is
+        // `iwatoCurse.js` `CAST_RANGE` (= SONIC_BEAM_REACH). ⚠️ Written as literals
+        // because importing `iwatoCurse.js` here would loop through `cooldowns.js`,
+        // which imports this file — `test:shamisen` pins the text to the numbers.
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', dbCost:6,  gated:false,
-          desc:`Invoke the cursed strings (${CURSED_SHAMISEN_DB_COST} Db, ${CURSED_SHAMISEN_CD}-round cooldown). For ${CURSED_SHAMISEN_DURATION} rounds, ALL of the Ronin's OTHER ability cooldowns tick at 2× speed — your other selected ability recharges twice as fast. While the curse is active the Ronin GLOWS purple on the board: everyone can see he is exposed, but nobody knows if he paid the debt. ⚠️ THE CURSE: if the Ronin takes ANY Vibe damage in battle while glowing and has NOT paid ${CURSED_SHAMISEN_PAYOFF_COST} Db that round, ALL of his cooldowns RESET to their full duration — the acceleration backfires. He can pay ${CURSED_SHAMISEN_PAYOFF_COST} Db each round to protect himself, but the glow stays regardless, so rivals can never tell whether an attack will punish him or not. That is the bluff.` },
+          desc:`Curse a rival with Iwato, the haunted Japanese scale (1 ♭2 4 ♭5 ♭7, on YOUR root). 🪕 TAKE IT UP on your turn and from your NEXT turn the chord step has a third place to put a note: the Shamisen's 3 strings. Each string takes one Iwato note — up to 3 a turn, out of the same 3 commits as your Drive and Sustain, so every string is a note your attack or your guard did not get. Repeats ring an octave higher. ⚡ With all 3 strings tuned, CAST it on a rival within ${SONIC_BEAM_REACH} hexes (${CURSED_SHAMISEN_DB_COST} Db, your Action Token, ${CURSED_SHAMISEN_CD}-round cooldown): ghost-fire leaves the strings and a charm slaps onto them. 🌑 For their next 2 turns their Scale Wheel IS Iwato — every other note in their hand is discord: no Db, no fans. 🔥 They can EXORCISE it on their very next turn with a melody holding 3 different Iwato notes. Everyone can count your strings, so they see it coming.` },
       ],
     },
     {

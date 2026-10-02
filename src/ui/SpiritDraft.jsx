@@ -5,8 +5,17 @@ import { SeatPortrait } from './SeatPortrait.jsx';
 import { SEAT_PORTRAIT } from './seatPortrait.js';
 import { abilitiesFor, validLoadout } from '../data/loadouts.js';
 import { canUseWebGL, createSpiritPickerStage, SPIRIT_PICKER } from './spiritPickerStage.js';
+import { ABILITY_DEMO, hasDemo, popoutPlace } from './abilityDemo.js';
+import { useAbilityDemo, useAbilityPopout } from './abilityDemoHooks.js';
+import { AbilityDemoWindow } from './AbilityDemo.jsx';
 
-export function AbilityInfo({ skill, onClose }) {
+/**
+ * 📖 The Field Guide. 🎬 `demo` (optional) is the ability's animated window,
+ * drawn above the text — `SpiritDraft` passes one for the abilities that have a
+ * demo (`ABILITY_DEMO.inGuide`, Alex's dial-in 2026-10-01). `AbilityWallet`
+ * passes none and keeps the plain guide.
+ */
+export function AbilityInfo({ skill, onClose, demo = null }) {
   const ref = useRef(null);
   useEffect(() => {
     const previous = document.activeElement;
@@ -18,6 +27,7 @@ export function AbilityInfo({ skill, onClose }) {
     <div className="draft-eyebrow">ABILITY / FIELD GUIDE</div>
     <h2 id="ability-info-title">{skill.icon} {skill.label}</h2>
     <div className="draft-price">5 Db per use <span>•</span> 2 rounds to recharge</div>
+    {demo}
     <p>{skill.desc}</p>
     <button className="draft-confirm" onClick={onClose} autoFocus>GOT IT</button>
   </dialog>;
@@ -106,6 +116,17 @@ export function SpiritDraft({ corners, assignments, loadouts, choosingCorner, on
   const spirit = SPIRIT_DEFS[chosen];
   const selected = loadouts[corner] ?? [];
   const accent = playerColor(corner);
+  /* 🎬 THE ABILITY POP-OUT (Alex, 2026-10-01 — "everything is perfect, lets lock
+     that in": the preview's defaults, 0 of 24 levers moved). Hover or focus an
+     ability that has a demo and a window beside it PLAYS it (abilityDemo.js).
+     ⚠️ No WebGL2 (jsdom in `test:loadoutui`, an old browser) → `getDemo` is
+     null and every row keeps today's text-only guide. The Rival in the picture
+     wears the other seat's colour. */
+  const getDemo = useAbilityDemo(ABILITY_DEMO);
+  const pop = useAbilityPopout(ABILITY_DEMO);
+  const rival = playerColor(corners.find(c => c !== corner) ?? corner);
+  const popped = pop.open && !info ? pop.open : null;
+  const demo = popped ? getDemo?.() : null;
   return <section className="spirit-draft" style={{'--draft-accent':accent}} aria-label="Choose Spirits and abilities">
     <div className="draft-heading">
       <div><div className="draft-eyebrow">BACKSTAGE / MATCH SETUP</div><h1>Take the stage.</h1></div>
@@ -125,19 +146,23 @@ export function SpiritDraft({ corners, assignments, loadouts, choosingCorner, on
         <p className="draft-subtitle">{spirit ? 'Choose two abilities to take into the arena.' : 'Select a Spirit to reveal their abilities.'}</p>
         <div className="draft-price">5 Db per use <span>•</span> 2-round cooldown</div>
         <div className="draft-skills">{abilitiesFor(chosen).map(skill=>{
-          const on = selected.includes(skill.id);
-          return <div key={skill.id} className={`draft-skill ${on?'is-selected':''}`}>
+          const on = selected.includes(skill.id), demoable = !!getDemo && hasDemo(skill.id);
+          return <div key={skill.id} className={`draft-skill ${on?'is-selected':''}${demoable?' has-demo':''}`} {...(demoable ? pop.bind(skill) : {})}>
             <button className="draft-skill-pick" aria-pressed={on} disabled={!on&&selected.length===2}
               onClick={()=>onLoadout(corner,on?selected.filter(id=>id!==skill.id):[...selected,skill.id])}>
               <span className="draft-skill-icon">{skill.icon}</span><strong>{skill.label}</strong><span className="draft-check">{on?'✓':'+'}</span>
             </button>
-            <button className="draft-info-button" aria-label={`About ${skill.label}`} onClick={()=>setInfo(skill)}>i</button>
+            <button className="draft-info-button" aria-label={`About ${skill.label}`} onClick={()=>{ pop.close(); setInfo(skill); }}>i</button>
           </div>;
         })}</div>
         <button className="draft-confirm" disabled={!validLoadout(chosen,selected)} onClick={onConfirm}>LOCK IN PLAYER {corners.indexOf(corner)+1} <span>→</span></button>
         <p className="draft-note">Abilities start ready. Earn Db on the board to use them.</p>
       </div>
     </div> : <div className="draft-ready"><span>✦</span><h2>Your lineup is ready.</h2><p>Adjust the match below, then enter the arena.</p><button onClick={()=>onChooseCorner(corners[0])}>EDIT LOADOUTS</button></div>}
-    {info && <AbilityInfo skill={info} onClose={()=>setInfo(null)}/>}
+    {popped && demo && <AbilityDemoWindow key={popped.skill.id} demo={demo} skill={popped.skill} color={accent} rivalColor={rival}
+      place={popoutPlace(popped.rect, ABILITY_DEMO)} keep={pop.keep}/>}
+    {info && <AbilityInfo skill={info} onClose={()=>setInfo(null)}
+      demo={ABILITY_DEMO.inGuide === 'on' && getDemo && hasDemo(info.id)
+        ? <AbilityDemoWindow demo={getDemo()} skill={info} color={accent} rivalColor={rival} variant="inline"/> : null}/>}
   </section>;
 }

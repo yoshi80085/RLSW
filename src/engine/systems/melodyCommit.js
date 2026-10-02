@@ -37,12 +37,13 @@ import { characterId } from "../../data/spiritIdentity.js";
 //   · `unsurePool` — the undecided crowd is client state. Pass it in via
 //     `ctx.view.unsurePool`; the recruit it funds comes back as an effect.
 
-import { buildScale, playableScale, ENHARMONIC_RESPELL } from "../../music/notes.js";
+import { buildScale, ENHARMONIC_RESPELL } from "../../music/notes.js";
 import {
   classifyTrack, countUnpardoned, countPardonedByStack,
 } from "../../music/context.js";
 import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { melodyPayoutFor } from "../../music/melodyPayout.js";
+import { livePalette, exorcisedBy, exorcisePatch } from "./iwatoCurse.js";
 import { advanceDB } from "../../board/boardHelpers.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
@@ -130,7 +131,11 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // One classification owns every answer about the committed notes. The
   // Spirit's mode is the clean palette; chord pardons are tracked separately
   // for the red/blue ending carrot and never become clean notes.
-  const currentScale = playableScale(rootNote, scaleMode);
+  // 🌑 THE IWATO CURSE SWAPS THIS PALETTE, and only this one line knows it:
+  // under a curse every note that is not Iwato on the Ronin's root classifies
+  // as discord, and "discord notes are inert" does the rest (no Db, no fans).
+  // `iwatoCurse.js` `livePalette`; uncursed it is exactly `playableScale`.
+  const currentScale = livePalette(spiritId, ns);
   const harmonicScale = buildScale(rootNote, scaleMode);
   const trackClassified = classifyTrack(
     melodyLine, currentScale, driveStack, sustainStack);
@@ -322,13 +327,27 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const newDBPoints = Math.max(0, rawDBPoints);
   const newUpgradesPending = upgradeTriggered ? (ns.upgradesPending ?? 0) + 1 : (ns.upgradesPending ?? 0);
 
+  // ── 🔥 THE EXORCISM — the Iwato curse's way out (`iwatoCurse.js`) ─────────
+  // On their FIRST cursed turn only, a line holding three different Iwato notes
+  // lifts the curse. ⭐ Scored ABOVE on the cursed palette — so the exorcising
+  // melody pays normally (Iwato IS their scale this turn): fighting free is
+  // rewarded, not merely survived. The lift is in the patch so the kernel and
+  // the client cannot disagree about whether it happened.
+  const exorcised = exorcisedBy(ns, melodyLine);
+  if (exorcised) {
+    logs.push(`🔥 ${name} plays three Iwato notes straight back at the curse — the charm burns and the Scale Wheel snaps back. EXORCISED!`);
+    flashLines.push('🔥 EXORCISED!');
+  }
+
   // ── THE SHEET PATCH ───────────────────────────────────────────────────────
   const patch = {
+    ...(exorcised ? exorcisePatch(ns) : {}),
     melodyLine: [], melodySrcIdx: [], melodyFreq: [],
     // Phase R1: the riff-off reads these; turn start clears them.
     // ⚠️ Mapped over `melodyLine`, not copied from `melodyFreq`: the mic roll
     // shadows the track and may append a note the player never played.
     committedMelody:  melodyLine,
+    lastCommittedMelody: [...melodyLine], // Survives turn reset for alternating arena calls.
     committedFreq:    melodyLine.map((_, i) => melodyFreq[i] ?? null),
     discordCount:  0,
     pivotPending:  newPivotPending,
@@ -443,6 +462,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     report: {
       melodyLine, baseTrack, voiceRoll, micBonusNote,
       cadence: null,
+      exorcised,
       unpardonedDiscord, contextPardons, allInScale, cleanNoteCount, endingClean,
       cleanPhrase, endingChoice,
       colorDrive, colorSustain, discarded, dbOverflow,

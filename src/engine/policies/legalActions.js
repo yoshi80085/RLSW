@@ -427,7 +427,7 @@ export function legalActions(state, spiritId, view = {}) {
     // fall through into the combat path rather than growing a second one.
     //
     // ⚠️ THE DISTANCE IS THE PAYLOAD, NOT THE COST OF REACHING IT. It selects a
-    // rung of `PSYCHO_BUSHIDO_DRIVE_LADDER`, so a long charge hits harder.
+    // rung of `PSYCHO_BUSHIDO_D8_LADDER` (d6s turned into d8s), so a long charge hits harder.
     //
     // ⭐ AND SINCE 2026-09-04f THERE IS A MINIMUM RANGE, WHICH THERE DELIBERATELY
     // WAS NOT BEFORE. The old rule let the close charge be legal and merely bad

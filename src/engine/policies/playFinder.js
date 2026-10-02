@@ -51,8 +51,9 @@ import { usedHas } from "../systems/economy.js";
 import { SPEED_CAP } from "../systems/melodyCommit.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import { STACK_COMMIT_BUDGET, stackCapFor } from "../../data/gameConstants.js";
-import { buildScale, playableScale, pitchIndex } from "../../music/notes.js";
+import { buildScale, pitchIndex } from "../../music/notes.js";
 import { melodyModeFor } from "../../music/melodyIdentity.js";
+import { livePalette } from "../systems/iwatoCurse.js";
 import { melodyPayoutFor, craftFansFromRun } from "../../music/melodyPayout.js";
 import { styleCoachFor } from "../../music/spiritStyle.js";
 
@@ -101,7 +102,10 @@ const vectorFor = (goal, v) => [...(GOAL_KEYS[goal] ?? CEILING_KEYS[goal]).map(k
 function readHand(spiritId, ns, opts) {
   const rootNote = ns.rootNote ?? 'C';
   const mode = ns.paletteMode ?? melodyModeFor(spiritId);
-  const scale = playableScale(rootNote, mode);
+  // 🌑 A cursed hand is read on the curse's palette (Iwato on the Ronin's root),
+  // the same one the payout will score it on — or the finder would suggest a
+  // line that pays nothing. `iwatoCurse.js` `livePalette`.
+  const scale = livePalette(spiritId, ns);
   const harmonic = buildScale(rootNote, mode);
   const stock = ns.noteStock ?? [];
   const unavailable = new Set(opts.unavailable ?? []);

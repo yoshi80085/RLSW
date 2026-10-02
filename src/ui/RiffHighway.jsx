@@ -40,7 +40,7 @@
 // buttons make riff-offs playable on touch screens).
 // Timing/difficulty numbers live in riff/fallingNotes.js.
 // =============================================================================
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useId, useRef, useState } from "react";
 
 // ── Geometry (px) ────────────────────────────────────────────────────────────
 // 🎸 THE NECK IS TALL AND NARROW, because a fretboard is. The width is fixed by
@@ -193,6 +193,10 @@ function arrowPath(dir, r) {
 // onPressKey: the engine's judge — now takes a STRING NUMBER (1–6)
 // showNums: print the number to press on the gem (teaching tiers only)
 export function RiffHighway({ run, results, accent, onPressKey, showNums = true, height }) {
+  // Two arena tracks share a document; SVG paint servers must belong to a
+  // particular neck or hiding one track can remove the other's glow/fill.
+  const instanceId = useId().replace(/:/g, '');
+  const glowId = `riffGlow-${instanceId}`, slabId = `riffSlab-${instanceId}`;
   // Latest run + judged set live on refs so the rAF loop (bound once per run)
   // always reads fresh data without re-subscribing on every judgment.
   const runRef    = useRef(run);
@@ -336,7 +340,7 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
           <line x1={0} y1={0} x2={0} y2={-tailPx}
                 stroke={dead ? '#555566' : col} strokeWidth={GEM_R * 0.8}
                 strokeLinecap="round" opacity={dead ? 0.18 : 0.5}
-                filter="url(#riffGlow)" />
+                filter={`url(#${glowId})`} />
         )}
 
         {/* bend marker — the moment to push, and which way */}
@@ -344,7 +348,7 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
           <g transform={`translate(0 ${-(n.bendAt / run.leadTime) * TRAVEL})`}>
             <circle r={GEM_R * (n.bendWeight === 'showpiece' ? 0.46 : 0.36)}
                     fill={n.bendWeight === 'showpiece' ? NEON_MAGENTA : NEON_ORANGE}
-                    filter="url(#riffGlow)" />
+                    filter={`url(#${glowId})`} />
             <text textAnchor="middle" dominantBaseline="central" y={1}
                   fontSize={GEM_R * 0.56} fontWeight="bold" fill="#06111f"
                   fontFamily="monospace">{n.bendDir === 'down' ? '↓' : '↑'}</text>
@@ -355,7 +359,7 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
         {n.hasPartner && (
           <line x1={0} y1={0} x2={laneX(s + 1, 0) - x0} y2={0}
                 stroke={NEON_WHITE} strokeWidth={2.5} strokeDasharray="4 4"
-                opacity={dead ? 0.2 : 0.75} filter="url(#riffGlow)" />
+                opacity={dead ? 0.2 : 0.75} filter={`url(#${glowId})`} />
         )}
 
         {/* bendable halo — early warning that a gesture is coming */}
@@ -368,7 +372,7 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
         <path d={arrowPath(dir, GEM_R)}
               fill={dead ? 'rgba(40,44,56,0.6)' : `${col}44`}
               stroke={dead ? '#555566' : col} strokeWidth={2.4}
-              filter={dead ? undefined : 'url(#riffGlow)'} />
+              filter={dead ? undefined : `url(#${glowId})`} />
 
         {/* what you press */}
         {showNums && !dead && (
@@ -392,11 +396,11 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
            viewBox={`0 0 ${HWY_W} ${HWY_H + BTN_H + 8}`}
            style={{ display: 'block', overflow: 'visible' }}>
         <defs>
-          <filter id="riffGlow" x="-60%" y="-60%" width="220%" height="220%">
+          <filter id={glowId} x="-60%" y="-60%" width="220%" height="220%">
             <feGaussianBlur stdDeviation="2.6" result="b" />
             <feMerge><feMergeNode in="b" /><feMergeNode in="SourceGraphic" /></feMerge>
           </filter>
-          <linearGradient id="riffSlab" x1="0" y1="0" x2="0" y2="1">
+          <linearGradient id={slabId} x1="0" y1="0" x2="0" y2="1">
             <stop offset="0%"  stopColor="rgba(10,23,42,0.10)" />
             <stop offset="70%" stopColor="rgba(6,17,31,0.55)" />
             <stop offset="100%" stopColor="rgba(3,8,16,0.92)" />
@@ -407,7 +411,7 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
         <polygon
           points={`${laneX(0, 1) - 8},0 ${laneX(5, 1) + 8},0 ` +
                   `${laneX(5, 0) + 18},${HWY_H} ${laneX(0, 0) - 18},${HWY_H}`}
-          fill="url(#riffSlab)" stroke="rgba(25,230,255,0.22)" strokeWidth={1.5} />
+          fill={`url(#${slabId})`} stroke="rgba(25,230,255,0.22)" strokeWidth={1.5} />
 
         {/* fret wires — real temperament, bunching toward the nut */}
         {FRET_ZS.map((z, f) => {
@@ -420,7 +424,7 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
                   stroke={NEON_CYAN}
                   strokeWidth={isNut ? 2 : 1}
                   opacity={isNut ? 0.8 : 0.06 + 0.10 * (1 - t)}
-                  filter={isNut ? 'url(#riffGlow)' : undefined} />
+                  filter={isNut ? `url(#${glowId})` : undefined} />
           );
         })}
 
@@ -431,12 +435,12 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
                 stroke={litStrings[i] ? NEON_WHITE : STRING_COLORS[i]}
                 strokeWidth={GAUGE[i]}
                 opacity={litStrings[i] ? 1 : 0.55}
-                filter="url(#riffGlow)" />
+                filter={`url(#${glowId})`} />
         ))}
 
         {/* the bridge / strike line */}
         <line x1={laneX(0, 0) - 26} y1={HWY_H} x2={laneX(5, 0) + 26} y2={HWY_H}
-              stroke={NEON_MAGENTA} strokeWidth={3} filter="url(#riffGlow)" />
+              stroke={NEON_MAGENTA} strokeWidth={3} filter={`url(#${glowId})`} />
 
         {/* gems */}
         {run.notes.map(n => gem(n))}
@@ -449,7 +453,7 @@ export function RiffHighway({ run, results, accent, onPressKey, showNums = true,
             <circle cx={laneX(i, 0)} cy={HWY_H + 26} r={16}
                     fill={litStrings[i] ? STRING_COLORS[i] : 'rgba(6,17,31,0.85)'}
                     stroke={litStrings[i] ? NEON_WHITE : STRING_COLORS[i]}
-                    strokeWidth={2} filter="url(#riffGlow)" />
+                    strokeWidth={2} filter={`url(#${glowId})`} />
             <text x={laneX(i, 0)} y={HWY_H + 26} textAnchor="middle"
                   dominantBaseline="central" fontSize={13} fontWeight="bold"
                   fill={litStrings[i] ? '#06111f' : STRING_COLORS[i]}

@@ -317,14 +317,19 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     shadowIllusion:   null,
     lastMoveBudget:   0,       // 👤 steps granted at the last melody commit
 
-    // 🎸 Cursed Shamisen: { turnsLeft, paidThisRound }
-    // 2026-08-26 rework: NOT a board token any more. It is a self-buff — while
-    // `turnsLeft > 0` every OTHER ability cooldown takes an extra tick per round
-    // and the Ronin glows. `paidThisRound` is the insurance: pay it and a hit
-    // costs nothing, skip it and a hit resets every cooldown to full.
-    // 🪦 The old `cursedShamisen: { hex, range, roundsLeft, touched[] }` seed
-    // outlived the mechanic by a commit. See RONIN_ABILITY_DESIGN.md §2.3.
-    shamisenCurse:    null,
+    // 🎸 THE IWATO CURSE (`engine/systems/iwatoCurse.js`, 2026-10-02).
+    // `shamisen` — the Ronin's instrument once taken up: `{ strings, ready, root }`.
+    //   `ready` flips at his next turn start (`turnFlow`), and the cast clears it.
+    // `iwatoCurse` — on a CURSED Spirit: `{ by, roninRoot, strings, turnsLeft }`.
+    //   Their palette is Iwato on `roninRoot` while it stands (`livePalette`).
+    // 🪦 `shamisenCurse: { turnsLeft, paidThisRound }` (the glow-and-debt
+    // Shamisen of 2026-08-26) is gone with its mechanic. See §2.3.00.
+    shamisen:         null,
+    iwatoCurse:       null,
+    // `curseEnded` — `{ key, how:'exorcised'|'expired' }`, the last curse to END
+    //   on this Spirit, kept so every client draws HOW it ended (the burn or the
+    //   fade) from state rather than from a local event. Overwritten by the next.
+    curseEnded:       null,
     // 🌀 Hops left in the CURRENT turn once Shukuchi has been fired. 0 = not
     // mid-move, which is also what a fresh sheet and every new turn carry —
     // `turnFlow` resets it. ⚠️ One counter, no companion "active" flag: two

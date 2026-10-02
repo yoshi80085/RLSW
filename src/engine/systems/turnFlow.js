@@ -207,6 +207,13 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
     // SUSTAIN for every one of them.
     shadowIllusion: shadow.si,
     ...(shadow.drained > 0 ? { tempSustain: shadow.sustainLeft } : {}),
+
+    // 🪕 THE SHAMISEN'S STRINGS OPEN ON THE TURN AFTER HE TAKES IT UP (Alex,
+    // 2026-10-02: "after the ability was selected … from the next turn"). The
+    // take-up writes `ready:false`; his own next turn start is the only place it
+    // flips, so a take-up can never be tuned in the same turn it was made.
+    // `engine/systems/iwatoCurse.js` holds the rest of the rules.
+    ...(ns.shamisen && !ns.shamisen.ready ? { shamisen: { ...ns.shamisen, ready: true } } : {}),
   };
 
   // Recovery spends refreshed stock, so the refill cannot refund the cost.

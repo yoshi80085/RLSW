@@ -64,7 +64,10 @@ console.log('§4 the client wires every ability button to it');
 {
   const src = readFileSync(new URL('../rlsw-simulator-v3_8_1.jsx', import.meta.url), 'utf8');
   ok('one reach function for every ability', /function attackReachFor\(kind\)/.test(src)
-    && /REACH_KINDS = \['swing','sonic','blaster','tentacle','psycho_bushido','gravity_control','displace','shukuchi'\]/.test(src));
+    && /REACH_KINDS = \['swing','sonic','blaster','tentacle','psycho_bushido','gravity_control','displace','shukuchi','cursed_shamisen'\]/.test(src));
+  // 🎸 The Iwato curse's reach (2026-10-02): every hex within CAST_RANGE, lit once all three strings are tuned.
+  ok('the Shamisen\'s cast has a reach too', /kind === 'cursed_shamisen'\) \{ for \(const h of ALL_HEXES\) if \(axialDist\(h\.q, h\.r, spHex\.q, spHex\.r\) <= SHAMISEN_RANGE\)/.test(src)
+    && /\.\.\.\(strung \? reachHover\('cursed_shamisen'\) : \{\}\)/.test(src));
   ok('built from the SAME sets the click layer uses', /getSwingCone\(acting\)/.test(src) && /getSonicBeam\(acting\)/.test(src)
     && /tentacleOptions\(engineState, acting\)/.test(src) && /bushidoLane\(acting, occupied\)/.test(src) && /shukuchiLandingSet\(\)/.test(src));
   ok('hovering wins; otherwise the armed attack shows', /const reachKind = hoverPreview \?\? \(REACH_KINDS\.includes\(action\) \? action : null\);/.test(src));

@@ -856,12 +856,12 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     const stopped   = verdicts.filter(v => v.round === 1);
     ok(escalated.length > 0, '⚡ SOME duels reach Round 2 — the beams lock and surge headlessly now');
     ok(stopped.length > 0,   '⚡ …and some still end in Round 1, so this is a gate and not a rewrite');
-    eq(verdicts.filter(v => v.round > 2).length, 0,
-       '⚡ nothing ever reaches Round 3 — two rounds is the cap the client caps at, and the fallback to the Round-1 edge depends on it');
+    ok(verdicts.some(v => v.round > 2),
+       '⚡ close arena duels continue past Round 2');
     eq(stopped.filter(v => v.close).length, 0,
        '⚡ NO CLOSE DUEL IS ALLOWED TO STOP AT ROUND 1 — that is the whole bug: a computed flag nobody read');
-    ok(escalated.every(v => /Round 2/.test(v.decidedBy)),
-       '⚡ a Round-2 verdict says so in `decidedBy` — the log the player reads is the log the bench produced');
+    ok(escalated.every(v => v.decidedBy.includes(`Exchange ${v.round}`)),
+       '⚡ an escalated verdict identifies the actual exchange');
     ok(escalated.every(v => v.tie || v.margin >= 2),
        '⚡ …and sudden death carries the +1 margin, which is the extra damage band');
   }

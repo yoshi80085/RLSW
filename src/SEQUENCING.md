@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — every handoff (79 rows), dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — every handoff (86 rows), dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,134 +26,64 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-> ✅ **§A IS ONE HANDOFF (2026-09-29).** Handoffs 8 → 44 live **unedited** in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`
-> (44-beamlayer and 45-playtest moved there 2026-09-30) and each has a row in §C. **Next session: when you write §A, move this one there too.**
+## 51-iwatoport. The Iwato curse goes into the game — and into the loadout pop-out — 2026-10-02
 
-## 46-standeemoves. The standees hop and land on stone-on-glass; the numpad walks — 2026-09-30
+Alex: *"Ok, if there are no other problems, lets wire this in as well as the ability
+selection 'preview' in the menu."* Asked how tuning should work, he ruled: *"the
+sacrifice … is not that it comes directly from his stack but rather potentially a
+note that could have been used for his Drive or Sustain. But yes, up to 3 a turn -
+after the ability was selected, so I guess this means from the next turn."*
 
-Alex: *"I'd like to change the way the standees move … from how they might move or glide to how it sounds when they 'land' on a space. I'm thinking perhaps it make a crystal/glass like sound"* → a preview with everything (*"yes - all of them"*) → *"add something that sounds 'weighted' and dull, as well as something that might sound 'mysterious' or space-y"* → his dial-in: *"I found a good sound I think. I'd like to run with this for now."* Mid-port: *"the numlock numbers can move the spirit. So 8 is up, 2 is down, 6 is right, 4 is left, 7, 9, 1, and 3 are diagonal."*
-
-### 🎛️ The dial-in (6 of 61 levers moved)
-`voice` crystal chime → **`slab`** (stone on glass) · `weight` 0 → **.45** · `echo` 0 → **.06** · `sparkleTail` 0 → **2** · `travelSound` none → **`rumble`** · `pitchMode` scale walk → **`fixed`**. Untouched, and so shipped as the page offered them: the **hop** (420 ms, height .8, tip 12°, squash .12, 70 ms crouch), the **blink** for a leap, **skate + clack** for a shove, the ripple / hex flash .55 / 10 sparkles, bots at .55.
-
-### ⭐ Asked, answered (the numpad)
-1. **4 and 6 do nothing.** The hexes are flat-topped: neighbours straight up/down and on four diagonals, none left/right. (Offered: nothing / lean to the upper diagonal / zig-zag.)
-2. **Up is board north**, not screen up.
-
-### ✅ What shipped
-- `board/standeeMotion.js` (pure) — `STANDEE_MOVE` = the dial-in, six styles, `planStep`/`stepPose`, `stepKind` (knockback counter moved → shove; 1 hex → walk; 2+ → leap), `landingNotes`. ⭐ **ONE COPY**: the preview imports it as its defaults (Reset = the game); `.scratch/standeeMotion.js` / `landingSfx.js` are now one-line re-exports.
-- `board/standeeSteps.js` (three) — a per-pawn step queue driven from `arenaVisuals`' frame loop; the landing light; hands the pawn back level, full size, on its hex. Never touches `pawn.visible` (the Swing owns it).
-- `audio/landingSfx.js` — 14 voices (glass / weighted / space), weight + space echo on any voice, 5 travel sounds, a clack. On `getRiffAudio` + `getSfxBus`; room + echo ONE bus per context; 🧹 every call's nodes disconnected after its tail (the 45-playtest lesson).
-- `board/arenaVisuals.js` — a hex change on a standee pawn → `standeeSteps.step` (with `shoved` from `hitBackCount`, `bot` from the new `arenaFrame` field `bot:!!s.cpu`); the old `lerp`/`damp` still rests a pawn between steps and drives block pawns; standee pawns turn `YXZ`; `rotation.z` = knockback wobble + step roll; diagnostics `standeeSteps` keeps the reduced-motion renderer drawing (`arenaRenderer.js` `moving`) until a landing light fades.
-- `board/standee.js` — `frame({ lift })` keeps the shadow and acting ring on the deck in the air (the ⚠️ "caller must not rotate or scale it" comment now names the one exception).
-- `ui/numpadMove.js` + the monolith's `numpadMove` (after the note-key listener) — `e.code`, Move & Act only, through `onHexClick` / `move`.
-
-### 🧪 Evidence
-- `test:standeemove` **318** (new, in `test:all`) · `test:numpadjourney` **23** (new, in `test:all`; the real `Game`; mutation: a disabled handler fails it) · on Alex's machine also green: `test:movetiles` 41, `test:voiceleak` 201, `test:mix` 49, `arenaPresentationCheck` (the real `mountArena` + GLB: movement dedup, hidden trails, cleanup), `battleDirectorCheck` 45, `battleLensCheck`, `beamLayerCheck` 53, `swingClashCheck`, `test:sonicfx`, `rivenWorld` / `arenaCrowd` / `arenaDom` checks. Cloud copy of the working tree: `check:bundle` **0 warnings**, `test:render` 13/13, `test:client` 6, `test:notekeysjourney` 23, `arenaFallbackCheck`.
-- 🔴 **Red, and not from this pass** (each fails on an assertion about someone else's uncommitted work): `test:standee` §4 "carrier stops animating" (100 pass), `test:headdial` + `test:cameradirector` (both regex the renderer's `moving=` line, which the smoke/laser WIP now starts with `smokeState.busy`), `test:topview` 2 (the depth pass / ground), `test:arch` (7 untracked smoke/laser modules). My term in `moving=` was put at the END so it breaks no regex that the WIP had not already.
-- Preview verified in cloud Chromium (swiftshader): no page errors across all styles, demos, 14 audition buttons; offline render levels every voice (glass/space peak ~.2, weighted ~.3).
-
-### 🎓 Findings
-- ⚠️ **The renderer only sees `spirit.num` change.** A bot taking two steps inside ONE frame reads as a 2-hex leap and blinks. Rare; left as is. If it shows up, the fix is for the client to pass the step list in `arenaFrame`.
-- 📌 **The old move trail (a tube from hex to hex + a pulse at the destination, `arenaVisuals.trail`) still fires** the moment the hex changes — i.e. the pulse lands ~0.5 s BEFORE the hop does. Not in the preview, so Alex never judged it. Kept rather than removed silently.
-- 📌 `'spent'` pitch mode needs the note the engine spent, which the renderer is not told — the game falls back to `fixed`; only the preview fakes a draw. Irrelevant at the dial-in (`fixed`).
-
-### 🌑 Same session, after: the dim ring around the arena
-Alex (screenshots, Move & Act armed): *"it seems like there is a dim 'ring' around the 3D arena."* **Cause:** the board dim under lit tiles — `moveTiles.js` (.25) and `attackTiles.js` (.3) — was a `CircleGeometry(15)`; the board is 22 × 19.5, so the disc reached 4–5 units past the hexes (half its area off the board) and darkened the rim, rocks and nebula whenever a walk or an attack was armed. **Fix:** `boardFootprint(pointFor)` — the 111 real cells, flat-topped, half-width ⅔ of the column spacing and half-height half the row spacing (measured off `pointFor`), which tile EXACTLY (no transparent overlap to double-darken, no crack); both dims use it. The tint on the board is unchanged. `test:movetiles` 41 → **47** (§6: one cell per hex, bounded by the outermost hex edge, area = cells × one hex, the cell is the map's own, no radius-15 disc in either file) · `test:attacktiles` 28 green. Schematic before/after `.scratch/arena-dim-ring-before-after.png` (the real footprint over a stand-in sky — not the real arena). ⏳ Not seen in the real arena; if a ring shows with NOTHING armed, it is something else.
-
-### ⬅️ NEXT
-- 👀👂 **Alex: walk a few steps in a real match** (click and numpad), take a Shukuchi hop and get shoved. Say if the old destination pulse/trail should go, now that the landing has its own light.
-- 🎛️ A re-dial is one page away: the preview's defaults ARE the game, so it will mark only what moves.
-- (Carried from 45-playtest) the standee filename case before the next Render deploy; the crowd pace next playtest.
----
-# B. ✅ Alex's two calls
-
-1. ⭐ **ANY BODY BLOCKS.** A live spirit, an amp or the 👤 decoy stops the draw
-   dead. This is the searcher's policy of the three, promoted to the only one —
-   so the client click gets **stricter** than it was, and a shot that worked
-   yesterday can be refused today. That is the point: it is what makes standing at
-   range 2 a defence, and what makes parking the decoy in front of a Ronin worth
-   doing.
-2. ⭐ **BRIGHTNESS IS THE PAYOUT, AND THE LANE SHOWS ONLY WHEN ARMED.** The ramp
-   carries the **+2 / +3 / +4** ladder rather than raw distance, hexes 1–2 render
-   as a visibly refused run-up, and the overlay appears on arming like every other
-   targeting highlight. 📌 The always-on threat line was considered and not taken —
-   a permanent bright stripe competes with the hunt marker and the note hexes for
-   the same attention.
-
-### C. 🖥️ Built: the rule, with its suite in the same pass
-
-- `engine/systems/bushido.js` gains **`bushidoBlockers({spirits, amps, shadowHex,
-  selfId})`** — one set, built in one place, handed to all three callers. Self is
-  excluded *there* rather than re-checked inside each caller's own loop.
-- `policies/legalActions.js` builds its movement `blocked` set from it too, and
-  the sharing is deliberate: a hex you cannot walk through must not be one the
-  draw pretends is empty.
-- The client's **highlight** was live-spirits-only and now uses the shared set.
-- The client's **resolver** passed *no blocker set at all* — `bushidoLane(attacker)`
-  — so a click would fire straight through a body the highlight beside it refused
-  to light. It now walks the blocked lane, and it says **"Screened — the draw
-  stops at the first body in the lane"** rather than *"not in the lane"*, which is
-  a different sentence about a rival the player can plainly see standing straight
-  ahead.
-
-⚠️ **A BODY AT 3–5 IS NOT A SCREEN, IT IS A NEARER TARGET.** The draw retargets to
-it and is paid *its* rung, not the far one — so screening a Ronin with a
-throwaway body at 4 hands him a +3 instead of denying him a +4. Asserted,
-because it is the difference between a defence and a donation.
-
-### D. 🎨 The lane picture — previewed, NOT ported
-
-`.scratch/bushido-lane-preview.html`, per `CLAUDE.md`'s standing rule. Old look
-beside new look; the geometry and `bushidoLane` transcribed verbatim inside a
-marked parity region (§5-glow.C); ten states including all three rungs, both
-refusals, each of the three screens, the retarget, an empty lane and a lane that
-runs off the board; the real 238px HUD column with the button's four states.
-Levers: the ramp (near / far / gamma), edge alpha and width, bloom, run-up
-treatment (dim/hatch/bar/none), stop treatment (bar/cap/none), ghosting beyond
-the blocker, the spine and its taper, rung labels, the target ring, pulse, hue.
-⛔ **Nothing is ported until Alex screenshots the panel.**
-
-### E. 🧪 Evidence — and what was NOT run
-
-`test:bushido` **91 → 108**. `test:legal` 581 · `test:shukuchi` 68 ·
-`test:transition` 257 · `test:turnflow` 73 · `test:battleflow` 65 ·
-`test:score` 122 · `test:trace` 1205 — all green, all re-run because
-`legalActions.js` moved.
-
-⚠️ **AND HERE IS WHAT WAS NOT RUN, PLAINLY.** The Linux workspace on the machine
-would not start this session (*"the isolated Linux environment on this device
-failed to start"*), so those suites ran against a **file-by-file copy** of the
-source, and **`test:all`, `check:bundle` and `lint:baseline` did not run at
-all.** The monolith was verified to transpile through esbuild with zero
-warnings, which is weaker than `check:bundle` and is not a substitute for it.
-🎯 **Run `npm run check:bundle` and `npm run test:all` before trusting these
-counts** — §B3 and §B7 are both about numbers nobody re-ran.
-
-📌 `test:determinism` could not run in that copy either: it reads
-`ui/fanPawnShape.jsx`, which was not among the copied files. An environment gap,
-not a red suite.
-
-### F. ⬅️ NEXT
-
-1. 🎨 **Lane port complete in the resumed pass above.** The next engineering
-   guard is a completed client battle journey before combat orchestration moves.
-2. 🤖 **Re-bench the Ronin** — overdue twice, and now three times: this changed
-   what the searcher may plan.
-3. The rest of the board is unchanged and lives in `STATE_OF_PLAY.md` §7.
-
-📌 **Systems Map:** republished 2026-09-05 from this session, same URL.
-
-### G. 🪦 Two stale lines, reported rather than edited around
-
-- `RONIN_ABILITY_DESIGN.md` §2.1.1's "now" column still says **unlock 8 Db** and
-  **Drive bonus +3 flat**. The game ships **6 Db** (the flat rule) and the
-  **+2/+3/+4** ladder. The box above the table is right; the table is a week out.
-- §3's playtest bucket still calls the Shamisen's unlock price *"the one number
-  Alex has not given."* The flat-6 rule answered it on 2026-09-04f.
-
-⛔ **Both left as found**, per `CLAUDE.md`: a session that quietly edits a doc it
-was not asked to touch is how two copies of one decision start.
+- 📜 **The rules, as code** — `engine/systems/iwatoCurse.js` (pure, over sheets):
+  🪕 **take up** (free, off cooldown; `ns.shamisen = { strings, ready:false, root }`)
+  → `startTurnNotes` opens the strings on his next turn → 🎼 **tune**: the chord
+  step's third destination (`clickNoteStock` dest `'strings'`), up to 3 a turn from
+  the hand, out of the shared 3-commit budget (Tab cycles Drive → Sustain → Strings,
+  `music/noteKeys.js`) → ⚡ **cast** within 3 hexes: the Action Token
+  (`beatsSpent(0, true)`), `firePatch` (5 Db, 2-round CD), strings spent, instrument
+  put away → 🌑 the rival's `iwatoCurse` (`key`, `by`, `roninRoot`, `strings`,
+  `turnsLeft:2`) counted down in `endTurn` at the end of THEIR turns → 🔥 the
+  exorcism lifts it inside `commitMelodyEconomy` (first cursed turn, 3 different
+  Iwato notes; the line is scored on Iwato, so it pays) → `curseEnded` records how
+  it ended so every client draws the right ending.
+- ⭐ **`livePalette` is now THE reading of a Spirit's clean notes** — the commit,
+  `playFinder`, `crowdCoach`, `actionScore` and the client's live check all read it,
+  so a cursed hand reads dead everywhere at once. The palette is spelled through
+  the RIVAL's pool (their hand is), or a real Iwato note could read as discord by name.
+- 📌 **Port calls, not Alex's** (flagged in §2.3.00): **the shamisen keeps the key
+  it was taken up in** — his root follows his melody every turn, so strings tuned on
+  one turn could stop being Iwato by the next; range 3 with no line of sight; no
+  string snaps on a hit; one curse per rival.
+- 🎬 **The picture** — `board/cursedShamisenArena.js` (`createShamisenStage`, mounted
+  by `arenaVisuals`, fed by `arenaFrame` ← `curseScene`, read off the sheets alone):
+  one visuals per instrument, handed to its curse at the cast (the visuals gained
+  `bindRival`). The cast's hush dims the renderer's exposure. The pocket Scale Wheel
+  of a cursed Spirit is `CursedWheel` (now passes every wheel prop through;
+  `canExorcise`). Sound: `shamisenCurseSfx` — plucks per string in its octave, the
+  cast's score, burn-out, exorcise, expire. 🎬 The loadout's 🎸 row plays the whole
+  story in the pop-out (`abilityDemo.js` `buildShamisen`; exorcised / expired on
+  alternate loops).
+- 🔎 **Found in Chromium on the real arena** (and fixed): the 呪 charm vanished — a
+  standee's print LEANS back, so a charm hung on the carrier sank inside the sheet
+  seen from behind; it now hangs on the print and hops to the face the camera sees.
+  The wheel's overlay sat under the wheel in the match (`z-index`). And the demo's
+  rival stood edge-on.
+- 🪦 **Deleted:** the glow-and-debt Shamisen — `resolveCursedShamisen`,
+  `payShamisenDebt`, `tickCursedShamisen`, `checkShamisenCursePenalty`,
+  `playShamisenStrum`, the rail's debt button, the 2D glow, `shamisen-glow`,
+  `tickShamisen`, `resetAllCooldowns`, `CURSED_SHAMISEN_DURATION`,
+  `CURSED_SHAMISEN_PAYOFF_COST`, `ns.shamisenCurse`. `test:shamisen` was rewritten for
+  the curse and asserts all of it stays gone.
+- Evidence: `test:shamisen` **91** · `test:shamisenjourney` **27** (new; the real
+  Game, clicks only — take up, strings next turn, Iwato-only out of the budget, the
+  cast, a cursed melody earning no Db, the countdown, expiry; mutation-tested) ·
+  `test:cursedshamisen` **132 + 24** (the arena stage; mutation-tested ×2) ·
+  `test:abilitydemo` **138** · `test:notekeys` **211** · `test:attacktiles` **29** (the reach list pins the curse now) · `check:bundle` 0 warnings ·
+  eslint: no new errors · every other red suite fails at the same first assertion as before the session · Chromium: take-up, strings, the reach, the cast, the charm,
+  the cursed wheel, the pop-out. `test:arch` = the same 7 unlisted laser/smoke modules.
+- ⏳ **Next:** play it in a real match; rule range / hit-snap / the kept key; teach
+  the bots to take it up. ⛔ Not ported: the real crowd falling out of time, the
+  spotlights' stutter, the slap's shake.
 
 ---
 
@@ -295,13 +225,19 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 80 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 85 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `46-standeemoves` | 2026-09-30 | **LIVE — §A above.** 🎭 Standees hop between hexes (blink for a leap, skate + clack for a shove) and land on Alex's stone-on-glass sound with a ripple; ⌨️ the numpad walks (4/6 nothing, up = board north). `test:standeemove`, `test:numpadjourney`. |
+| `51-iwatoport` | 2026-10-02 | **LIVE — §A above.** The Iwato curse goes into the game: take up, three strings from the next turn (up to 3 a turn, from the hand), the cast, the cursed palette everywhere, exorcism in the commit, the arena stage, the infected wheel, the sound, and the loadout pop-out. `test:shamisen`, `test:shamisenjourney`. |
+| `50-iwatocurse` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Cursed Shamisen redesigned as the Iwato curse (strings, cast, a cursed Scale Wheel, exorcism); its five animated moments built for the dial-in. `test:cursedshamisen`. |
+| `49-abilitypopouts` | 2026-10-01 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Hover an ability in the loadout and a pop-out plays it — Shukuchi's blink and the Bushido strike, the game's own code on real standees. `test:abilitydemo`. |
+| `48-riffarena-live` | 2026-10-01 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Dual board tracks, alternating short melodies, continuous acceleration, amp rings/core, smooth motion and energy-driven shaking. |
+| `47-bushidoburst` | 2026-10-01 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. ⚡ Psycho Bushido is a Drive-vs-Sustain burst: range turns 2/3/4 d6s into d8s, the Rival's Sustain is a shield (brighter for a stronger roll), damage = what gets through, pushed like a Sonic, no counter-blow; the lightning strike in the arena with its own sound. `test:bushidoburst`, `test:bushidoarena`. |
+| `46r-riffarena` | 2026-10-01 | 🎸 Riff Off arena study (another session) — two guitar tracks over the real board, call/answer volleys feeding a central clash; awaiting Alex's dial-in. `test:riffarena`. Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`; scope in `../previews/riff-arena/README.md`. |
+| `46-standeemoves` | 2026-09-30 | 🎭 Standees hop between hexes (blink for a leap, skate + clack for a shove) and land on Alex's stone-on-glass sound with a ripple; ⌨️ the numpad walks (4/6 nothing, up = board north). `test:standeemove`, `test:numpadjourney`. Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md` (with an orphaned Bushido-lane block found under it). |
 | `45-playtest` | 2026-09-30 | 🧹 Melodies no longer cut off (every note unplugs itself — connected filters kept ~25 s of silent voices on the audio thread); ⏳ one found seat per stack per round; 🎚️ the craft +2 needs a six-note run; 🎲 extra dice name their buff in the log. 🎛️ Db readout + Drive-bonus badge on a preview, not ported. `test:voiceleak`. | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`.
 | `44-beamlayer` | 2026-09-30 | 🔊 The Sonic clash draws LAST on the foreground canvas with its own bloom, over amps, fans, dice and both standees; only the attacker's print can hide it (the far side of the loop). `test:beamlayer`. Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. |
 | `43-stagefx` | 2026-09-29 | 🗓️ Stage Effects fire on a round schedule (7, then every 5; the last runs to the buzzer) instead of at Fame thresholds; 📱 phone play archived. Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. |

@@ -33,6 +33,7 @@ import assert from "node:assert";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { makeRng } from "./rng.js";
+import {startTurnNotes} from './systems/turnFlow.js';
 import { makeInitialState } from "./state.js";
 import { applyAction } from "./reduce.js";
 import { legalActions } from "./policies/legalActions.js";
@@ -103,6 +104,10 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   // The patch is a description, not an application.
   deep(nsOf(st, RONIN).melodyLine, ['C', 'E', 'G'], 'the source sheet still holds the track');
   eq(nsOf(st, RONIN).hasConfirmed, false, 'the source sheet is still unconfirmed');
+  const committed={...nsOf(st,RONIN),...a.patch};
+  const nextTurn={...committed,...startTurnNotes(committed).patch};
+  deep(nextTurn.lastCommittedMelody,['C','E','G'],'the last melody remains available for a rival-led Riff Off after turn reset');
+  deep(nextTurn.committedMelody,[],'the existing per-turn melody still clears');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

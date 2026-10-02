@@ -1,3 +1,4 @@
+import { bushidoBeats } from './bushidoStrike.js';
 import { arenaDiceSchedule, diceBeat } from './arenaDiceSequence.js';
 import { ROLL_GATE } from './battleRollGate.js';
 
@@ -66,20 +67,27 @@ export const SONIC_BEATS = Object.freeze({
 export const BARRAGE_FLIGHT = SONIC_BEATS.flight;
 export const BARRAGE_SPACING = SONIC_BEATS.spacing;
 export const BARRAGE_CARRY = .16;
-export const barrageContact = i => BARRAGE_FLIGHT + i * BARRAGE_SPACING;
+// ⚡ PSYCHO BUSHIDO RIDES THIS CLOCK WITH ITS OWN BEATS (2026-10-01): he goes on
+// the launch, his first die hits the shield after the dash, the rest `burstGap`
+// apart, with no hit-stops or slow break (`board/bushidoStrike.js`). Every
+// function below picks the beats off the battle, so a Bushido's picture, sound
+// and rules' timers agree exactly as a Sonic's do — and a Sonic is untouched.
+export const BUSHIDO_BEATS = bushidoBeats();
+export const beatsFor = battle => (battle?.bushido ? BUSHIDO_BEATS : SONIC_BEATS);
+export const barrageContact = (i, B = SONIC_BEATS) => B.flight + i * B.spacing;
 
 /** The stops, in sim order: one per contact, the break carrying its slow-mo. */
 function volleyStops(battle, B = SONIC_BEATS) {
   const count = battle?.shots?.length ?? battle?.diceVals?.length ?? 0;
   return Array.from({ length: count }, (_, i) => ({
-    at: barrageContact(i), stop: B.hitstop,
+    at: barrageContact(i, B), stop: B.hitstop,
     slow: i === battle?.breakIndex ? B.breakSlowFor : 0,
   }));
 }
 /** No freezes, no slow burst: reduced motion, or a bout played from the top-down view. */
 export const barrageRealtime = (battle, reduced = false) => !!reduced || !!battle?.realtime;
 /** Sim seconds → presentation seconds (both measured from the launch). */
-export function barrageTime(battle, time, reduced = false, B = SONIC_BEATS) {
+export function barrageTime(battle, time, reduced = false, B = beatsFor(battle)) {
   if (barrageRealtime(battle, reduced) || !(time > 0)) return time;
   let sim = 0, pres = 0;
   for (const e of volleyStops(battle, B)) {
@@ -93,7 +101,7 @@ export function barrageTime(battle, time, reduced = false, B = SONIC_BEATS) {
   return pres + (time - sim);
 }
 /** Presentation seconds → sim seconds: where the beams are at this wall second. */
-export function barrageSimulationTime(battle, time, reduced = false, B = SONIC_BEATS) {
+export function barrageSimulationTime(battle, time, reduced = false, B = beatsFor(battle)) {
   if (barrageRealtime(battle, reduced) || !(time > 0)) return time;
   let sim = 0, pres = 0;
   for (const e of volleyStops(battle, B)) {
@@ -109,7 +117,7 @@ export function barrageSimulationTime(battle, time, reduced = false, B = SONIC_B
   return sim + (time - pres);
 }
 /** Is the volley frozen on a hit right now? → { index, age } or null (for the shake). */
-export function barrageHitstop(battle, time, reduced = false, B = SONIC_BEATS) {
+export function barrageHitstop(battle, time, reduced = false, B = beatsFor(battle)) {
   if (barrageRealtime(battle, reduced) || !(time > 0)) return null;
   const stops = volleyStops(battle, B);
   for (let index = 0; index < stops.length; index++) {
@@ -119,4 +127,4 @@ export function barrageHitstop(battle, time, reduced = false, B = SONIC_BEATS) {
   return null;
 }
 export const barrageLanded = (battle, reduced = false) => barrageTime(battle,
-  barrageContact(Math.max(0, battle.diceVals.length-1)) + BARRAGE_CARRY + .15, reduced);
+  barrageContact(Math.max(0, battle.diceVals.length-1), beatsFor(battle)) + BARRAGE_CARRY + .15, reduced);

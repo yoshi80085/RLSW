@@ -71,7 +71,7 @@ import {
 import { stackCapFor } from "../../data/gameConstants.js";
 import { MELODY_MAX } from "./legalActions.js";
 import { styleGain } from "../../music/spiritStyle.js";
-import { paletteScaleFor } from "../../music/notes.js";
+import { livePalette as paletteScaleFor } from "../systems/iwatoCurse.js";   // 🌑 curse-aware
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 
 // ── The neutral seat ────────────────────────────────────────────────────────
