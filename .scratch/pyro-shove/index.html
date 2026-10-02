@@ -1,0 +1,145 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Pyro Shove</title>
+<!--
+  🔥 PREVIEW — Alex, 2026-10-02: "Astra made [a preview] to show how the standees
+  react to getting 'pushed' into the mortar … provide your own preview for what
+  should happen. … Claude's previews [present] better customization options."
+
+  ⭐ IT RUNS THE GAME'S OWN SHOVE. The approach is `src/board/standeeMotion.js`
+  (`planStep` / `stepPose`, the shipped skate) on the real board and the real
+  `createStandee`. Only the REACTION is new: `shoveReaction.js` (pure, this
+  folder), the fire `blastFx.js`, the sound `blastSfx.js`.
+  ⚖️ "Compare with Astra's" drives HER module (`../stage-hazards`) on the same
+  shove, side by side, hit on the same frame.
+
+  ⚠️ SERVED BY VITE, or DOUBLE-CLICK `pyro-shove.standalone.html`
+  (`node .scratch/pyro-shove/build.mjs` rebuilds it).
+  ⛔ PREVIEW-ONLY. No damage, Burn ticks or knockouts are applied anywhere.
+-->
+<style>
+  :root{color-scheme:dark;--bg:#070b14;--panel:#0d1424;--edge:#1d2942;--ink:#c9d6ee;--dim:#7d8aa6;--gold:#ffd166;--fire:#ff8a3a;--ok:#44cc88;--bad:#ff5a5a;--acc:#6fb8ff}
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--bg);color:var(--ink);font:12px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+  h1{font-size:15px;margin:0 0 2px;letter-spacing:.3px}
+  h2{font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;color:var(--dim);margin:0 0 6px;font-weight:800}
+  code{font-family:ui-monospace,Menlo,monospace;font-size:10.5px;color:#8fa2c4}
+  .wrap{display:grid;grid-template-columns:330px minmax(0,1fr);gap:14px;padding:16px;align-items:start}
+  .panel{background:var(--panel);border:1px solid var(--edge);border-radius:8px;padding:10px 12px}
+  .controls{position:sticky;top:14px;max-height:calc(100vh - 28px);overflow:auto;padding-bottom:30px}
+  .note{background:#101b33;border:1px solid #243a66;color:#b9cdf2;border-radius:6px;padding:7px 9px;margin:0 0 10px;font-size:11px}
+  .warn{background:#2a1408;border:1px solid #6b3410;color:#ffcc99;border-radius:6px;padding:7px 9px;margin:0 0 10px;font-size:11px}
+  details{border-top:1px solid var(--edge);padding:6px 0}
+  details>summary{cursor:pointer;font-weight:800;font-size:11px;letter-spacing:.6px;text-transform:uppercase;color:#a9bbdc;list-style:none;padding:3px 0}
+  details>summary::before{content:'▸ ';color:var(--dim)} details[open]>summary::before{content:'▾ '}
+  details>summary .used{display:block;margin-left:14px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--dim);font-size:10px}
+  details.hot>summary{color:var(--fire)}
+  .lever{margin:7px 0}
+  .lever .top{display:flex;justify-content:space-between;gap:8px;font-size:10.5px;color:var(--dim);font-weight:700}
+  .lever .top .v{color:var(--ink);font-family:ui-monospace,Menlo,monospace}
+  .lever.changed .top>span:first-child{color:var(--gold)}
+  .lever.changed .top>span:first-child::after{content:' ✎'}
+  .lever .help{font-size:10px;color:#65728e;margin-top:1px}
+  input[type=range]{width:100%;accent-color:var(--fire)}
+  .seg{display:flex;flex-wrap:wrap;gap:3px;margin-top:3px}
+  .seg button,.btn{background:#16213a;color:var(--ink);border:1px solid #2a3a5e;border-radius:5px;padding:4px 7px;font:inherit;font-size:11px;cursor:pointer}
+  .seg button:hover,.btn:hover{border-color:#4a6aa6}
+  .seg button.on{background:#5a2c12;border-color:var(--fire);color:#fff}
+  .btn.go{background:#153a2a;border-color:#2c7a55} .btn.hot{background:#4a1d0c;border-color:#b5521c}
+  .btn.on{background:#27406e;border-color:var(--acc);color:#fff}
+  .main{display:flex;flex-direction:column;gap:10px;min-width:0}
+  .bar{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+  .bar .lbl{color:var(--dim);font-weight:800;font-size:10px;text-transform:uppercase;letter-spacing:1px;margin-right:2px}
+  .bar .sep{width:1px;height:20px;background:var(--edge);margin:0 4px}
+  .stage{position:relative;height:min(62vh,620px);min-height:360px;border:1px solid var(--edge);border-radius:8px;overflow:hidden;background:#05070f}
+  .stage canvas{display:block;width:100%;height:100%}
+  .tag{position:absolute;transform:translate(-50%,-100%);pointer-events:none;font-weight:800;font-size:10px;letter-spacing:.8px;padding:2px 6px;border-radius:4px;background:#000a;border:1px solid #fff3;white-space:nowrap}
+  .tag.astra{color:#aab4c8} .tag.mine{color:var(--gold)}
+  .pop{position:absolute;transform:translate(-50%,-100%);pointer-events:none;font-weight:900;font-size:18px;letter-spacing:.5px;text-shadow:0 2px 6px #000;white-space:nowrap}
+  .pop.vibe{color:#ff6b6b} .pop.burn{color:#ffb15a;font-size:12px;background:#000a;border:1px solid #ff8a3a88;border-radius:10px;padding:1px 8px}
+  .hud{position:absolute;left:10px;top:10px;display:flex;gap:6px;align-items:center;pointer-events:none;flex-wrap:wrap}
+  .chip{font-family:ui-monospace,Menlo,monospace;font-weight:800;font-size:12px;padding:3px 8px;border-radius:5px;background:#1c0e08cc;border:1px solid #8a4a2a}
+  .hint{position:absolute;right:10px;bottom:10px;color:#7d8aa6;font-size:10.5px;text-align:right;pointer-events:none;max-width:46%}
+  .unlock{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#0008;cursor:pointer;font-size:14px;font-weight:800;color:#fff}
+  .unlock[hidden]{display:none}
+  .timeline{position:relative;height:30px;margin-top:6px}
+  .timeline .segs{position:absolute;left:0;right:0;top:0;height:10px;border-radius:4px;overflow:hidden;background:#111a2e}
+  .timeline .segs i{position:absolute;top:0;bottom:0;display:block}
+  .timeline input{position:absolute;left:0;right:0;top:9px;width:100%;margin:0}
+  .timeline .mk{position:absolute;top:22px;font-size:9px;color:var(--dim);transform:translateX(-50%);white-space:nowrap}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+  textarea{width:100%;height:210px;background:#070d1a;color:#cfe0ff;border:1px solid var(--edge);border-radius:6px;font:10.5px/1.45 ui-monospace,Menlo,monospace;padding:8px;resize:vertical}
+  .beats{font-size:11px;color:#9fb0d0;margin:0;padding-left:16px} .beats li{margin:3px 0} .beats b{color:#ffd9b8}
+  @media (max-width:900px){.wrap{grid-template-columns:1fr}.controls{position:static;max-height:none}.grid2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <aside class="panel controls">
+    <h1>🔥 Pyro shove</h1>
+    <div style="color:var(--dim);margin-bottom:8px">A standee is pushed onto an armed mortar. What does it do?</div>
+    <div class="note">Every taste call is a lever. Changed ones turn <b style="color:var(--gold)">gold ✎</b>.
+      Start from a <b>look</b> below, tweak, then <b>📋 Copy dial-in</b> and paste it into the session.</div>
+    <div class="warn">💾 Levers are remembered <b>for this file in this spot</b>. Copy the dial-in before moving the page.</div>
+    <h2>Looks (each sets many levers)</h2>
+    <div class="seg" id="looks" style="margin-bottom:6px"></div>
+    <div id="levers"></div>
+  </aside>
+
+  <section class="main">
+    <div class="panel">
+      <div class="bar">
+        <button class="btn go" id="playBtn">▶ Replay</button>
+        <button class="btn" id="pauseBtn">⏸ Pause</button>
+        <button class="btn hot" id="freezeBtn">❄ Freeze on the flash</button>
+        <span class="sep"></span>
+        <span class="lbl">Speed</span><span id="speedSeg" class="seg" style="margin:0"></span>
+        <span class="sep"></span>
+        <button class="btn" id="loopBtn">🔁 Loop: on</button>
+        <button class="btn" id="reducedBtn">♿ Reduced motion: off</button>
+      </div>
+      <div class="bar" style="margin-top:7px">
+        <span class="lbl">Camera</span><span id="camSeg" class="seg" style="margin:0"></span>
+        <span class="sep"></span>
+        <button class="btn" id="compareBtn">⚖️ Compare with Astra's: off</button>
+        <button class="btn hot" id="surpriseBtn">🎲 Surprise me</button>
+      </div>
+      <div class="timeline" id="timeline"><div class="segs" id="segs"></div><input type="range" id="scrub" min="0" max="1000" step="1" value="0"></div>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="view"></canvas>
+      <div id="tags"></div><div id="pops"></div>
+      <div class="hud"><span class="chip" id="phaseChip">—</span><span class="chip" id="timeChip">—</span></div>
+      <div class="hint">Drag to orbit · wheel zooms · scrub the bar to freeze any moment.<br>Click ▶ Replay to hear it.</div>
+      <div class="unlock" id="unlock">🔊 Click to turn sound on</div>
+    </div>
+
+    <div class="grid2">
+      <div class="panel">
+        <h2>What should happen — the beats</h2>
+        <ol class="beats">
+          <li><b>Shove.</b> The game's own skate, two hexes, ends on the mortar.</li>
+          <li><b>Contact.</b> The trip-plate gives (click), the piece sinks a touch; the barrel flares white.</li>
+          <li><b>Fuse + hit-stop.</b> A beat of dread, then the world freezes on the flash frame and drops into slow motion.</li>
+          <li><b>Blast.</b> Petals fold back, a flame column punches up, the shell goes on to burst overhead, and the piece is thrown through it, tumbling.</li>
+          <li><b>Land.</b> Squash, dust, a dull thud and the <i>acrylic rattling</i>; a couple of dying bounces.</li>
+          <li><b>After.</b> Dazed sway (or flat, or flat-then-up). Print scorched, flames licking for the Burn.</li>
+        </ol>
+        <h2 style="margin-top:12px">🔔 Audition a sound</h2>
+        <div class="seg" id="audition"></div>
+      </div>
+      <div class="panel">
+        <h2>📋 Dial-in (paste this into the session)</h2>
+        <textarea id="dialIn" readonly></textarea>
+        <div class="bar" style="margin-top:6px">
+          <button class="btn go" id="copyBtn">📋 Copy dial-in</button>
+          <button class="btn" id="resetBtn">↺ Reset every lever</button>
+          <span id="copyMsg" style="color:var(--ok)"></span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+<script type="module" src="./preview.js"></script>
+</body></html>
