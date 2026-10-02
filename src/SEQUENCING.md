@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — every handoff (86 rows), dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — every handoff (87 rows), dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,64 +26,48 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 51-iwatoport. The Iwato curse goes into the game — and into the loadout pop-out — 2026-10-02
+## 52-dbcut. 🪦 Db is cut — the cooldowns and the sacrifices are the gate — 2026-10-02
 
-Alex: *"Ok, if there are no other problems, lets wire this in as well as the ability
-selection 'preview' in the menu."* Asked how tuning should work, he ruled: *"the
-sacrifice … is not that it comes directly from his stack but rather potentially a
-note that could have been used for his Drive or Sustain. But yes, up to 3 a turn -
-after the ability was selected, so I guess this means from the next turn."*
+Alex: *"Lets cut Db entirely - no more shops, no more Db, the cooldowns and
+'sacrifices' are the gate, not another economy over what is already doing quite a
+bit."* Also ruled: the ending pays **nothing for now**; the old Séance / Payola /
+Backstage Pass event cards **removed** ("very old"); the Major/Minor bonus
+**removed** ("Each Spirit has their own 'scale' to play in the current version").
 
-- 📜 **The rules, as code** — `engine/systems/iwatoCurse.js` (pure, over sheets):
-  🪕 **take up** (free, off cooldown; `ns.shamisen = { strings, ready:false, root }`)
-  → `startTurnNotes` opens the strings on his next turn → 🎼 **tune**: the chord
-  step's third destination (`clickNoteStock` dest `'strings'`), up to 3 a turn from
-  the hand, out of the shared 3-commit budget (Tab cycles Drive → Sustain → Strings,
-  `music/noteKeys.js`) → ⚡ **cast** within 3 hexes: the Action Token
-  (`beatsSpent(0, true)`), `firePatch` (5 Db, 2-round CD), strings spent, instrument
-  put away → 🌑 the rival's `iwatoCurse` (`key`, `by`, `roninRoot`, `strings`,
-  `turnsLeft:2`) counted down in `endTurn` at the end of THEIR turns → 🔥 the
-  exorcism lifts it inside `commitMelodyEconomy` (first cursed turn, 3 different
-  Iwato notes; the line is scored on Iwato, so it pays) → `curseEnded` records how
-  it ended so every client draws the right ending.
-- ⭐ **`livePalette` is now THE reading of a Spirit's clean notes** — the commit,
-  `playFinder`, `crowdCoach`, `actionScore` and the client's live check all read it,
-  so a cursed hand reads dead everywhere at once. The palette is spelled through
-  the RIVAL's pool (their hand is), or a real Iwato note could read as discord by name.
-- 📌 **Port calls, not Alex's** (flagged in §2.3.00): **the shamisen keeps the key
-  it was taken up in** — his root follows his melody every turn, so strings tuned on
-  one turn could stop being Iwato by the next; range 3 with no line of sight; no
-  string snaps on a hit; one curse per rival.
-- 🎬 **The picture** — `board/cursedShamisenArena.js` (`createShamisenStage`, mounted
-  by `arenaVisuals`, fed by `arenaFrame` ← `curseScene`, read off the sheets alone):
-  one visuals per instrument, handed to its curse at the cast (the visuals gained
-  `bindRival`). The cast's hush dims the renderer's exposure. The pocket Scale Wheel
-  of a cursed Spirit is `CursedWheel` (now passes every wheel prop through;
-  `canExorcise`). Sound: `shamisenCurseSfx` — plucks per string in its octave, the
-  cast's score, burn-out, exorcise, expire. 🎬 The loadout's 🎸 row plays the whole
-  story in the pop-out (`abilityDemo.js` `buildShamisen`; exorcised / expired on
-  alternate loops).
-- 🔎 **Found in Chromium on the real arena** (and fixed): the 呪 charm vanished — a
-  standee's print LEANS back, so a charm hung on the carrier sank inside the sheet
-  seen from behind; it now hangs on the print and hops to the face the camera sees.
-  The wheel's overlay sat under the wheel in the match (`z-index`). And the demo's
-  rival stood edge-on.
-- 🪦 **Deleted:** the glow-and-debt Shamisen — `resolveCursedShamisen`,
-  `payShamisenDebt`, `tickCursedShamisen`, `checkShamisenCursePenalty`,
-  `playShamisenStrum`, the rail's debt button, the 2D glow, `shamisen-glow`,
-  `tickShamisen`, `resetAllCooldowns`, `CURSED_SHAMISEN_DURATION`,
-  `CURSED_SHAMISEN_PAYOFF_COST`, `ns.shamisenCurse`. `test:shamisen` was rewritten for
-  the curse and asserts all of it stays gone.
-- Evidence: `test:shamisen` **91** · `test:shamisenjourney` **27** (new; the real
-  Game, clicks only — take up, strings next turn, Iwato-only out of the budget, the
-  cast, a cursed melody earning no Db, the countdown, expiry; mutation-tested) ·
-  `test:cursedshamisen` **132 + 24** (the arena stage; mutation-tested ×2) ·
-  `test:abilitydemo` **138** · `test:notekeys` **211** · `test:attacktiles` **29** (the reach list pins the curse now) · `check:bundle` 0 warnings ·
-  eslint: no new errors · every other red suite fails at the same first assertion as before the session · Chromium: take-up, strings, the reach, the cast, the charm,
-  the cursed wheel, the pop-out. `test:arch` = the same 7 unlisted laser/smoke modules.
-- ⏳ **Next:** play it in a real match; rule range / hit-snap / the kept key; teach
-  the bots to take it up. ⛔ Not ported: the real crowd falling out of time, the
-  spotlights' stutter, the slap's shake.
+- ⚙️ **The gate** — `engine/systems/cooldowns.js`: `canFire(ns, id)` = in the
+  drafted kit **and** off cooldown. `firePatch` only starts the 2-round clock.
+  Every `*_DB_COST`, `FLAT_ABILITY_UNLOCK_DB` and `DB_UPGRADE_THRESHOLD` is gone
+  from `data/gameConstants.js`; `skillTree.js` lost `dbCost` and every "N Db" in
+  the descs.
+- 🎵 **The melody pays fans only** — `melodyCommit.js` has no Db bar, award or
+  `earned`; `melodyPayout.js` keeps style + craft fans and the red/blue stack-root
+  carrot. `ENDING_WEIGHT` is **dormant** (kept, read by nothing that pays) — so the
+  "end on the fifth" pressure is currently **off**. Open, Alex's call.
+- 🛒 **The shop is gone** — `ui/UpgradeModal.jsx` deleted; `upgradesPending`,
+  `pivotPending`, the Db header and the "⬆ UPGRADES · SOON" button removed; the
+  `AbilityWallet` is now just the two drafted abilities + rounds left (anchor
+  renamed `db-bar` → `ability-wallet`). HUD/MatchSurface Db cell removed.
+- 🤖 **Bots + finder** — `evaluate.js` lost the Db horizon/kit terms;
+  `playFinder.js` goals are `drive / sustain / fans` (the `db` goal and its
+  ceiling are gone; tie-breaks shifted — `test:playfinder` documents the new
+  picks). Crowd coach / bubble no longer talk about Db (the crowd speaks a little
+  less often).
+- 🪕 **Open — the Cursed Shamisen's bite.** The Iwato curse used to touch the
+  rival's Db; it now bites fans only. Alex flagged the rules may want a rewrite —
+  **not compensated in code**, see `STATE_OF_PLAY.md` §7.
+- 🧪 **Evidence** — 82 suites, isolated baseline worktree vs this tree: **25 red →
+  22 red**, every remaining red one also red on the baseline with the same first
+  failure (`test:legal`, `test:harness`, `test:skilltree` turned green).
+  `test:slime` and `test:eleven` now get *further* — the Db gate was failing them
+  first — and stop at assertions that fail identically on baseline when given Db
+  (pre-existing, not this change). `check:bundle` 4 warnings (= baseline); lint
+  343 errors (baseline 357).
+- ⚠️ **Removals only, no new visuals** — nothing here went through a `.scratch`
+  preview because nothing new was drawn; the wallet rows are styled as before.
+
+**Next:** Alex's calls on (1) whether the ending should pay anything again,
+(2) the Shamisen's bite now that there is no Db to drain, (3) whether the
+Intergalactic abilities want a sacrifice on top of the cooldown.
 
 ---
 
@@ -225,13 +209,14 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 85 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 86 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `51-iwatoport` | 2026-10-02 | **LIVE — §A above.** The Iwato curse goes into the game: take up, three strings from the next turn (up to 3 a turn, from the hand), the cast, the cursed palette everywhere, exorcism in the commit, the arena stage, the infected wheel, the sound, and the loadout pop-out. `test:shamisen`, `test:shamisenjourney`. |
+| `52-dbcut` | 2026-10-02 | **LIVE — §A above.** Db cut entirely: abilities gated by kit + 2-round cooldown only, melody pays fans only, upgrade shop and old event cards / Major-Minor bonus removed. `test:loadouts`, `test:skilltree`, `test:playfinder`. |
+| `51-iwatoport` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Iwato curse goes into the game: take up, three strings from the next turn (up to 3 a turn, from the hand), the cast, the cursed palette everywhere, exorcism in the commit, the arena stage, the infected wheel, the sound, and the loadout pop-out. `test:shamisen`, `test:shamisenjourney`. |
 | `50-iwatocurse` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Cursed Shamisen redesigned as the Iwato curse (strings, cast, a cursed Scale Wheel, exorcism); its five animated moments built for the dial-in. `test:cursedshamisen`. |
 | `49-abilitypopouts` | 2026-10-01 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Hover an ability in the loadout and a pop-out plays it — Shukuchi's blink and the Bushido strike, the game's own code on real standees. `test:abilitydemo`. |
 | `48-riffarena-live` | 2026-10-01 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Dual board tracks, alternating short melodies, continuous acceleration, amp rings/core, smooth motion and energy-driven shaking. |

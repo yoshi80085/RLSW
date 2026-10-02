@@ -190,16 +190,9 @@ export function MatchSurface({ immersive, riffArena = false, spirit, turnNumber,
             <span className="sustain" data-immersive-stack="sustain" data-dial-value={hud?.sustain ?? undefined}
               role="img" aria-label={`Sustain ${hud?.sustain ?? "unknown"} of 10`} ref={hud?.sustainRef}>
               <ArenaDial stat="sustain" label="SUSTAIN" value={hud?.sustain} snapKey={spirit?.id} /></span>
-            {/* 💰 Db YOU CAN READ (playtest: "It doesn't show my Db anywhere" — it did,
-                as a 6 px grey label). Gold like the wallet, and READY the moment an
-                ability can fire. ⚠️ The price is the game's own (`hud.dbCost`, from
-                ABILITY_DB_COST) — a hard-coded number here would say READY at the
-                wrong total the day a price moves. */}
-            <span className="match-db" title={hud?.dbCost ? `${hud?.db ?? 0} Db — an ability use costs ${hud.dbCost}` : undefined}>
-              <small>Db</small><b>{hud?.db ?? '—'}</b>
-              {hud?.dbCost != null && hud?.db != null && <em data-ready={hud.db >= hud.dbCost || undefined}>
-                {hud.db >= hud.dbCost ? 'READY' : `/${hud.dbCost}`}</em>}
-            </span>
+            {/* 🪦 The gold Db cell (count + READY against the cheapest ability) stood
+                here until Db was cut, 2026-10-02. FANS now sits at the top of this
+                column; ⚠️ not yet seen on a real screen. */}
             <span><small>FANS</small><b>{hud?.fans ?? '—'}</b></span>
           </div>
           </Bracket>
@@ -323,9 +316,6 @@ const SURFACE_CSS = `
   .match-sound-readout > span:last-child { border:0; padding:0; }
   .match-sound-readout small { display:block; color:#9db1cf; font:400 10.5px 'Saira Stencil One',sans-serif; letter-spacing:1.2px; }
   .match-sound-readout b { display:block; margin-top:2px; color:#dceaff; font:400 17px/1.1 'Saira Stencil One',sans-serif; }
-  .match-sound-readout .match-db small, .match-sound-readout .match-db b { color:#ffd38a; }
-  .match-sound-readout .match-db em { display:block; font:normal 8.5px 'Saira Stencil One',sans-serif; letter-spacing:1px; color:#8ea0bb; }
-  .match-sound-readout .match-db em[data-ready] { color:#91eab9; }
   .match-dice-chip { position:absolute; top:2px; right:2px; border:1px solid currentColor; border-radius:3px; padding:0 3px; line-height:1.3;
     font:400 10.5px 'Saira Stencil One',sans-serif; color:#ffd38a; background:#060b18cc; box-shadow:0 0 6px currentColor; pointer-events:none; }
   .match-dice-chip[data-neg] { color:#ff6677; }
@@ -549,6 +539,6 @@ const SURFACE_CSS = `
     .match-sound-readout { padding:6px; grid-template-columns:1fr 1fr 38px; min-height:76px; }
     .match-sound-readout small { font-size:8px; }
     .match-sound-readout b { font-size:13px; }
-    .match-sound-readout .match-db em, .match-dice-chip { font-size:7px; }
+    .match-dice-chip { font-size:7px; }
   }
 `;

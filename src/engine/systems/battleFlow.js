@@ -80,12 +80,11 @@ import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
 // never fires. The import is what this file reads; the export is what its existing
 // importers keep reading.
 import {
-  SUNBEAM_DB_COST,
   SUNBEAM_BLIND_TURNS,
   SUNBEAM_LINGER_CHANCE,
   SUNBEAM_MAX_BLIND_TURNS,
 } from "../../data/gameConstants.js";
-export { SUNBEAM_DB_COST, SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS };
+export { SUNBEAM_BLIND_TURNS, SUNBEAM_LINGER_CHANCE, SUNBEAM_MAX_BLIND_TURNS };
 
 // 🧪 CUT 2026-08-17 — `SLIME_DB_COST` and the note-regen debuff it paid for.
 //

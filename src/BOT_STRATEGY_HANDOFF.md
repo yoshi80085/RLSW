@@ -1,5 +1,10 @@
 # BOT STRATEGY HANDOFF — 🧠 the cost web, the kits, and what replaces personas
 
+> 🪦 **2026-10-02 — Db IS CUT FROM THE GAME.** Every mention of Db below (earning it,
+> spending it, unlocking with it) is history. Abilities are drafted two per seat and
+> gated by cooldowns + their own sacrifices; a melody pays fans and the red/blue
+> carrot. Current truth: `STATE_OF_PLAY.md` §4.
+
 > **For AI editors + Alex.** The decision model a searching bot reads: every
 > currency in the game, every place the rules force one choice to be paid for
 > with another, and per-Spirit evaluation weights that replace the four generic

@@ -138,7 +138,7 @@ const run = (ns, seed = 5) => startTurnNotes(ns, { draws: drawsFor(ns, seed) });
   eq(patch.scaleMode, 'hirajoshi', 'the Ronin keeps his Hirajoshi palette');
   eq(report.modeChanged, true, 'legacy major state migrates to the explicit palette');
   eq(patch.modeChordName, null, 'no chord is credited with choosing the palette');
-  eq(patch.pendingModeBonus, null, 'there is no mode-switch Db bonus to stage');
+  eq(patch.pendingModeBonus, undefined, '🪦 there is no Major/Minor bonus to stage — the pivot is gone (2026-10-02)');
 
   // Carried-over (unspent) notes are respelled into the derived key rather than
   // left in last turn's spelling.

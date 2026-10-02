@@ -380,10 +380,10 @@ export function makeActionScorer(state, spiritId, view = {}) {
       case 'blaster':
         return (action.targetIds ?? []).reduce((best, id) => Math.max(best, targetRank.get(id) ?? 0), 0);
 
-      // ── DB ──────────────────────────────────────────────────────────────
-      // 🎯 Renamed from `skillUnlock` 2026-08-16 — the action is choosing what to
-      // SAVE FOR, not buying. The ranking is unchanged: `botPickSkillTarget`'s
-      // order was always a saving order, which is why the rename cost nothing here.
+      // ── 🪦 SKILL TARGET ─────────────────────────────────────────────────
+      // Dead since 2026-10-02: there is no Db and nothing to save toward, and
+      // `transition.js` refuses the kind. Ranked only so a stale emitter cannot
+      // crash the scorer.
       case 'skillTarget':
         return skillRank.get(action.skillId) ?? 0;
 

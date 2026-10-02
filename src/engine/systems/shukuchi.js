@@ -16,7 +16,7 @@
 // ⚠️ ONLY THE LANDING HEX HAS TO BE CLEAR. The hop passes OVER bodies, hazards,
 // walls and 🐙 the slime trail (Alex, §2.5.2 #1). That is deliberately a hard
 // counter to area denial, and the accepted brake is the AP bill — NOT a hazard
-// exception, because a Shukuchi that stops at slime is walking with a Db cost
+// exception, because a Shukuchi that stops at slime is just a walk on a cooldown
 // and §2.5.1 says that ability has no reason to exist.
 //
 // ⚠️ AND THE HOP RE-FACES HIM, LIKE WALKING — not like the warp. `applyMoveStep`
@@ -48,7 +48,7 @@ export function shukuchiHopsLeft(ns) {
   return Math.max(0, (ns?.shukuchiHopsLeft ?? 0));
 }
 
-/** True when the NEXT hop is the one that pays the Db and starts the clock. */
+/** True when the NEXT hop is the one that starts the clock. */
 export function hopIsActivation(ns) {
   return shukuchiHopsLeft(ns) === 0;
 }
@@ -58,7 +58,7 @@ export function hopIsActivation(ns) {
  *
  * Two ways in, and they are not the same question:
  *   · mid-move — `shukuchiHopsLeft > 0`, already paid for, clock already running
- *   · a fresh activation — `canFire` (off cooldown AND able to afford the Db)
+ *   · a fresh activation — `canFire` (in the kit AND off cooldown)
  *
  * ⚠️ THE CONTINUATION MUST NOT ASK `canFire`. The first hop starts a 3-round
  * cooldown, so a second hop that re-checked readiness would find the ability
@@ -94,8 +94,8 @@ export function shukuchiLandings(state, spiritId, blocked = new Set()) {
 /**
  * SHUKUCHI_HOPPED — one hop: position, facing, the AP, and nothing else.
  *
- * ⚠️ IT DOES NOT PAY THE Db, START THE COOLDOWN, OR SPEND THE HOP BUDGET. All
- * three live on the note sheet, which this reducer cannot reach, so the caller
+ * ⚠️ IT DOES NOT START THE COOLDOWN OR SPEND THE HOP BUDGET. Both
+ * live on the note sheet, which this reducer cannot reach, so the caller
  * pairs it with `firePatch` and `hopBudgetPatch` — exactly as `transition.js`
  * already does for Bushido. The split is deliberate: a reducer that wrote to two
  * slices would be the only one in the file that did.
@@ -133,7 +133,7 @@ export function applyShukuchiHop(state, { spiritId, toNum }) {
 /**
  * The note-sheet patch for the hop budget, given the sheet BEFORE the hop.
  *
- * ⚠️ Returns the budget ONLY. The Db and the cooldown are `firePatch`'s job, and
+ * ⚠️ Returns the budget ONLY. The cooldown is `firePatch`'s job, and
  * the caller spreads both together — one place that knows a hop is sometimes an
  * activation, rather than two places that must agree about when.
  */

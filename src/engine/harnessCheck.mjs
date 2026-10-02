@@ -341,86 +341,26 @@ function traceMatch({ seed, spirits, policyName, turns = 12 }) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 9. 🎓 UNLOCKS ARE LIVE — the payoff of the SKILL_TREE extraction.
+// 9. 🪦 THE KIT IS FIXED — there is nothing to unlock (2026-10-02).
 //
-// ⚠️ THE ASSERTION THAT MATTERS IS THE OWNERSHIP ONE. Handing the real tree to
-// the searcher armed a gate that had never once fired: `legalActions` resolved
-// exclusivity from `skill.spiritOnly`, which the tree builder never populated,
-// so every Spirit was eligible for every other Spirit's exclusive route. It was
-// invisible while the tree was in the monolith and the family was absent.
+// This section asserted that searcher Spirits AIMED at skills and that the Db
+// bar PAID OUT (mean skills per seat over eight seeded trios). Db was cut and
+// the draft hands every seat two abilities, ready — so the honest claim is the
+// opposite: over a whole searcher match, no seat aims at anything, every seat
+// ends holding exactly the two abilities it started with, and they are its own.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const { log, state } = traceMatch({ seed: 4242, spirits: TRIO, policyName: 'searcher', turns: 60 });
+  const aimed = log.flatMap(turn => turn.actions.filter(a => a.kind === 'skillTarget'));
+  eq(aimed.length, 0, '🪦 nobody aims at a skill — there is no Db bar to fill');
 
-  const aimed = [];
-  for (const turn of log) {
-    for (const a of turn.actions) {
-      if (a.kind === 'skillTarget') aimed.push({ seat: turn.seat, id: a.skillId });
-    }
-  }
-  ok(aimed.length > 0, '⚠️ Spirits actually AIM at skills now — a bench that never unlocks anything measures a game nobody plays');
-
-  // ⚠️ And the aiming turns into OWNING. The award is `commitMelodyEconomy`'s,
-  // not the action's, so this is the assertion that the two halves actually
-  // meet: a searcher that targeted skills but never received them would pass
-  // the line above and still be measuring a game with no progression in it.
-  //
-  // 🪦 IT WAS `Math.max(...owned) > 2` ON SEED 4242 ALONE, AND IT WAS PASSING ON
-  // LUCK (rewritten 2026-09-02i). `.scratch/prograte.mjs` measured this suite's
-  // EXACT configuration — TRIO, searcher, 60 turns total — over 40 seeds:
-  //
-  //     mean skills per seat      1.625
-  //     seats owning >= 1         96.7%
-  //     seats owning >  2          9.2%
-  //     seeds whose MAX seat > 2  20.0%   <- what the old line needed
-  //
-  // ⛔ SO THE OLD ASSERTION FAILED ON FOUR SEEDS IN FIVE. Seed 4242 was one of the
-  // lucky one-in-five, and the line duly went red the first time an UNRELATED change
-  // (the 2026-09-02i `discord_*` ungating) moved the seeded stream by one decision —
-  // while the progression it exists to guard had not moved: 2.20 → 2.18 skills per
-  // seat across 240 duel seats in both arms of `.scratch/gatedflagsab.mjs`.
-  //
-  // ⚠️ AND ITS THRESHOLD NEVER MATCHED ITS OWN MESSAGE. "Climbed past their starting
-  // kit" is `> 0` — `b0check` pins that every Spirit opens with NO skills — so
-  // `> 2` was asserting something
-  // three times stricter than the sentence next to it, which is why the failure
-  // printed "(2/1/1)" as if two purchases were a failure to purchase.
-  //
-  // 📌 THE FIX IS NOT A LOWER THRESHOLD AND NOT A LUCKIER SEED. Either leaves the
-  // suite unable to tell drift from regression (`CLAUDE.md`'s §15, cheapest form).
-  // The claim is about the ECONOMY, so it is asserted like one: a wide margin on an
-  // aggregate over eight fixed seeds. ⚠️ The floor was ALSO mis-calibrated on the
-  // first attempt — set from a DUEL bench played to a winner (2.18/seat) and applied
-  // to a trio over 20 turns each. The finding would have been a property of the
-  // measurement, §5-race.A exactly. Hence `prograte.mjs`, in this configuration.
-  const PROGRESSION_SEEDS = Array.from({ length: 8 }, (_, i) => (i * 2654435761 + 4242) >>> 0);
-  const ownedSeats = [];
-  for (const ps of PROGRESSION_SEEDS) {
-    // Seed 4242 is the stride's own first element — its trace is already in hand,
-    // and re-running it would be the same game twice.
-    const st = ps === 4242 ? state
-      : traceMatch({ seed: ps, spirits: TRIO, policyName: 'searcher', turns: 60 }).state;
-    for (const sp of TRIO) ownedSeats.push((st.noteStates?.[sp.id]?.unlockedSkills ?? []).length);
-  }
-  const ownedMean = ownedSeats.reduce((a, b) => a + b, 0) / ownedSeats.length;
-  const ownedAny  = ownedSeats.filter(n => n >= 1).length;
-  // 📌 Floors are 1.0 against a measured 1.625 and 75% against a measured 96.7%.
-  // Both are ~40% clear of the reading and both are far above the failure they
-  // guard — skills aimed at and never awarded, which drives each to zero.
-  ok(ownedMean >= 1.0,
-     `⚠️ …and the Db bar actually PAYS OUT — mean ${ownedMean.toFixed(3)} skills/seat over ${ownedSeats.length} seats (${ownedSeats.join('/')})`);
-  ok(ownedAny >= 0.75 * ownedSeats.length,
-     `⚠️ …and it pays out BROADLY, not to one runaway seat — ${ownedAny}/${ownedSeats.length} seats own at least one skill`);
-
-  // 🪦 `wa_no_koe: RONIN` was the fourth entry until 2026-09-04 — CUT.
-  const ownedBy = { psycho_bushido: RONIN, shadow_illusion: RONIN, cursed_shamisen: RONIN,
-                    tentacle: MM, goes_to_11: MM, master_moshpits: MM, azrael: MM,
-                    blaster_of_ra: ZERO };
-  for (const b of aimed) {
-    if (ownedBy[b.id]) {
-      eq(b.seat, ownedBy[b.id],
-         `⚠️ ${b.id} was aimed at by its OWNER — this gate read an always-undefined field until the tree was extracted`);
-    }
+  const start = makeInitialState({ spirits: TRIO, mode: 'ffa' }, 4242);
+  for (const sp of TRIO) {
+    const kit = state.noteStates?.[sp.id]?.unlockedSkills ?? [];
+    eq(kit, start.noteStates[sp.id].unlockedSkills, `${sp.id} ends the match with the kit it drafted — nothing gained, nothing lost`);
+    eq(kit.length, 2, `…which is two abilities`);
+    ok(kit.every(id => SKILL_BY_ID[id]?.spiritOnly === sp.id),
+       `⚠️ …and both are ${sp.id}'s own — the ownership gate this section was born to guard`);
   }
 }
 

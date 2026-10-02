@@ -4,7 +4,7 @@
 //
 // ⚠️ WHAT THIS SUITE IS REALLY GUARDING:
 //   §2 — THE NUMBERS ARE THE GAME'S. Every play the finder returns is committed
-//        through the REAL `commitMelodyEconomy`, and the Db, fans, carrot and
+//        through the REAL `commitMelodyEconomy`, and the fans, carrot and
 //        moves it reports must be the ones that commit pays. A finder that
 //        promised a line the commit then paid differently would teach a beginner
 //        to distrust the crowd.
@@ -86,7 +86,6 @@ function commitForReal(spiritId, ns, play) {
   const out = commitMelodyEconomy(state, spiritId, {});
   const temp = out.patch;
   return {
-    db: out.report.earnedTotal,
     fans: out.report.perfFansGained,
     moves: out.report.usableMoves,
     drive: spiritChord(spiritId, driveStack).drive + (temp.tempDrive ?? ns.tempDrive ?? 0),
@@ -97,7 +96,7 @@ function commitForReal(spiritId, ns, play) {
 // ═══ 1. THE CONTRACT ════════════════════════════════════════════════════════
 console.log('§1 the shape of an answer');
 {
-  ok(same(FINDER_GOALS, ['drive', 'sustain', 'db', 'fans']), 'four goals: drive, sustain, db, fans');
+  ok(same(FINDER_GOALS, ['drive', 'sustain', 'fans']), 'three goals: drive, sustain, fans (🪦 db went with Db, 2026-10-02)');
   ok(FINDER_TRACK_SEATS === 8, 'the track has 8 seats, as the client’s note click enforces');
   const client = read('../rlsw-simulator-v3_8_1.jsx');
   ok(/if \(melodyLine\.length >= 8\) return;/.test(client), '…and the client still refuses a ninth note (the number is transcribed, so it is checked)');
@@ -117,8 +116,11 @@ console.log('§1 the shape of an answer');
     ok(same(play, findBestPlay('cosmic_ronin', ns, goal)), `${goal}: findBestPlay agrees with findBestPlays (the shared ceilings change nothing)`);
   }
   ok(same(ns, sheet({ noteStock: ['C', 'D', 'Eb', 'F', 'G', 'Ab', 'E', 'C', 'G', 'B', 'D'], paletteMode: 'hirajoshi' })), 'the note sheet is never mutated');
-  const two = findBestPlays('cosmic_ronin', ns, { goals: ['fans', 'db'] });
-  ok(same(Object.keys(two), ['fans', 'db']) && same(two.fans, all.fans) && same(two.db, all.db), '`goals` narrows the answer without changing it (the melody step asks for fans + db only)');
+  const two = findBestPlays('cosmic_ronin', ns, { goals: ['fans'] });
+  ok(same(Object.keys(two), ['fans']) && same(two.fans, all.fans), '`goals` narrows the answer without changing it (the melody step asks for fans only)');
+  let threwDb = false;
+  try { findBestPlays('cosmic_ronin', ns, { goals: ['db'] }); } catch { threwDb = true; }
+  ok(threwDb, '🪦 asking for the retired `db` goal throws — nothing pays Db any more');
   let threwGoals = false;
   try { findBestPlays('cosmic_ronin', ns, { goals: ['fans', 'vibes'] }); } catch { threwGoals = true; }
   ok(threwGoals, '…and an unknown goal in `goals` throws');
@@ -128,7 +130,9 @@ console.log('§1 the shape of an answer');
 console.log('§2 every reported number is what commitMelodyEconomy pays');
 {
   let checked = 0;
-  for (let seed = 1; seed <= 12; seed += 1) {
+  // 📌 16 seeds, was 12: the `db` goal left with Db (2026-10-02), so each seed
+  // yields fewer plays — the range grew to hold the floor below, not the floor drop.
+  for (let seed = 1; seed <= 16; seed += 1) {
     const spiritId = ROSTER[seed % ROSTER.length];
     const mode = melodyModeFor(spiritId);
     const root = ROOTS[seed % ROOTS.length];
@@ -143,13 +147,12 @@ console.log('§2 every reported number is what commitMelodyEconomy pays');
       if (!play.line.length) continue;
       const real = commitForReal(spiritId, ns, play);
       checked += 1;
-      ok(play.result.db === real.db, `seed ${seed} ${spiritId} ${goal}: Db ${play.result.db} = commit's ${real.db}`);
       ok(play.result.fans === real.fans, `seed ${seed} ${spiritId} ${goal}: fans ${play.result.fans} = commit's ${real.fans}`);
       ok(play.result.moves === real.moves, `seed ${seed} ${spiritId} ${goal}: moves ${play.result.moves} = commit's ${real.moves}`);
       ok(play.result.drive === real.drive, `seed ${seed} ${spiritId} ${goal}: Drive ${play.result.drive} = chord + the commit's temp Drive ${real.drive}`);
       ok(play.result.sustain === real.sustain, `seed ${seed} ${spiritId} ${goal}: Sustain ${play.result.sustain} = chord + the commit's temp Sustain ${real.sustain}`);
       const ref = scorePlay(spiritId, ns, { stack: play.stack, line: play.line });
-      ok(['drive', 'sustain', 'db', 'fans', 'spent'].every(k => ref[k] === play.result[k]), `seed ${seed} ${goal}: scorePlay agrees with the report`);
+      ok(['drive', 'sustain', 'fans', 'spent'].every(k => ref[k] === play.result[k]), `seed ${seed} ${goal}: scorePlay agrees with the report`);
     }
   }
   ok(checked >= 40, `…across ${checked} committed plays`);
@@ -205,16 +208,16 @@ console.log('§3 brute force, no pruning, agrees on every goal');
         }
       }
     }
-    // Db / fans, by the finder's documented DEFINITION: the best line over the
+    // Fans, by the finder's documented DEFINITION: the best line over the
     // whole hand (shorter wins a tie), then the best stacks from its leftovers.
     // ⚠️ Several lines can tie on (primary, secondary, length) and leave different
     // notes behind, and the definition does not say which — so brute force keeps
     // EVERY tied line and the finder must equal the outcome of one of them.
-    for (const goal of ['db', 'fans']) {
+    for (const goal of ['fans']) {
       let topVec = null, tops = [];
       for (const line of allLines(ns, free, new Set())) {
         const v = scorePlay(spiritId, ns, { stack: [], line });
-        const vec = goal === 'db' ? [v.db, v.fans, -v.spent] : [v.fans, v.db, -v.spent];
+        const vec = [v.fans, -v.spent];
         const c = topVec ? lexCmp(vec, topVec) : 1;
         if (c > 0) { topVec = vec; tops = [line]; } else if (c === 0) tops.push(line);
       }
@@ -273,24 +276,23 @@ console.log('§4 the rules a suggestion must respect');
   const ronin = 'cosmic_ronin';
   const base = { rootNote: 'C', paletteMode: 'hirajoshi' };
 
-  // Db wants the fifth LAST (ENDING_DB.fifth is the top rung).
-  const db = findBestPlay(ronin, sheet({ ...base, noteStock: ['G', 'C', 'D', 'Eb', 'F'] }), 'db');
-  ok(db.line.at(-1) === 'G' && db.result.ending === 'fifth', `Db ends on the fifth (${db.line.join(' ')})`);
+  // 🪦 "Db wants the fifth LAST" stood here — the ending paid Db. It pays
+  // nothing since 2026-10-02 (`ENDING_WEIGHT` is dormant), so nothing chases it.
 
   // Fans: with no repeated pitch the Monster's chug is impossible, so his only
-  // fans are craft — and five distinct in-mode notes make the 5-note run.
+  // fans are craft — and a 4-note run already pays the +1 rung.
   // 🎚️ +1 since 2026-09-30: the +2 rung moved to a SIX-note run (melodyPayout.js).
+  // ⚠️ It asserted a 5-NOTE run until 2026-10-02: 4 and 5 pay the same fan, and
+  // the extra clean note used to win the tie on Db. With Db gone the tie goes to
+  // the play that spends fewer notes — the finder's documented rule.
   const fans = findBestPlay('Metalness_Monster', sheet({ rootNote: 'C', paletteMode: 'phrygian', noteStock: ['G', 'Db', 'F', 'C', 'Eb'] }), 'fans');
-  ok(fans.result.craftRun >= 5 && fans.result.craftFans === 1 && fans.result.fans === 1, `fans finds the 5-note run (${fans.line.join(' ')})`);
+  ok(fans.result.craftRun >= 4 && fans.result.craftFans === 1 && fans.result.fans === 1 && fans.line.length === 4, `fans finds the +1 run, and spends no extra note on it (${fans.line.join(' ')})`);
   const six = findBestPlay('Metalness_Monster', sheet({ rootNote: 'C', paletteMode: 'phrygian', noteStock: ['G', 'Db', 'F', 'C', 'Eb', 'Ab'] }), 'fans');
   ok(six.result.craftRun >= 6 && six.result.craftFans === 2, `…and a sixth note makes the 6-note run, the +2 rung (${six.line.join(' ')})`);
 
   // 🪤 REGRESSIONS the brute force found while the bounds were being written —
   // pinned here so they do not depend on the seed range §3 happens to run.
-  // (a) the Db bound must let a discord already on the track be the separator
-  //     between two clean streaks;
-  const sep = findBestPlay('intergalactic_0', sheet({ rootNote: 'G', paletteMode: 'dorian', noteStock: ['G', 'A', 'Eb', 'E', 'Ab'], melodyLine: ['G', 'A', 'Bb', 'C'], stackCommitsThisTurn: 2 }), 'db');
-  ok(sep.result.db === 5.5, `two streaks around a discord: Db ${sep.result.db} = 5.5 (${sep.line.join(' ')})`);
+  // (a) 🪦 the Db bound's separator regression went with the Db goal (2026-10-02).
   // (b) the Ronin's contour bound must read the run OPEN AT THE END of the line —
   //     E♭ D C (shred) then C A♭ F (skip) shares the C, and pays both.
   //     ⚠️ Was E D♭ C until 2026-09-17: E and D♭ are discord in the Ronin's
@@ -304,7 +306,7 @@ console.log('§4 the rules a suggestion must respect');
   const stock = ['G', 'C', 'D', 'Eb', 'F'];
   const barred = findBestPlays(ronin, sheet({ ...base, noteStock: stock }), { unavailable: [0] });
   ok(FINDER_GOALS.every(g => ![...barred[g].stack, ...barred[g].melody].some(x => x.idx === 0)), 'an unavailable (staggered) slot is never suggested');
-  ok(barred.db.result.ending !== 'fifth', '…so the only fifth cannot be the Db ending');
+  ok(FINDER_GOALS.every(g => barred[g].line.at(-1) !== 'G' || barred[g].line.length === 0), '…so the only fifth (slot 0) never ends a suggested line');
 
   // No budget, full stacks, or a confirmed turn → no stack suggestions.
   const spent = findBestPlays(ronin, sheet({ ...base, noteStock: stock, stackCommitsThisTurn: STACK_COMMIT_BUDGET }));
@@ -322,7 +324,12 @@ console.log('§4 the rules a suggestion must respect');
   ok(FINDER_GOALS.every(g => !dup[g].stack.some(s => s.dest === 'drive' && pitchIndex(s.note) === 0)), 'a note the stack already holds is never re-committed to it');
 
   // The carrot: ending on the Drive root pays +1 temp Drive — and Mojo Drain kills it.
-  const carrotHand = sheet({ ...base, noteStock: ['C', 'C', 'G', 'D'] });
+  // ⚠️ The hand was C C G D until 2026-10-02. There, stacking G C D ties the
+  // carrot route (C G D + end on C) on Drive, and the tie went to the carrot only
+  // because its extra clean note earned Db. With Db gone the tie correctly goes
+  // to the play that saves a note — so this hand is one the carrot STRICTLY wins:
+  // one C can seat the stack, the other can only earn its +1 by ending the line.
+  const carrotHand = sheet({ ...base, noteStock: ['C', 'C'] });
   const carrot = findBestPlay(ronin, carrotHand, 'drive');
   ok(carrot.result.carrot === 'drive' && carrot.line.at(-1) && pitchIndex(carrot.line.at(-1)) === pitchIndex(carrot.stack.find(s => s.dest === 'drive')?.note),
     `drive: the line ends on the Drive root for the carrot (${carrot.stack.map(s => s.note).join(' ')} | ${carrot.line.join(' ')})`);
@@ -335,9 +342,9 @@ console.log('§4 the rules a suggestion must respect');
   ok(FINDER_GOALS.every(g => same(kept[g].line.slice(0, 2), ['C', 'D']) && legal(ronin, pre, kept[g]).length === 0), 'a line already on the track is continued, not replaced');
 
   // Ties go to the play that spends fewer notes (unused stock carries over): an
-  // all-discord hand pays no Db, so the Db play puts nothing on the track.
-  const tie = findBestPlay(ronin, sheet({ ...base, noteStock: ['Bb', 'B', 'C#', 'E'] }), 'db');
-  ok(tie.result.db === 0 && tie.melody.length === 0, 'nothing worth playing on the track → no melody suggested');
+  // all-discord hand wins no fans, so the fans play puts nothing on the track.
+  const tie = findBestPlay(ronin, sheet({ ...base, noteStock: ['Bb', 'B', 'C#', 'E'] }), 'fans');
+  ok(tie.result.fans === 0 && tie.melody.length === 0, 'nothing worth playing on the track → no melody suggested');
 
   // An empty hand is a legal, empty answer.
   const empty = findBestPlays(ronin, sheet({ ...base }));
@@ -360,8 +367,8 @@ console.log('§5 the pruning bounds cover exactly the shipped gestures');
   ok(/id: 'pedal_chug'[\s\S]*?returnPhrases\(line\) > 0/.test(style) && /id: 'signal_circle'[\s\S]*?hits: returnPhrases/.test(style), 'pedal_chug / signal_circle are still A → B → A return phrases');
   const payout = read('../music/melodyPayout.js');
   ok(/Math\.max\(detectDiatonicRun\(line, scale\), detectSkipClimb\(line, scale\)\)/.test(payout), 'craftRunFor is still max(step run, skip run) — the run bound assumes it');
-  ok(/export const CLEAN_STREAK_CAP = 2;/.test(payout) && /export const CLEAN_STREAK_MIN = 3;/.test(payout) && /export const CLEAN_NOTE_DB = 0\.5;/.test(payout) && /export const CLEAN_STREAK_DB = 0\.5;/.test(payout),
-    'the clean-note / streak numbers the Db bound is written against are unchanged');
+  ok(!/export const (CLEAN_NOTE_DB|CLEAN_STREAK_DB)/.test(payout),
+    '🪦 the clean-note / streak Db the old Db bound was written against is gone — a revival must re-add the bound too');
 }
 
 // ═══ 6. FULL HANDS ARE PROVEN INSIDE THE BUDGET ═════════════════════════════

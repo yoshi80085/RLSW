@@ -1,5 +1,6 @@
-// The deliberately small melody economy. Keep the three layers separate so a
-// new Spirit can add a fan preference without changing Db or resolution.
+// The deliberately small melody economy. Keep the layers separate so a new
+// Spirit can add a fan preference without changing resolution or the carrot.
+// (Db was the third layer until it was cut, 2026-10-02.)
 import { pitchIndex } from './notes.js';
 import { detectSpiritStyle } from './spiritStyle.js';
 import { detectDiatonicRun, detectSkipClimb } from './cadence.js';
@@ -64,6 +65,16 @@ export function craftFansFromRun(run) {
 
 // ── 🎼 THE ENDING LADDER — WHY THE FIFTH PAYS MOST ───────────────────────────
 //
+// 🚨 DORMANT SINCE 2026-10-02 — IT PAYS NOTHING. These rungs paid Db, and Db was
+// cut from the game (Alex: "the cooldowns and 'sacrifices' are the gate"). His
+// call on what a good ending earns instead: *nothing for now*. The table is
+// KEPT, renamed `ENDING_DB` → `ENDING_WEIGHT`, as data for the Riff-Off's
+// planned hook weight (§14.9.5 below) — ⚠️ and so REASON 2 BELOW IS CURRENTLY
+// SWITCHED OFF: nothing in the live game pushes players to change chords via
+// the ending. That is a known, recorded loss and an OPEN decision
+// (`STATE_OF_PLAY.md` §4), not an accident. Read the rest as the rationale to
+// carry into whatever the ending pays next.
+//
 // 🪦 THIS WAS AN ANONYMOUS INLINE TERNARY FOR MONTHS, WITH NO COMMENT ANYWHERE —
 // not here, not in `melodyCommit.js`, not in `MELODY_IDENTITY_DESIGN.md`. A
 // deliberate design decision read exactly like an arbitrary number. That is
@@ -82,29 +93,28 @@ export function craftFansFromRun(run) {
 // move between chords — the thing the number was invented to do. ⚠️ Anyone
 // tuning the ending for feel would have done exactly that without knowing.
 //
-// 🎯 AND IT IS ABOUT TO DO A SECOND JOB. §14.9.5 rules that the fifth's Db
-// payout is ALSO the duel's hook weight — *"the note you are taught to aim for
+// 🎯 AND IT IS ABOUT TO DO A SECOND JOB. §14.9.5 rules that the fifth's ending
+// weight is ALSO the duel's hook weight — *"the note you are taught to aim for
 // in a melody should be the note that wins duels."* One lesson, learned once.
 // ⚠️ THE COST, STATED HONESTLY: a number doing two jobs cannot be tuned apart.
-// If the fifth proves too strong in duels, the only lever also moves the Db
-// economy, and with it Alex's chord-change pressure. **That is the trade. Do not
+// If the fifth proves too strong in duels, the only lever also moves whatever
+// the ending pays, and with it Alex's chord-change pressure. **That is the trade. Do not
 // discover it by accident.**
 //
 // 📌 THE TONIC IS PROVISIONALLY UNDER REVIEW at 2 (§14.9.4, Alex: *"2 times or
 // so, 1.5 even"*) and is NOT settled. ⚠️ At 2 the tonic and the fourth become
 // the same rung and the fourth stops meaning anything distinct — so moving it is
 // a three-rung decision, not a one-number one. Read §14.9.4 before you touch it.
-export const ENDING_DB = {
+export const ENDING_WEIGHT = {
   fifth:  3,   // ⭐ the rock interval, AND the chord-change pressure — reason 2
   fourth: 2,   // the plagal landing
   tonic:  1,   // ⁉️ provisionally under review at 2 — §14.9.4, unsettled
-  normal: 0,   // ⭐ an unresolved line has NO hook, and no ending Db. No new rule.
+  normal: 0,   // ⭐ an unresolved line has NO hook. No new rule.
 };
 
-export const CLEAN_NOTE_DB = 0.5;
-export const CLEAN_STREAK_DB = 0.5;
-export const CLEAN_STREAK_MIN = 3;
-export const CLEAN_STREAK_CAP = 2;
+// 🪦 `CLEAN_NOTE_DB`, `CLEAN_STREAK_DB`, `CLEAN_STREAK_MIN` and `CLEAN_STREAK_CAP`
+// went with Db, 2026-10-02. Clean notes still MATTER — discord breaks every fan
+// shape and cannot land the red/blue carrot — they just no longer pay a number.
 
 function longestCleanRun(line, scale) {
   let best = 0, run = 0;
@@ -115,15 +125,6 @@ function longestCleanRun(line, scale) {
   return best;
 }
 
-function cleanStreakCount(line, scale) {
-  let count = 0, run = 0;
-  for (const note of [...(line ?? []), null]) {
-    if (scale.includes(note)) { run += 1; continue; }
-    if (run >= CLEAN_STREAK_MIN) count += 1;
-    run = 0;
-  }
-  return Math.min(CLEAN_STREAK_CAP, count);
-}
 
 export function melodyPayoutFor(spiritId, line, scale, {
   tonic, fourth, fifth, driveRoot, sustainRoot,
@@ -132,23 +133,18 @@ export function melodyPayoutFor(spiritId, line, scale, {
   const longestRun = longestCleanRun(line, scale);
   const craftRun = craftRunFor(line, scale);
   const craftFans = craftFansFromRun(craftRun);
-  const streakBonus = cleanStreakCount(line, scale) * CLEAN_STREAK_DB;
   const style = detectSpiritStyle(spiritId, line, scale);   // discord breaks a shape
   const last = line?.at(-1);
   const samePitch = (a, b) => pitchIndex(a) >= 0 && pitchIndex(a) === pitchIndex(b);
   const ending = !scale.includes(last) ? 'normal'
     : samePitch(last, tonic) ? 'tonic' : samePitch(last, fifth) ? 'fifth' : samePitch(last, fourth) ? 'fourth' : 'normal';
-  const endingDb = ENDING_DB[ending] ?? 0;
   return {
     cleanCount,
     longestCleanRun: longestRun,
     craftRun,
     craftFans,
-    cleanDb: cleanCount * CLEAN_NOTE_DB,
-    streakDb: streakBonus,
     style,
     ending,
-    endingDb,
     resolved: ending !== 'normal',
     // ⚠️ THE IN-SCALE TEST GUARDS BOTH COLOURS. It used to bind to the Drive
     // branch alone (`a && b ? 'drive' : c ? 'sustain'`), so a DISCORD final that
@@ -157,7 +153,6 @@ export function melodyPayoutFor(spiritId, line, scale, {
     chordRootCarrot: !scale.includes(last) ? null
       : samePitch(last, driveRoot) ? 'drive'
       : samePitch(last, sustainRoot) ? 'sustain' : null,
-    db: cleanCount * CLEAN_NOTE_DB + streakBonus + endingDb,
   };
 }
 

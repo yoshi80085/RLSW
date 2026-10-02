@@ -1,14 +1,5 @@
-// Every N Decibills -> player unlocks their targeted skill.
-// Points carry over after crossing a threshold.
-//
-// ⚠️ 6 → 4 WHEN THE Db SOURCES WERE CUT FROM NINE TO FOUR. Removing the Style
-// payout, the Drive/Sustain overflow, the Performance-Score top-up and the
-// chromatic payout took mean income from 3.98 Db per commit to ~2.6 — a 35% drop.
-// At a threshold of 6 that would have been 2.3 commits per upgrade instead of 1.5,
-// i.e. the game silently got a third slower. Lowering the threshold is the honest
-// lever: it holds the pacing without re-inflating a source we deleted for being
-// illegible. Re-measure with `node src/engine/dbaudit.mjs` before touching it.
-export const DB_UPGRADE_THRESHOLD = 4;
+// 🪦 `DB_UPGRADE_THRESHOLD` is gone (2026-10-02): Db no longer exists, so
+// there is no bar to fill and nothing for it to unlock.
 
 // Stock is a reservoir, not a fresh hand. Unused notes carry
 // over; only this many spent slots recharge per turn.
@@ -176,27 +167,10 @@ export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 // the legality rule ("the ultimate beginner" can read a bright line); the ladder
 // is the payout ("farther is stronger" is what §2.1 says the ability IS). A flat
 // bonus inside a window would have deleted the second one.
-// ─── ⭐ THE FLAT UNLOCK PRICE — Alex, 2026-09-04f ────────────────────────────
-//
-// EVERY ability in the game costs the SAME to unlock, and the number is 6.
-// `UPGRADE_SHOP_DESIGN.md` §0⃣ rule 1, and §0⃣.3's "what IS the flat number?" is
-// now answered. The spread it replaces was 6–14.
-//
-// 🎯 WHY IT IS A RULE AND NOT A BALANCE TWEAK. §1.1 of that doc MEASURED the
-// arsenals being bought in PRICE order, not value order — a near-perfect inverse
-// ranking, every 6 Db skill taken by 70–98% of seats and every skill over 10 Db
-// by about one in ten, "with no reference to what the ability does." A flat price
-// does not mitigate that finding; it deletes the variable the finding is about.
-// When every ability costs the same, the only thing left to choose on is what the
-// ability DOES.
-//
-// ⚠️ THIS IS THE UNLOCK PRICE ONLY — `dbCost` in `data/skillTree.js`, paid once.
-// PER-USE Db (`ABILITY_DB_COST` in `engine/systems/cooldowns.js`) is a separate
-// rule and is deliberately NOT flattened; §0⃣.3 files that as its own open call.
-// 📌 It is exported so a suite can assert the tree against it. Nothing reads it
-// at runtime — the tree carries the literal, and the check is what keeps them
-// equal, because a tree that computed its own prices could not be checked at all.
-export const FLAT_ABILITY_UNLOCK_DB = 6;
+// 🪦 THE FLAT UNLOCK PRICE (`FLAT_ABILITY_UNLOCK_DB`, 6) IS GONE — 2026-10-02.
+// There is nothing to unlock: the draft picks two abilities and both start
+// ready, and Db itself was cut (Alex: "the cooldowns and 'sacrifices' are the
+// gate, not another economy"). `UPGRADE_SHOP_DESIGN.md` is superseded.
 
 export const PSYCHO_BUSHIDO_CD        = 2;  // rounds, ticked in turnFlow — was 2
 export const PSYCHO_BUSHIDO_MIN_RANGE = 3;  // ⭐ closer than this is ILLEGAL, not merely bad
@@ -249,26 +223,22 @@ export function psychoBushidoD8s(dist) {
 // ⚠️ THE HOP JUMPS OVER EVERYTHING — bodies, hazards, walls, 🐙 the slime trail
 // (Alex, §2.5.2 #1). Only the LANDING hex has to be clear. That is knowingly a
 // hard counter to area denial; the accepted brake is the AP bill, NOT a hazard
-// exception, because a Shukuchi that stops at slime is walking with a Db cost.
+// exception, because a Shukuchi that stops at slime is just a walk on a cooldown.
 export const SHUKUCHI_CD         = 2;  // rounds, ticked in turnFlow
-export const SHUKUCHI_DB_COST    = 5;  // Db charged ONCE per activation — see §2.5.0a
 export const SHUKUCHI_MAX_HOPS   = 3;  // hops available for the rest of the turn, once fired
 export const SHUKUCHI_HOP_RINGS  = 2;  // every hop is EXACTLY this far — not "up to"
 export const SHUKUCHI_AP_PER_HOP = 1;  // ⭐ the whole balance of the ability lives on this line
 
-// ─── 🕒💿 EVERY ABILITY COSTS Db AND TAKES A COOLDOWN ────────────────────────
+// ─── 🕒 EVERY ABILITY TAKES A COOLDOWN ──────────────────────────────────────
 //
 // Alex's rule, 2026-08-22 (`RONIN_ABILITY_DESIGN.md` §0): an ability with no
-// per-use price and no recharge is not a decision, it is a DEFAULT. It gets
-// taken every turn it is legal and stops competing with the rest of the turn.
-// Db is the game's scarcity, and a power that never touches it is outside the
-// economy.
+// price and no recharge is not a decision, it is a DEFAULT. It gets taken every
+// turn it is legal and stops competing with the rest of the turn.
 //
-// ⚠️ THE Db BAR IS ALSO THE UPGRADE BAR. `advanceDB` spends `dbPoints` on the
-// next unlock the moment it fills, so a per-use cost is not a side pocket — it
-// is progress toward the next skill, given up. That is the tension, and it is
-// the reason these numbers are small: a good commit earns roughly 2–8, and the
-// unlocks cost 6–16.
+// 🪦 THE PRICE IS NO LONGER Db (Alex, 2026-10-02). Db was cut whole — the
+// cooldown below and each ability's own SACRIFICE (AP, the Action Token, stack
+// notes, Sustain, strings) are the gate. ⚠️ Read "price" in any older doc as one
+// of those sacrifices, never as a currency.
 //
 // 🎯 THERE ARE NO EXEMPTIONS — THERE ARE DIFFERENT RATES. Alex's call, 2026-08-22:
 // *"Make it a 1 turn cool down. Different abilities can cool down at different
@@ -298,8 +268,8 @@ export const SHADOW_ILLUSION_TURNS = 2;
 // 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02, `RONIN_ABILITY_DESIGN.md`
 // §2.3.00): three strings tuned in the chord step, cast on a rival, whose palette
 // becomes Iwato for their next two turns. The rules are
-// `engine/systems/iwatoCurse.js`; the cooldown and Db are the universal ones in
-// `cooldowns.js` (2 and 5) — these two names are what the docs quote.
+// `engine/systems/iwatoCurse.js`; the cooldown is the universal one in
+// `cooldowns.js` (2) — this name is what the docs quote.
 export const CURSED_SHAMISEN_CD    = 2;   // rounds — gap between activations
 
 // 🌌🕳️💻☀️ INTERGALACTIC 0. He is the zoner: his kit is about doing a small thing
@@ -322,19 +292,10 @@ export const GRAVITY_CD       = 2;
 export const CODE_INJECT_CD   = 2;
 export const SUNBEAM_CD       = 2;
 
-// Per-use Db. ⚠️ SEPARATE FROM `dbCost` IN THE SKILL TREE, which is the ONE-TIME
-// unlock price. Both numbers are rules and both live in this file; the tree
-// interpolates these into its `desc` strings so the text cannot drift from the
-// behaviour.
-//
-// 🌀 Bushido is the cheapest ON PURPOSE. It already spends the ENTIRE remaining
-//    AP pool — it is the most expensive move in the kit measured in tempo, and
-//    charging it like the others would bill the same cost twice.
-// 👤 The double is the dearest because it is the most versatile: it collects
-//    notes, it soaks a whole rival turn, and it baits the Bushido lane.
-export const PSYCHO_BUSHIDO_DB_COST  = 5;
-export const SHADOW_ILLUSION_DB_COST = 5;   // was 2 — respecced 2026-09-04f
-export const CURSED_SHAMISEN_DB_COST = 5;   // unchanged — it was already paying
+// 🪦 Per-use Db (`PSYCHO_BUSHIDO_DB_COST`, `SHADOW_ILLUSION_DB_COST`,
+// `CURSED_SHAMISEN_DB_COST`, all 5) went with Db itself, 2026-10-02. Each of
+// these abilities is gated by its cooldown and its own sacrifice — Bushido's AP
+// and Drive notes, the double's Sustain drain, the Shamisen's strings and Action.
 
 // 👤 SHADOW ILLUSION — Sustain drain, replacing the 1 Drive token it used to
 // cost at summon. Charged at the start of each of the Ronin's OWN turns while
@@ -1015,7 +976,6 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 export const SONIC_BEAM_REACH = 3;
 
 // ☀️ SUNBEAM — the whiteout.
-export const SUNBEAM_DB_COST         = 5;    // Db charged per connecting attack
 export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
 export const SUNBEAM_LINGER_CHANCE   = 0.5;  // odds the burn sears in for a 2nd turn
 export const SUNBEAM_MAX_BLIND_TURNS = 2;    // hard ceiling — the sun always sets
@@ -1023,16 +983,13 @@ export const SUNBEAM_MAX_BLIND_TURNS = 2;    // hard ceiling — the sun always 
 // 🌀 SPACE IS DISPLACED — the paid blink. §2 of the Metalness rework cites this
 // as the roster's only other free-ish movement, which is why its price matters
 // to a doc two directories away.
-export const DISPLACE_DB_COST   = 5;   // Db charged per warp
 export const DISPLACE_MIN_RINGS = 2;   // nearest legal landing ring (1 = a normal step, so it's excluded)
 export const DISPLACE_MAX_RINGS = 3;   // furthest legal landing ring
 
 // 🕳️ GRAVITY CONTROL — the black hole vortex.
-export const GRAVITY_DB_COST     = 5;  // Db charged per vortex
 export const GRAVITY_PLACE_RINGS = 2;  // how far out he can drop it
 export const GRAVITY_PULL_RINGS  = 2;  // rivals this close (or closer) get dragged
 export const GRAVITY_PULL_HEXES  = 1;  // hexes each caught rival is dragged inward
 export const GRAVITY_NOTE_DRAIN  = 2;  // notes cut from NEXT turn's refill for anyone dragged INTO it
 
 // 💻 CODE INJECTION — the hidden commit.
-export const CODE_INJECT_DB_COST = 5;  // Db burned at COMMIT, win or lose

@@ -26,7 +26,7 @@ export function AbilityInfo({ skill, onClose, demo = null }) {
     onClick={e => { if (e.target === e.currentTarget) onClose(); }}>
     <div className="draft-eyebrow">ABILITY / FIELD GUIDE</div>
     <h2 id="ability-info-title">{skill.icon} {skill.label}</h2>
-    <div className="draft-price">5 Db per use <span>•</span> 2 rounds to recharge</div>
+    <div className="draft-price">Ready from turn one <span>•</span> 2 rounds to recharge</div>
     {demo}
     <p>{skill.desc}</p>
     <button className="draft-confirm" onClick={onClose} autoFocus>GOT IT</button>
@@ -144,7 +144,7 @@ export function SpiritDraft({ corners, assignments, loadouts, choosingCorner, on
         <div className="draft-eyebrow">02 / BUILD YOUR LOADOUT <span>{selected.length}/2</span></div>
         <h2>{spirit ? spirit.name : 'Find your sound'}</h2>
         <p className="draft-subtitle">{spirit ? 'Choose two abilities to take into the arena.' : 'Select a Spirit to reveal their abilities.'}</p>
-        <div className="draft-price">5 Db per use <span>•</span> 2-round cooldown</div>
+        <div className="draft-price">Ready from turn one <span>•</span> 2-round cooldown</div>
         <div className="draft-skills">{abilitiesFor(chosen).map(skill=>{
           const on = selected.includes(skill.id), demoable = !!getDemo && hasDemo(skill.id);
           return <div key={skill.id} className={`draft-skill ${on?'is-selected':''}${demoable?' has-demo':''}`} {...(demoable ? pop.bind(skill) : {})}>
@@ -156,7 +156,7 @@ export function SpiritDraft({ corners, assignments, loadouts, choosingCorner, on
           </div>;
         })}</div>
         <button className="draft-confirm" disabled={!validLoadout(chosen,selected)} onClick={onConfirm}>LOCK IN PLAYER {corners.indexOf(corner)+1} <span>→</span></button>
-        <p className="draft-note">Abilities start ready. Earn Db on the board to use them.</p>
+        <p className="draft-note">Abilities start ready. Each one recharges after you use it — and most ask a sacrifice of their own.</p>
       </div>
     </div> : <div className="draft-ready"><span>✦</span><h2>Your lineup is ready.</h2><p>Adjust the match below, then enter the arena.</p><button onClick={()=>onChooseCorner(corners[0])}>EDIT LOADOUTS</button></div>}
     {popped && demo && <AbilityDemoWindow key={popped.skill.id} demo={demo} skill={popped.skill} color={accent} rivalColor={rival}

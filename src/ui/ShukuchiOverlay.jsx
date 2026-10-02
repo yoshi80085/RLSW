@@ -160,14 +160,17 @@ export function shukuchiBudgetMarks(hopsLeft, mid, look = SHUKUCHI_LOOK) {
   return {
     segs: Array.from({ length: SHUKUCHI_MAX_HOPS }, (_, i) => i < remaining),
     // 💰 Spent only once a hop has actually been taken. Out of AP with a full
-    // budget is not "paid" — the Db is still in hand and the pip must say so.
+    // budget is not "fired" — the cooldown has not started and the pip must say
+    // so. 🪦 The pip marked the Db price until Db was cut (2026-10-02); it now
+    // marks the ACTIVATION (the clock starting). Names kept for preview parity.
     dbSpent: !!mid,
     show: look.dbPip,
   };
 }
 
-/** 💰 THE Db PIP SITS BEFORE THE BAR, and this is the one placement §2.5.0c
- *  left to the port. Left to right it reads "one Db buys three hops", which is
+/** 💰 THE ACTIVATION PIP (the "Db pip" until 2026-10-02) SITS BEFORE THE BAR,
+ *  and this is the one placement §2.5.0c left to the port. Left to right it
+ *  reads "one activation buys three hops", which is
  *  the sentence the rail is trying to teach. ⚠️ After the bar was the
  *  alternative and it is worse: a fourth mark in a row of three reads as a
  *  fourth hop. */

@@ -39,7 +39,6 @@ export const CROWD_STAND_SELECTOR = '[data-tip-anchor="fan-crowd"]';
 const CLEAN_HUE = '#a58bff';     // the preview's chip hues, dialled with it
 const DISCORD_HUE = '#5b6680';
 const FIRST_HUE = '#ffffff';
-const DB_HUE = '#ffd166';
 
 /**
  * Best plays for the acting Spirit's hand, recomputed only when the hand does.
@@ -101,7 +100,8 @@ export function CrowdBubbleCard({ ask, color, inScale = () => true, B = CROWD_BU
   if (!ask) return null;
   let pay = '';
   if (B.payoff === 'fans' && ask.payoff.fans) pay = `+${ask.payoff.fans} fan${ask.payoff.fans === 1 ? '' : 's'}`;
-  if (B.payoff === 'both') pay = [ask.payoff.fans ? `+${ask.payoff.fans} fans` : '', ask.payoff.db ? `+${ask.payoff.db} Db` : ''].filter(Boolean).join(' · ');
+  // 🪦 `payoff: 'both'` also printed `+N Db` — gone with Db, 2026-10-02.
+  if (B.payoff === 'both' && ask.payoff.fans) pay = `+${ask.payoff.fans} fans`;
   return (
     <div className="crowd-bubble" data-crowd-bubble={ask.key} role="status" aria-live="polite"
       style={{ ...crowdBubbleBoxStyle(color, B), ...(style ?? {}) }}>
@@ -265,7 +265,7 @@ export function CrowdBubble({ asks = [], color = '#8fd8ff', thinking = false, in
 }
 
 // ── 🎨 THE STYLESHEET ────────────────────────────────────────────────────────
-// `data-coach` on a stock chip's wrapper: `fans` / `db` (melody step, the note the
+// `data-coach` on a stock chip's wrapper: `fans` (melody step, the note the
 // bubble names next) or `drive` / `sustain` (chord step glow). ⚠️ The ring is a
 // ::before on the wrapper and the halo a drop-shadow on the chip's own SVG — never
 // a filter on the wrapper, which would blur the chip's whole silhouette (the
@@ -278,7 +278,6 @@ export function crowdCss(color, B = CROWD_BUBBLE) {
     animation:crowd-coach-pulse var(--coach-ms) ease-in-out infinite}
   [data-coach] svg{filter:drop-shadow(0 0 calc(6px*var(--coach-k)) var(--coach-hue))}
   [data-coach="fans"]{--coach-hue:var(--crowd-spirit);--coach-ms:${B.hlPulseMs}ms;--coach-k:1}
-  [data-coach="db"]{--coach-hue:${DB_HUE};--coach-ms:${B.hlPulseMs}ms;--coach-k:1}
   [data-coach="drive"]{--coach-hue:#ff6644;--coach-ms:${B.glowMs}ms;--coach-k:${B.glowInt}}
   [data-coach="sustain"]{--coach-hue:#44aaff;--coach-ms:${B.glowMs}ms;--coach-k:${B.glowInt}}
   @keyframes crowd-coach-pulse{

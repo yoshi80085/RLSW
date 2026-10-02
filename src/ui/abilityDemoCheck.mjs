@@ -14,7 +14,7 @@ import {
 } from './abilityDemo.js';
 import { isIwato, CURSE_TURNS, EXORCISE_NOTES, STRINGS } from '../board/cursedShamisen.js';
 import { CAST_RANGE } from '../engine/systems/iwatoCurse.js';
-import { CURSED_SHAMISEN_DB_COST, CURSED_SHAMISEN_CD } from '../data/gameConstants.js';
+import { CURSED_SHAMISEN_CD } from '../data/gameConstants.js';
 import { axialDist } from '../board/hexGeometry.js';
 import { planStrike, BUSHIDO_STRIKE } from '../board/bushidoStrike.js';
 import { BARRAGE_LAUNCH, SONIC_DICE, SONIC_GATE } from '../board/sonicBarrageTiming.js';
@@ -23,8 +23,8 @@ import { keepForSeats } from '../engine/systems/dicePool.js';
 import { resolveSonicBarrage } from '../engine/systems/sonicBarrage.js';
 import { abilitiesFor } from '../data/loadouts.js';
 import {
-  SHUKUCHI_HOP_RINGS, SHUKUCHI_MAX_HOPS, SHUKUCHI_DB_COST, SHUKUCHI_CD, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
-  PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_DB_COST, psychoBushidoD8s,
+  SHUKUCHI_HOP_RINGS, SHUKUCHI_MAX_HOPS, SHUKUCHI_CD, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
+  PSYCHO_BUSHIDO_AP_COST, psychoBushidoD8s,
 } from '../data/gameConstants.js';
 
 let pass = 0, fail = 0;
@@ -59,7 +59,7 @@ ok(S.steps.some(s => s.over === 'slime' && s.mid[0] === S.slime[0] && s.mid[1] =
 ok(S.note && S.steps.at(-1).to.join() === S.note.join(), 'the last leap lands on the note');
 ok(ring([0, 0], 2).length === 12, 'ring 2 has 12 hexes');
 const sc = shukuchiEndCard();
-ok(sc.lines.join(' ').includes(`${SHUKUCHI_DB_COST} Db`) && sc.lines.join(' ').includes(`${SHUKUCHI_CD}-round`), 'the summary reads the real costs');
+ok(!/\bDb\b/.test(sc.lines.join(' ')) && sc.lines.join(' ').includes(`${SHUKUCHI_CD}-round`), 'the summary reads the real costs (a cooldown — no Db since 2026-10-02)');
 
 section('2 · Psycho Bushido: every bout is the engine\'s');
 const verdicts = {};
@@ -84,7 +84,7 @@ ok(bushidoScenario('nope').name === 'nope' && bushidoScenario('nope').dist === 4
 const lands = driveLandings(bushidoScenario('r4'));
 ok(lands.every(l => l.at <= SONIC_DICE.landedAt[0] * 1000 + 1) && lands.at(-1).at >= SONIC_DICE.landedAt[0] * 1000 - 1, 'his dice land on the floor dice\'s beat');
 const eb = bushidoEndCard().lines.join(' ');
-ok(eb.includes(`${PSYCHO_BUSHIDO_AP_COST} AP`) && eb.includes(`${PSYCHO_BUSHIDO_DB_COST} Db`), 'the summary reads the real costs');
+ok(eb.includes(`${PSYCHO_BUSHIDO_AP_COST} AP`) && !/\bDb\b/.test(eb), 'the summary reads the real costs (AP, no Db)');
 
 section('3 · the demo clock');
 const plan = planStrike(BUSHIDO_STRIKE, { dist:4, clashMs:BARRAGE_LAUNCH * 1000, shots:KEEP });
@@ -129,7 +129,7 @@ section('4b · the Cursed Shamisen: the script is the rule');
     ok(end === 'exorcised' ? captionAt(caps, 999).includes(`${EXORCISE_NOTES} different Iwato`) : /runs out/.test(captionAt(caps, 999)), `${end}: the ending says how`);
   }
   const card = shamisenEndCard().lines.join(' ');
-  ok(card.includes(`${CAST_RANGE} hexes`) && card.includes(`${CURSED_SHAMISEN_DB_COST} Db`) && card.includes(`${CURSED_SHAMISEN_CD}-round`), 'the summary reads the real costs');
+  ok(card.includes(`${CAST_RANGE} hexes`) && !/\bDb\b/.test(card) && card.includes(`${CURSED_SHAMISEN_CD}-round`), 'the summary reads the real costs (no Db)');
 }
 
 section('5 · where the window goes');

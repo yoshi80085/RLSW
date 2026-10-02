@@ -6,7 +6,7 @@ import { getSpelledPool, playableScale, buildScale, pitchIndex } from '../music/
 import { melodyModeFor } from '../music/melodyIdentity.js';
 import { characterId } from '../data/spiritIdentity.js';
 import { styleGain, detectSpiritStyle } from '../music/spiritStyle.js';
-import { melodyPayoutFor, ENDING_DB } from '../music/melodyPayout.js';
+import { melodyPayoutFor } from '../music/melodyPayout.js';
 
 const TRACK_MAX = 8;
 
@@ -15,7 +15,7 @@ export const WHEEL_DEFAULTS = Object.freeze({
   size: 343,             // px; the SVG scales down to its column if narrower
   rotate: 'root',        // 'root' = root at 12 o'clock · 'c' = C at top
   degrees: true,         // 1 ♭3 4 5… outside each chip
-  dbBadges: true,        // +1 / +2 / +3 Db beside the tonic / 4th / 5th
+  // 🪦 `dbBadges` (+1/+2/+3 Db beside the tonic / 4th / 5th) went with Db, 2026-10-02.
   phraseGlow: true,      // hand notes that build a fan phrase pulse
   fadeUnheld: true,      // palette notes you are not holding go dim
   ghostNextKey: false,   // dashed shape of next turn's key (off at the dial)
@@ -91,7 +91,6 @@ export function describeSlot(s) {
   if (!s) return null;
   const bits = [`${pretty(s.name)} · ${s.degree}`, s.inPal ? 'in your scale' : 'discord',
     s.held.length ? `you hold ${s.held.length}` : 'not in your hand'];
-  if (s.ending) bits.push(`end here: +${ENDING_DB[s.ending]} Db`);
   if (s.phrase === 2) bits.push('★ completes a fan phrase');
   else if (s.phrase === 1) bits.push('builds toward a fan phrase');
   return bits.join('  ·  ');

@@ -1,10 +1,71 @@
-# SEQUENCING §A handoffs 8 → 46, archived 2026-09-29 (43, 44 and 45 on 2026-09-30; 46 and 46r on 2026-10-01)
+# SEQUENCING §A handoffs 8 → 46, archived 2026-09-29 (43, 44 and 45 on 2026-09-30; 46 and 46r on 2026-10-01; 51 on 2026-10-02)
 
 > Moved **unedited** out of `src/SEQUENCING.md` §A on 2026-09-29 (43-stagefx), where they had
 > restacked since 2026-09-04 despite `CLAUDE.md`'s one-handoff rule. Newest first, exactly as
 > they stood. Each has a one-line row in `src/SEQUENCING.md` §C; search here by its id
 > (e.g. `## 42-phone`). ⚠️ Relative links inside were written from `src/` — read `../` as
 > the repo root.
+
+---
+
+## 51-iwatoport. The Iwato curse goes into the game — and into the loadout pop-out — 2026-10-02
+
+Alex: *"Ok, if there are no other problems, lets wire this in as well as the ability
+selection 'preview' in the menu."* Asked how tuning should work, he ruled: *"the
+sacrifice … is not that it comes directly from his stack but rather potentially a
+note that could have been used for his Drive or Sustain. But yes, up to 3 a turn -
+after the ability was selected, so I guess this means from the next turn."*
+
+- 📜 **The rules, as code** — `engine/systems/iwatoCurse.js` (pure, over sheets):
+  🪕 **take up** (free, off cooldown; `ns.shamisen = { strings, ready:false, root }`)
+  → `startTurnNotes` opens the strings on his next turn → 🎼 **tune**: the chord
+  step's third destination (`clickNoteStock` dest `'strings'`), up to 3 a turn from
+  the hand, out of the shared 3-commit budget (Tab cycles Drive → Sustain → Strings,
+  `music/noteKeys.js`) → ⚡ **cast** within 3 hexes: the Action Token
+  (`beatsSpent(0, true)`), `firePatch` (5 Db, 2-round CD), strings spent, instrument
+  put away → 🌑 the rival's `iwatoCurse` (`key`, `by`, `roninRoot`, `strings`,
+  `turnsLeft:2`) counted down in `endTurn` at the end of THEIR turns → 🔥 the
+  exorcism lifts it inside `commitMelodyEconomy` (first cursed turn, 3 different
+  Iwato notes; the line is scored on Iwato, so it pays) → `curseEnded` records how
+  it ended so every client draws the right ending.
+- ⭐ **`livePalette` is now THE reading of a Spirit's clean notes** — the commit,
+  `playFinder`, `crowdCoach`, `actionScore` and the client's live check all read it,
+  so a cursed hand reads dead everywhere at once. The palette is spelled through
+  the RIVAL's pool (their hand is), or a real Iwato note could read as discord by name.
+- 📌 **Port calls, not Alex's** (flagged in §2.3.00): **the shamisen keeps the key
+  it was taken up in** — his root follows his melody every turn, so strings tuned on
+  one turn could stop being Iwato by the next; range 3 with no line of sight; no
+  string snaps on a hit; one curse per rival.
+- 🎬 **The picture** — `board/cursedShamisenArena.js` (`createShamisenStage`, mounted
+  by `arenaVisuals`, fed by `arenaFrame` ← `curseScene`, read off the sheets alone):
+  one visuals per instrument, handed to its curse at the cast (the visuals gained
+  `bindRival`). The cast's hush dims the renderer's exposure. The pocket Scale Wheel
+  of a cursed Spirit is `CursedWheel` (now passes every wheel prop through;
+  `canExorcise`). Sound: `shamisenCurseSfx` — plucks per string in its octave, the
+  cast's score, burn-out, exorcise, expire. 🎬 The loadout's 🎸 row plays the whole
+  story in the pop-out (`abilityDemo.js` `buildShamisen`; exorcised / expired on
+  alternate loops).
+- 🔎 **Found in Chromium on the real arena** (and fixed): the 呪 charm vanished — a
+  standee's print LEANS back, so a charm hung on the carrier sank inside the sheet
+  seen from behind; it now hangs on the print and hops to the face the camera sees.
+  The wheel's overlay sat under the wheel in the match (`z-index`). And the demo's
+  rival stood edge-on.
+- 🪦 **Deleted:** the glow-and-debt Shamisen — `resolveCursedShamisen`,
+  `payShamisenDebt`, `tickCursedShamisen`, `checkShamisenCursePenalty`,
+  `playShamisenStrum`, the rail's debt button, the 2D glow, `shamisen-glow`,
+  `tickShamisen`, `resetAllCooldowns`, `CURSED_SHAMISEN_DURATION`,
+  `CURSED_SHAMISEN_PAYOFF_COST`, `ns.shamisenCurse`. `test:shamisen` was rewritten for
+  the curse and asserts all of it stays gone.
+- Evidence: `test:shamisen` **91** · `test:shamisenjourney` **27** (new; the real
+  Game, clicks only — take up, strings next turn, Iwato-only out of the budget, the
+  cast, a cursed melody earning no Db, the countdown, expiry; mutation-tested) ·
+  `test:cursedshamisen` **132 + 24** (the arena stage; mutation-tested ×2) ·
+  `test:abilitydemo` **138** · `test:notekeys` **211** · `test:attacktiles` **29** (the reach list pins the curse now) · `check:bundle` 0 warnings ·
+  eslint: no new errors · every other red suite fails at the same first assertion as before the session · Chromium: take-up, strings, the reach, the cast, the charm,
+  the cursed wheel, the pop-out. `test:arch` = the same 7 unlisted laser/smoke modules.
+- ⏳ **Next:** play it in a real match; rule range / hit-snap / the kept key; teach
+  the bots to take it up. ⛔ Not ported: the real crowd falling out of time, the
+  spotlights' stutter, the slap's shake.
 
 ---
 

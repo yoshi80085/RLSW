@@ -826,7 +826,8 @@ const config = {
   assert.deepEqual(ns.driveStack, ns.sustainStack, "both stacks start on the same seed note");
   assert.equal(ns.stackCommitsThisTurn, 0, "stack commits start at 0");
   assert.equal(ns.scaleMode, "lydian", "unsettled fixtures use the beginner Lydian fallback");
-  assert.equal(ns.pivotPending, false, "nothing pends a mode choice");
+  assert.equal(ns.pivotPending, undefined, "🪦 there is no Major/Minor pivot field at all (cut 2026-10-02)");
+  assert.equal(ns.dbPoints, undefined, "🪦 …and no Db on a fresh sheet");
   assert.equal(ns.modeReason, 'spirit', "the palette belongs to the Spirit, not the stack");
 
   // building note sheets must NOT consume the main rng stream (it forks) → cursor 0,
@@ -1764,14 +1765,11 @@ const config = {
   // ── botPickSkillTarget ──
   // ⛔ 🎀 GLAMARCHY CAN TARGET NOTHING AT ALL, AND THIS ASSERTION IS THE ALARM.
   // She owns no exclusive route, `BOT_SKILL_PRIORITY_BASE` is empty since the
-  // Theory branch was deleted, and `PROGRESSION_REWRITE_DESIGN.md` §5 — the
-  // per-ability upgrade streams meant to replace 52 Db of sink — IS NOT BUILT.
-  // Every Db she earns banks forever.
-  //
-  // 🎯 Pinned as a FINDING, not as an intended rule. When §5 lands this assertion
-  // is EXPECTED TO FAIL, and the fix is to assert what she can buy.
+  // Theory branch was deleted, and `PROGRESSION_REWRITE_DESIGN.md` §5's upgrade
+  // streams were CANCELLED with Db (2026-10-02). It is a roster question now —
+  // Glamarchy is being cut.
   assert.equal(botMod.botPickSkillTarget("Glamarchy", [], "maestro", SKILL_BY_ID), null,
-    "⛔ Glamarchy has nothing to buy — §5's upgrade streams are not built yet");
+    "⛔ Glamarchy has nothing to target — and nobody buys anything any more");
   // ⚠️ THE HEAD MOVED ON 2026-09-04 AND THE NUMBER IS THE ASSERTION. It was
   // `psycho_bushido` until 🌀 Shukuchi was added ahead of it in
   // `BOT_SPIRIT_SKILLS`. That order is not cosmetic: the bot buys ~2.7 skills a
@@ -2003,9 +2001,6 @@ const config = {
     chordStack: ['C4'],  // deprecated compat
     finalsTrail: [],
     cadenceCooldowns: {},
-    pivotPending: false,
-    upgradesPending: 0,
-    targetSkillId: null,
     unlockedSkills: [],
     modCards: [],
   };

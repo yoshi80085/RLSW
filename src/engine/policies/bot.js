@@ -87,9 +87,9 @@ export const BOT_PERSONA_KEYS = ['maestro','moshlord','diva','saboteur'];
 // padded with somebody else's exclusives, because a bot that targets a skill it
 // can never be sold spins on an ineligible target every turn.
 //
-// 📌 `botPickSkillTarget` returning null is the correct, already-handled answer:
-// `evaluate.js`'s `dbHorizon` falls back to `DB_UPGRADE_THRESHOLD` when nothing
-// is targeted, so a Spirit with no ladder banks Db and is scored honestly for it.
+// 📌 `botPickSkillTarget` returning null is the correct, already-handled answer.
+// 🪦 And since 2026-10-02 it is the ONLY answer: Db was cut and §5's upgrade
+// streams were cancelled with it, so there is nothing to target at all.
 export const BOT_SKILL_PRIORITY_BASE = [];
 
 // Exclusive-route passives, slotted in up front for the spirit that owns them.

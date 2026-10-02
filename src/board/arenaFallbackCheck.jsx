@@ -61,7 +61,7 @@ try {
   // not resurface. No WebGL needed for this layout ownership contract.
   const surface = (turnNumber, tutorial = false) => <MatchSurface immersive
     spirit={{ id: 'ronin', name: 'Ronin', color: '#7fe0ff' }} turnNumber={turnNumber} step="chord" canAct tutorial={tutorial}
-    hud={{ vibe: 4, maxVibe: 5, drive: 6, sustain: 3, db: 8, fans: 5, noteCount: 9 }}>
+    hud={{ vibe: 4, maxVibe: 5, drive: 6, sustain: 3, fans: 5, noteCount: 9 }}>
     <HudRegion name="turn"><input defaultValue="draft" /></HudRegion>
     <HudRegion name="spirit">Details</HudRegion>
     <HudRegion name="rivals">Rivals</HudRegion>
@@ -69,8 +69,10 @@ try {
   await act(async () => root.render(surface(1)));
   const draft = document.querySelector('input');
   assert.equal(document.querySelector('[data-match-step]').dataset.matchStep, 'chord', 'surface exposes its phase to the HUD skin');
-  assert.match(document.querySelector('.match-player-pocket').textContent, /Ronin.*VIBE 4\/5.*DRIVE6.*SUSTAIN3.*Db8.*FANS5/s,
+  assert.match(document.querySelector('.match-player-pocket').textContent, /Ronin.*VIBE 4\/5.*DRIVE6.*SUSTAIN3.*FANS5/s,
     'compact player pocket reads authoritative live values');
+  assert.doesNotMatch(document.querySelector('.match-player-pocket').textContent, /\bDb\b/,
+    '🪦 the pocket shows no Db — it was cut 2026-10-02');
   assert.match(document.querySelector('.match-phase-rail [data-state="now"]').textContent, /BUILD CHORD/i,
     'phase rail marks the live step');
   // 🪦 THIS USED TO READ '.match-turn-summary' — the NOW window, retired

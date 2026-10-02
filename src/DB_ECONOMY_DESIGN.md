@@ -1,5 +1,12 @@
 # 💰 Db ECONOMY — what the money is for
 
+> 🪦 **SUPERSEDED 2026-10-02 — Db IS CUT FROM THE GAME.** Alex: *"Lets cut Db
+> entirely - no more shops, no more Db, the cooldowns and 'sacrifices' are the
+> gate, not another economy over what is already doing quite a bit."* Abilities are
+> drafted two per seat, ready from turn one; a melody pays fans and the red/blue
+> carrot only; the ending ladder is dormant (`ENDING_WEIGHT`). Read this doc as
+> history. Current truth: `STATE_OF_PLAY.md` §4.
+
 > **Decisions taken with Alex, 2026-09-09 → 2026-09-10.** This doc is the
 > economy statement the melody seats hang off. §1–§3 are **DECIDED**. §4 is a
 > code audit — every claim read out of source and cited to a file. §5 is a

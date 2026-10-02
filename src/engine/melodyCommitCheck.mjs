@@ -16,7 +16,8 @@
 //      cadence fans. This is the kind of rule that has no symptom until someone
 //      wonders why a riff paid 3 last week and 2 today.
 //   3. THE SEARCHER CAN NOW SEE LONG MELODIES. §6b.1's whole point: a longer
-//      track must be visibly worth more than a short one, in Db and in AP. This
+//      track must be visibly worth more than a short one, in AP (🪦 and, until
+//      Db was cut on 2026-10-02, in Db). This
 //      is the property whose ABSENCE was biasing the bot, so it is asserted
 //      directly rather than inferred from a win rate.
 //   4. THE REMAINING GAP STAYS DECLARED. `CLIENT_OWNED` must keep announcing
@@ -42,10 +43,9 @@ import {
   commitMelodyEconomy, CLIENT_OWNED,
   MIC_VOICE_ROLL_DIE, MIC_VOICE_ROLL_PASS, SPEED_CAP,
 } from "./systems/melodyCommit.js";
-import { advanceDB } from "../board/boardHelpers.js";
 import { CORNERS } from "../data/corners.js";
 import {
-  DB_UPGRADE_THRESHOLD, FAME_PER_TURN_CAP,
+  FAME_PER_TURN_CAP,
 } from "../data/gameConstants.js";
 
 let checks = 0;
@@ -79,10 +79,10 @@ const composed = (track, extra = {}, id = RONIN, st = baseState()) => withNs(st,
   melodyLine: track, rootNote: 'C', scaleMode: extra.scaleMode ?? 'major',
   paletteMode: extra.scaleMode ?? 'major',
   unlockedSkills: [], discordUnlocks: [], driveStack: [], sustainStack: [],
-  dbPoints: 0, totalDB: 0, excitement: 0, loyalty: 0, recentP: [], lowPerfStreak: 0,
+  excitement: 0, loyalty: 0, recentP: [], lowPerfStreak: 0,
   finalsTrail: [], cadenceCooldowns: {}, bankedNote: null, tempDrive: 0, tempSustain: 0,
   casuals: 0, diehards: 2, centerStreak: 0, fanLag: 0, mojoDrain: 0,
-  targetSkillId: null, upgradesPending: 0, ...extra,
+  ...extra,
 });
 
 const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
@@ -96,7 +96,7 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   const a = run(st), b = run(st);
 
   deep(JSON.parse(JSON.stringify(st)), before, 'the kernel must not mutate the state it is handed');
-  eq(a.report.earned, b.report.earned, 'two calls on one state agree on Db');
+  eq(a.hexes, b.hexes, 'two calls on one state agree on AP');
   eq(a.report.perfScore, b.report.perfScore, 'two calls on one state agree on P');
   deep(a.patch, b.patch, 'two calls on one state produce an identical patch');
   ok(!Object.is(a.patch, b.patch), 'each call returns a fresh patch, not a shared one');
@@ -150,57 +150,47 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 {
   const short = run(composed(['C', 'D']));
   const long  = run(composed(['C', 'D', 'E', 'F', 'G']));
-  ok(long.report.earned >= short.report.earned, 'a longer clean track earns at least as much Db');
-  ok(long.hexes > short.hexes, '…and strictly more AP');
-  ok(long.report.earned + long.hexes > short.report.earned + short.hexes,
-     'the two halves of the melody’s value point the same way');
+  ok(long.hexes > short.hexes, 'a longer clean track buys strictly more AP');
+  ok(long.report.perfFansGained >= short.report.perfFansGained, '…and wins at least as many fans');
 
-  // And the Db is REAL — it reaches the sheet, not just the report.
-  ok(long.patch.dbPoints > 0 || long.patch.totalDB > 0, 'earned Db lands on the sheet');
-  eq(long.patch.totalDB, long.report.earnedTotal, 'totalDB accumulates the full payout');
+  // 🪦 The commit writes NO Db — there is none (cut 2026-10-02).
+  eq(long.patch.dbPoints, undefined, 'no Db lands on the sheet');
+  eq(long.patch.totalDB, undefined, '…and no running Db total either');
   eq(long.patch.hasConfirmed, true, 'the mechanical half still fires');
   deep(long.patch.melodyLine, [], 'the track is cleared on confirm');
   deep(long.patch.committedMelody, ['C', 'D', 'E', 'F', 'G'], '…and stashed for the riff-off');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5. Layer 2/3 — clean notes, clean streaks, and the final resolution.
+// 5. THE FINAL NOTE — the ending is classified, and only the carrot pays.
+//    🪦 Clean notes, clean streaks and the tonic/4th/5th ending paid Db until
+//    2026-10-02. Alex's call: the ending pays NOTHING for now (`ENDING_WEIGHT`
+//    in melodyPayout.js is dormant). What still pays is the red/blue carrot.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const threeClean = run(composed(['C', 'D', 'E']));
-  eq(threeClean.report.baseScore.points, 2,
-     'three clean notes pay 1.5 Db plus the 0.5 Db clean-streak award');
-
-  const track = ['C', 'D', 'E', 'G'];        // ends on the 5th
-  const r = run(composed(track));
-  eq(r.report.baseScore.points, 5.5, 'four clean notes (2 Db) plus 3-note streak (0.5 Db) plus fifth (3 Db)');
-  eq(r.report.earned, 5.5, 'the three-layer payout has no hidden harmonic-lock bonus');
-  eq(r.report.dbOverflow, 0, '⚠️ the discarded boost NO LONGER feeds Db (13% of income, deleted)');
-  eq(r.report.earnedTotal, r.report.earned, 'with the Edge and P-topup gone, the pot is just `earned`');
-
-  // A built stack no longer changes Db. Only its root can create the carrot.
-  const locked = run(composed(track, { driveStack: ['C', 'E', 'G'] }));
-  eq(locked.report.lock.bonus, 0, 'harmonic lock is retired');
-  eq(locked.report.earned, r.report.earned, 'the fifth payout is independent of the stack');
+  const r = run(composed(['C', 'D', 'E', 'G']));        // ends on the 5th
+  eq(r.report.endingChoice, 'fifth', 'the line still RESOLVES on the fifth — the ending is classified');
+  eq(r.report.earned, undefined, '🪦 …and pays no Db: there is no `earned` on the report');
+  eq(r.report.baseScore, undefined, '🪦 …and no Db breakdown');
+  eq(r.report.colorDrive + r.report.colorSustain, 0, 'with no stack root under it, the fifth pays nothing at all');
 
   const tonic = run(composed(['D', 'E', 'F', 'C'], { driveStack: ['C', 'E', 'G'] }));
-  eq(tonic.report.baseScore.endingKind, 'tonic', 'the line can resolve to the palette tonic');
+  eq(tonic.report.endingChoice, 'tonic', 'the line can resolve to the palette tonic');
   eq(tonic.report.colorDrive, 1, 'ending on the Drive stack root grants a red carrot');
   eq(tonic.patch.tempDrive, 1, 'the carrot is a temporary Drive point');
 
   const lydianFourth = run(composed(['C', 'D', 'E', 'F#'], { scaleMode: 'lydian' }));
-  eq(lydianFourth.report.baseScore.endingKind, 'fourth', 'a mode’s fourth degree resolves even when Lydian raises it');
-  eq(lydianFourth.report.baseScore.endingBonus, 2, 'the clean Lydian fourth receives the harmonic balance bonus');
+  eq(lydianFourth.report.endingChoice, 'fourth', 'a mode’s fourth degree resolves even when Lydian raises it');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 6. DISCORD IS INERT — movement survives; Db and endings do not.
+// 6. DISCORD IS INERT — movement survives; fans and endings do not.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const one = run(composed(['C', 'D', 'C#', 'G']));
   eq(one.report.unpardonedDiscord, 1, 'one out-of-scale note');
   eq(one.hexes, 4, 'the discord note still buys movement');
-  eq(one.report.cleanNoteCount, 3, 'but it is absent from the Db length count');
+  eq(one.report.cleanNoteCount, 3, 'but it is absent from the clean count');
 
   const three = run(composed(['C', 'C#', 'D#', 'F#', 'G']));
   eq(three.report.unpardonedDiscord, 3, 'three out-of-scale notes');
@@ -211,7 +201,7 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
 
   const dirtyEnd = run(composed(['C', 'D', 'E', 'F#']));
   eq(dirtyEnd.report.endingClean, false, 'a discord final is identified');
-  eq(dirtyEnd.report.baseScore.endingBonus, 0, 'and cannot resolve an ending');
+  eq(dirtyEnd.report.endingChoice, 'normal', 'and cannot resolve an ending');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -583,7 +573,7 @@ if (false) {
   eq(after.hasConfirmed, true, 'the mechanical half fired');
   eq(res.state.turn.moveStepsLeft, 4, '…granting AP equal to the track');
   deep(after.melodyLine, [], 'the track cleared');
-  ok(after.totalDB > 0, '⚠️ AND THE ECONOMIC HALF FIRED — this is what was missing');
+  ok(after.committedMelody?.length === 4 && typeof after.perfScore === 'number', '⚠️ AND THE ECONOMIC HALF FIRED — this is what was missing (🪦 it was proven by `totalDB` until Db was cut)');
   ok(typeof after.perfScore === 'number', 'P reached the sheet');
   eq(after.rootNote, 'G', 'the next turn’s root is the respelled last note');
   ok(res.report, 'the transition passes the report through for a searcher to read');
@@ -614,36 +604,18 @@ if (false) {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 16. §3.2's TENSION IS VISIBLE — the Db bar advances toward the TARGET's cost,
-//     not a flat threshold, and an unlock actually lands.
+// 16. 🪦 THERE IS NO Db BAR (2026-10-02). This section pinned the bar advancing
+//     toward a target skill and the award landing. The draft now hands every
+//     seat two abilities and Db is cut — so a commit, whatever a stale sheet
+//     says, awards nothing and touches neither the kit nor any Db field.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const skillById = { theory_major: { id: 'theory_major', label: 'Major Theory', dbCost: 3 } };
-  const st = composed(['C', 'D', 'E', 'G'], { targetSkillId: 'theory_major', dbPoints: 2 });
-
-  const noView = run(st);
-  eq(noView.report.targetCost, DB_UPGRADE_THRESHOLD,
-     'without `skillById` the real cost is UNKNOWN, so the bar falls back to the default');
-
-  const withView = run(st, RONIN, { view: { skillById } });
-  eq(withView.report.targetCost, 3, 'with it, the bar targets the skill’s own dbCost');
-  const expect = advanceDB(2, withView.report.earnedTotal, 3);
-  eq(withView.report.upgradeTriggered, expect.upgradeTriggered, 'the bar comes from advanceDB, not a local copy');
-  eq(withView.report.newDBPoints, Math.max(0, expect.newDBPoints), '…including the remainder');
-
-  if (withView.report.upgradeTriggered) {
-    eq(withView.report.awardedSkillId, 'theory_major', 'a triggered upgrade awards the TARGET skill');
-    ok(withView.patch.unlockedSkills.includes('theory_major'), '⚠️ …and it reaches unlockedSkills');
-    eq(withView.patch.targetSkillId, null, 'the target clears so the next commit picks a new one');
-    eq(withView.patch.upgradesPending, 1, 'and the overlay is queued');
-  }
-
-  // No target, but the bar filled anyway: the pending upgrade is held, not lost.
-  const noTarget = run(composed(['C', 'D', 'E', 'F', 'G'], { targetSkillId: null, dbPoints: 3 }));
-  if (noTarget.report.upgradeTriggered) {
-    eq(noTarget.report.awardedSkillId, null, 'nothing is awarded without a target');
-    eq(noTarget.patch.upgradesPending, 1, '…but the upgrade is held pending');
-  }
+  const stale = composed(['C', 'D', 'E', 'G'], { targetSkillId: 'shadow_illusion', dbPoints: 99, upgradesPending: 1 });
+  const r = run(stale, RONIN, { view: { skillById: { shadow_illusion: { id: 'shadow_illusion', dbCost: 1 } } } });
+  eq(r.patch.unlockedSkills, undefined, 'a commit never changes the kit, even off a stale save that still aims at a skill');
+  eq(r.report.awardedSkillId, undefined, '…awards nothing');
+  eq(r.patch.dbPoints, undefined, '…and writes no Db');
+  eq(r.patch.upgradesPending, undefined, '…and queues no upgrade overlay');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

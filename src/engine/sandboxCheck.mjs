@@ -6,7 +6,7 @@
 //
 //   §1  🎮 PLAY AS   — SANDBOX_SEAT_TAKEN rotates the ring, never reorders it,
 //                     and is NOT a turn ending (no count, no round, no ticks).
-//   §2  🆓 FREE PLAY — SANDBOX_REFILLED tops up AP, token, cooldowns, Db and the
+//   §2  🆓 FREE PLAY — SANDBOX_REFILLED tops up AP, token, cooldowns and the
 //                     full kit; only ever UP; a no-op when nothing is short.
 //   §3  ⭐ the refill makes a REAL gate pass — `canFire` refuses, then allows.
 //   §4  📼 replay — a sandbox action log replays to the identical state, which
@@ -29,7 +29,7 @@ import { sandboxSeatTaken, sandboxRefilled, beatsSpent, turnEnded } from "./acti
 import {
   SANDBOX_AP, applySandboxSeatTaken, applySandboxRefilled, sandboxNeedsRefill,
 } from "./systems/sandbox.js";
-import { canFire, firePatch, ABILITY_CD, dbCostOf } from "./systems/cooldowns.js";
+import { canFire, firePatch, ABILITY_CD } from "./systems/cooldowns.js";
 import { abilitiesFor } from "../data/loadouts.js";
 import { CORNERS } from "../data/corners.js";
 
@@ -83,7 +83,7 @@ const spent = () => {
   const ns = s.noteStates[id];
   const kit = abilitiesFor(s.spirits.find(x => x.id === id)).map(k => k.id);
   s = { ...s, noteStates: { ...s.noteStates, [id]: {
-    ...ns, dbPoints: 0, unlockedSkills: kit.slice(0, 1),
+    ...ns, unlockedSkills: kit.slice(0, 1),
     abilityCd: Object.fromEntries(kit.map(k => [k, 2])),
   } } };
   return { s, id, kit };
@@ -97,17 +97,15 @@ const spent = () => {
   eq(r.turn.actionTokenUsed, false, "the action token is handed back");
   ok(kit.every(k => ns.unlockedSkills.includes(k)), `the FULL kit is unlocked (${kit.length} abilities, not the 2-slot loadout)`);
   ok(Object.values(ns.abilityCd).every(v => v === 0), "every cooldown is cleared");
-  const dearest = Math.max(...kit.filter(k => ABILITY_CD[k]).map(dbCostOf));
-  ok(ns.dbPoints >= dearest, `Db covers the dearest ability in the kit (${dearest})`);
+  eq(ns.dbPoints, undefined, "🪦 and it writes no Db — there is none to top up (cut 2026-10-02)");
   ok(!sandboxNeedsRefill(r, id), "once full, it needs nothing");
   ok(applySandboxRefilled(r, { spiritId: id }) === r, "and a second refill is a no-op (identity) — an idle board logs nothing");
 
   // only ever UP
   const rich = { ...r, turn: { ...r.turn, moveStepsLeft: 15 },
-    noteStates: { ...r.noteStates, [id]: { ...r.noteStates[id], dbPoints: 40 } } };
+    noteStates: r.noteStates };
   const rich2 = applySandboxRefilled({ ...rich, turn: { ...rich.turn, actionTokenUsed: true } }, { spiritId: id });
   eq(rich2.turn.moveStepsLeft, 15, "a refill never LOWERS AP a lever raised");
-  eq(rich2.noteStates[id].dbPoints, 40, "…nor Db");
   const other = r.acting === RONIN ? ZERO : RONIN;
   const r2 = applyAction(s, sandboxRefilled(id));
   eq(r2.noteStates[other], s.noteStates[other], "only the named Spirit's sheet is touched");
@@ -118,7 +116,7 @@ console.log("\n§3 ⭐ refill, not bypass — the real gate passes");
 {
   const { s, id, kit } = spent();
   const skill = kit.find(k => ABILITY_CD[k]);
-  ok(!canFire(s.noteStates[id], skill), `before: canFire refuses ${skill} (locked / cooling / broke)`);
+  ok(!canFire(s.noteStates[id], skill), `before: canFire refuses ${skill} (locked / cooling)`);
   let r = applyAction(s, sandboxRefilled(id));
   ok(canFire(r.noteStates[id], skill), `after: canFire allows ${skill}`);
   // pay for it the way the client does, then refill again

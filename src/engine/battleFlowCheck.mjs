@@ -21,7 +21,7 @@ import { applyAction } from "./reduce.js";
 import { makeInitialState } from "./state.js";
 import {
   battleConsequences, grantFame, vibeDamage, knockback, chordFray,
-  runBattleFlow, fameToWin, SUNBEAM_DB_COST, awardThrashFame,
+  runBattleFlow, fameToWin, awardThrashFame,
 } from "./systems/battleFlow.js";
 import { FAME_PER_TURN_CAP, RIFF_FP_TURN_CAP, fpPerLife, SUNBEAM_CD } from "../data/gameConstants.js";
 import { crowdMultiplier } from "../board/boardHelpers.js";
@@ -148,7 +148,7 @@ const battle = (over = {}) => ({
   const armed = (() => {
     let s = freshState(31337);
     s = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'intergalactic_0',
-      patch: { unlockedSkills: ['sunbeam'], dbPoints: 8 } });
+      patch: { unlockedSkills: ['sunbeam'] } });
     return s;
   })();
 
@@ -174,24 +174,24 @@ const battle = (over = {}) => ({
 
   const blind = withBeam.state.noteStates.cosmic_ronin.blindTurns ?? 0;
   ok(blind >= 1 && blind <= 2, 'blind lands within [1,2] — the sun always sets');
-  eq(withBeam.state.noteStates.intergalactic_0.dbPoints, 8 - SUNBEAM_DB_COST,
-     'Sunbeam charges its per-use Db (handoff §3.2 — unlock is not the whole cost)');
+  eq(withBeam.state.noteStates.intergalactic_0.dbPoints, undefined,
+     '🪦 Sunbeam charges no Db — there is none (cut 2026-10-02)');
 
   // ── 🕒 AND IT RECHARGES (2026-08-22) ───────────────────────────────────────
   // ⚠️ SUNBEAM IS THE ONLY ABILITY THAT FIRES WITHOUT THE PLAYER CHOOSING IT —
-  // it rides any connecting attack whenever it can be afforded — so the cooldown
+  // it rides any connecting attack whenever it is ready — so the cooldown
   // is the whole of its restraint, and nothing else in this file would notice if
   // it silently stopped applying.
   eq(withBeam.state.noteStates.intergalactic_0.abilityCd?.sunbeam, SUNBEAM_CD,
      '☀️ a fired Sunbeam goes on cooldown');
 
   // Same battle, same seed, but the beam is already recharging: it must not
-  // fire, must not charge Db, and — the part that actually breaks replays — must
+  // fire, and — the part that actually breaks replays — must
   // not draw off the seeded stream at all.
   const recharging = (() => {
     let s = freshState(31337);
     s = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'intergalactic_0',
-      patch: { unlockedSkills: ['sunbeam'], dbPoints: 8, abilityCd: { sunbeam: 1 } } });
+      patch: { unlockedSkills: ['sunbeam'], abilityCd: { sunbeam: 1 } } });
     return s;
   })();
   const cooling = drive(
@@ -203,8 +203,6 @@ const battle = (over = {}) => ({
   );
   eq(cooling.trace.filter(t => t === 'action:RANDOM_BATCH_DRAWN').length, 0,
      '☀️ a recharging Sunbeam draws NOTHING — an rng draw behind a closed gate is a desync');
-  eq(cooling.state.noteStates.intergalactic_0.dbPoints, 8,
-     'and charges no Db');
   eq(cooling.state.noteStates.cosmic_ronin.blindTurns ?? 0, 0,
      'and nobody goes blind');
 }

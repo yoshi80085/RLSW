@@ -15,7 +15,7 @@
 //      `moveStepsLeft` pool as walking, the Swing and Bushido. That single line
 //      is the entire balance of the ability (§2.5.0) — if it ever stops being
 //      charged, Shukuchi becomes the free 6-hex teleport the first sketch was.
-//   2. THE FIRST HOP PAYS, THE REST ARE FREE. One activation, one Db, one clock.
+//   2. THE FIRST HOP STARTS THE CLOCK, THE REST ARE FREE. One activation, one clock.
 //      ⚠️ And the clock must NOT then refuse hops two and three, which is the
 //      bug the sheet-side budget exists to prevent.
 //   3. NOTHING STOPS HIM IN THE AIR. Only the landing hex is consulted. A test
@@ -36,10 +36,10 @@ import {
   SHUKUCHI_SKILL, shukuchiLandings, canHop, hopIsActivation,
   hopBudgetPatch, shukuchiHopsLeft, applyShukuchiHop,
 } from "./systems/shukuchi.js";
-import { ABILITY_CD, ABILITY_DB_COST, cooldownLeft } from "./systems/cooldowns.js";
+import { ABILITY_CD, cooldownLeft } from "./systems/cooldowns.js";
 import { tokenAt } from "./systems/board.js";
 import {
-  SHUKUCHI_CD, SHUKUCHI_DB_COST, SHUKUCHI_MAX_HOPS,
+  SHUKUCHI_CD, SHUKUCHI_MAX_HOPS,
   SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
 } from "../data/gameConstants.js";
 import { SKILL_BY_ID } from "../data/skillTree.js";
@@ -79,9 +79,9 @@ const withNs = (st, id, patch) => ({
 const withSpirit = (st, id, patch) => ({
   ...st, spirits: st.spirits.map(s => s.id === id ? { ...s, ...patch } : s),
 });
-/** A confirmed turn with Shukuchi bought and Db in the bank. */
+/** A confirmed turn with Shukuchi in the kit. */
 const armed = (ap = 5, extra = {}) => withNs(base(ap), RONIN, {
-  hasConfirmed: true, unlockedSkills: [SHUKUCHI_SKILL], dbPoints: 10, ...extra,
+  hasConfirmed: true, unlockedSkills: [SHUKUCHI_SKILL], ...extra,
 });
 const at = (n) => HEX_BY_NUM[n];
 const rng = () => makeRng(4242);
@@ -96,7 +96,6 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(SHUKUCHI_HOP_RINGS, 2, '🌀 a hop is exactly 2 hexes');
   eq(SHUKUCHI_MAX_HOPS, 3, '🌀 three of them per activation');
   eq(SHUKUCHI_CD, 2, '🌀 2-round cooldown');
-  eq(SHUKUCHI_DB_COST, 5, '🌀 5 Db per activation');
 
   // ⭐ THE LINE THE WHOLE ABILITY BALANCES ON (§2.5.0). The first sketch made
   // Shukuchi the entire movement turn — six hexes for the turn, priced against
@@ -108,11 +107,10 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
     '⚠️ a free hop is the 6-hex teleport §2.5.0 rejected — the AP bill IS the ability’s price');
 
   eq(ABILITY_CD[SHUKUCHI_SKILL], SHUKUCHI_CD, '🕒 it is in the cooldown table');
-  eq(ABILITY_DB_COST[SHUKUCHI_SKILL], SHUKUCHI_DB_COST, '💿 …and in the per-use Db table');
 
   const row = SKILL_BY_ID[SHUKUCHI_SKILL];
   ok(!!row, '🌀 the skill row exists — an ability nobody can buy is not an ability');
-  eq(row.dbCost, 6, '🌀 6 Db to unlock (§2.5)');
+  eq(row.dbCost, undefined, '🪦 no unlock price — the draft hands it over, ready (Db cut 2026-10-02)');
   ok(/縮地/.test(row.label), '🌀 …and the label carries the kanji the ability is named for');
   ok(/Action Point/i.test(row.desc),
     '⚠️ the card SELLS THE AP BILL. "Six hexes" without "three of your steps" is the trap a new player falls into');
@@ -215,12 +213,11 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   ok(hopIsActivation(nsOf(st, RONIN)), '🌀 …so the next hop is the activation');
   ok(canHop(nsOf(st, RONIN)), '🌀 …and it is available');
 
-  const db0 = nsOf(st, RONIN).dbPoints;
   const r1 = hop(st, shukuchiLandings(st, RONIN)[0]);
   ok(r1.ok, '🌀 hop 1 runs');
   st = r1.state;
-  eq(nsOf(st, RONIN).dbPoints, db0 - SHUKUCHI_DB_COST, '💿 hop 1 pays the Db');
-  eq(cooldownLeft(nsOf(st, RONIN), SHUKUCHI_SKILL), SHUKUCHI_CD, '🕒 …and starts the clock');
+  eq(nsOf(st, RONIN).dbPoints, undefined, '🪦 hop 1 charges no Db — there is none');
+  eq(cooldownLeft(nsOf(st, RONIN), SHUKUCHI_SKILL), SHUKUCHI_CD, '🕒 hop 1 starts the clock');
   eq(shukuchiHopsLeft(nsOf(st, RONIN)), SHUKUCHI_MAX_HOPS - 1, '🌀 …leaving two hops in the turn');
 
   // ⚠️ THE ASSERTION THIS FILE EXISTS FOR. `canFire` is false now — the clock is
@@ -230,12 +227,10 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
     '⭐ hop 2 is legal WHILE THE COOLDOWN RUNS — the budget answers, not the clock');
   ok(!hopIsActivation(nsOf(st, RONIN)), '🌀 …and it is not a second activation');
 
-  const db1 = nsOf(st, RONIN).dbPoints;
   const r2 = hop(st, shukuchiLandings(st, RONIN)[0]);
   ok(r2.ok, '🌀 hop 2 runs');
   st = r2.state;
-  eq(nsOf(st, RONIN).dbPoints, db1, '💿 hop 2 is FREE of Db — one activation, one charge (§2.5.0a)');
-  eq(cooldownLeft(nsOf(st, RONIN), SHUKUCHI_SKILL), SHUKUCHI_CD, '🕒 …and does not re-start the clock');
+  eq(cooldownLeft(nsOf(st, RONIN), SHUKUCHI_SKILL), SHUKUCHI_CD, '🕒 hop 2 does not re-start the clock — one activation (§2.5.0a)');
   eq(shukuchiHopsLeft(nsOf(st, RONIN)), SHUKUCHI_MAX_HOPS - 2, '🌀 …leaving one');
 
   const r3 = hop(st, shukuchiLandings(st, RONIN)[0]);
@@ -253,16 +248,16 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 6. THE GATES — unlocked, affordable, off cooldown, and enough AP.
+// 6. THE GATES — unlocked, off cooldown, and enough AP. (🪦 'affordable' went with Db.)
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const locked = withNs(base(5), RONIN, { hasConfirmed: true, dbPoints: 10, unlockedSkills: [] });
+  const locked = withNs(base(5), RONIN, { hasConfirmed: true, unlockedSkills: [] });
   ok(!canHop(nsOf(locked, RONIN)), '🌀 not bought, not available');
   ok(!legalActions(locked, RONIN).some(a => a.kind === 'shukuchi'),
     '🌀 …and `legalActions` does not offer it');
 
-  const broke = armed(5, { dbPoints: 0 });
-  ok(!canHop(nsOf(broke, RONIN)), '💿 no Db, no activation');
+  const empty = armed(5, { dbPoints: 0 });
+  ok(canHop(nsOf(empty, RONIN)), '🪦 a leftover zero Db field gates nothing — the cooldown is the gate');
 
   const cooling = armed(5, { abilityCd: { [SHUKUCHI_SKILL]: 2 } });
   ok(!canHop(nsOf(cooling, RONIN)), '🕒 mid-cooldown and not mid-move, so no');

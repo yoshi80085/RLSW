@@ -1,7 +1,7 @@
 import { HEX_BY_NUM, ALL_HEXES } from "./hexMap.js";
 import { axialDist, getFlatTopNeighborSlots, angleTo, angleDiff } from "./hexGeometry.js";
 import { NOTE_POOL } from "../music/notes.js";
-import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, DB_UPGRADE_THRESHOLD, EVENT_MIN_SEPARATION, TOKEN_UNLOCK_SPAWN_SHARE } from "../data/gameConstants.js";
+import { LIMELIGHT_HEX, FAN_DIEHARD_WEIGHT, FAN_CASUAL_WEIGHT, FAN_MULT_CAP, FAN_DIEHARD_START, EVENT_MIN_SEPARATION, TOKEN_UNLOCK_SPAWN_SHARE } from "../data/gameConstants.js";
 
 // ── Hex pools for board placement (engine + client) ──
 // Non-edge hexes minus the Limelight — where the spotlight roams.
@@ -120,10 +120,5 @@ export function crowdMultiplier(diehards = FAN_DIEHARD_START, casuals = 0, assig
   );
 }
 
-// advanceDB: progress dbPoints toward a dynamic target cost.
-// Returns whether the target was reached this increment.
-export function advanceDB(dbPoints, earned) {
-  // Db is a wallet: earning it never buys or selects an ability.
-  return { newDBPoints: Math.max(0, dbPoints + earned), upgradeTriggered: false };
-}
+// 🪦 `advanceDB` — the Db bar — went with Db, 2026-10-02.
 
