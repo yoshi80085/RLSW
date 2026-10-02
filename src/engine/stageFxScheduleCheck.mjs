@@ -83,6 +83,7 @@ const roundEnd = (st) => applyAction(applyAction(st, stageFxRoundTicked()), stag
 const alive = (st, fxId) => ({
   smoke_machine: !!st.stageFx.smoke, laser_show: !!st.stageFx.laser,
   pyrotechnics: !!st.stageFx.pyro, animatronics: (st.stageFx.animatronics ?? []).length > 0,
+  bats: !!st.stageFx.bats,
 })[fxId];
 for (const fxId of STAGE_FX_IDS) {
   for (const R of [3, 4]) {

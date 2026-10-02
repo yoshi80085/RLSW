@@ -28,6 +28,7 @@ import {
   rollLaserBeams, rollPyroHexes, spawnAnimatronics, animatronicStep,
 } from "../../board/stageFx.js";
 import { roundLimitFor } from "./battleFlow.js";
+import { activateBats } from './bats.js';
 
 // ── HAZARDS NEVER START ON A PLAYER (2026-08-05) ─────────────────────────────
 // Every hazard that picks hexes (laser beams, pyro charges, animatronic spawns)
@@ -117,6 +118,9 @@ export function applyStageFxActivated(state, { fxId, occupied = [], rounds, pyro
     // ⚠️ Only a SCHEDULED pyro carries a clock. Its absence is what routes the
     // tick down the legacy wave-count path, so do not default it.
     if (scheduled) next.pyro.roundsLeft = rounds;
+  } else if (fxId === "bats") {
+    next.bats = activateBats(state, clear, scheduled ? rounds : undefined, rng);
+    next.lastBats = null;
   } else if (fxId === "animatronics") {
     // Deterministic keys — Date.now() keys would diverge replays. Unique per
     // game: the deck never repeats an effect, so one spawn wave ever.
@@ -371,8 +375,9 @@ export function applyStageFxRoundTicked(state, _action, rng) {
       laserReport = { event: "repatterned", left, zapped: [] };
     }
   }
+  const bats = fx.bats ? (fx.bats.roundsLeft > 1 ? { ...fx.bats, roundsLeft: fx.bats.roundsLeft - 1 } : null) : null;
   return {
     ...state,
-    stageFx: { ...fx, smoke, laser, lastRoundTick: { smoke: smokeReport, laser: laserReport } },
+    stageFx: { ...fx, smoke, laser, ...(fx.bats ? { bats } : {}), lastRoundTick: { smoke: smokeReport, laser: laserReport } },
   };
 }

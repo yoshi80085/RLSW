@@ -77,6 +77,10 @@ export const STAGE_FX_META = {
     name: 'Animatronics', icon: '🤖', color: '#88ffcc',
     blurb: 'Stage robots wake up on the outer edge and stalk the nearest Spirit, slamming anything in their way.',
   },
+  bats: {
+    name: 'Bats', icon: '🦇', color: '#bc8cff',
+    blurb: 'Four bats hunt the biggest FP star, then the slowest turn-taker, then the nearest Spirit. Step onto a bat for +2 fans; let it reach you and lose 1 Vibe. Bats respawn after either collision.',
+  },
 };
 export const STAGE_FX_IDS = Object.keys(STAGE_FX_META);
 
@@ -139,6 +143,13 @@ export const PYRO_ROUND_HEXES  = [5, 10, 13];   // armed charges per show round 
 export const ANIMATRONIC_ROUNDS = 2;  // LEGACY replays only: rounds before they powered down (scheduled shows use the show's length)
 export const ANIMATRONIC_COUNT  = 2;  // robots spawned (on outer edge hexes)
 export const ANIMATRONIC_DAMAGE = 1;  // Vibe dealt slamming a Spirit in the way
+
+// Bats fly one hex per real-time beat; the show's lifetime uses the round clock.
+export const BAT_COUNT = 4;
+export const BAT_STEP_MS = 30000;
+export const BAT_ROUNDS = 3;
+export const BAT_FAN_GAIN = 2;
+export const BAT_DAMAGE = 1;
 
 // Fisher–Yates shuffle of the effect ids — drawn top-down, one per scheduled show.
 // `rand` is an injectable 0..1 PRNG (Phase 6b prep — same treatment as the Rock

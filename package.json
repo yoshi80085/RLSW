@@ -56,6 +56,7 @@
     "test:eleven": "node --import ./src/engine/testAssetStub.mjs src/engine/elevenCheck.mjs",
     "test:engine": "node --import ./src/engine/testAssetStub.mjs src/engine/selftest.mjs",
     "test:stagefx": "node --import ./src/engine/testAssetStub.mjs src/engine/stageFxScheduleCheck.mjs",
+    "test:bats": "node --import ./src/engine/testAssetStub.mjs src/engine/batsCheck.mjs",
     "test:pyrorules": "node --import ./src/engine/testAssetStub.mjs src/engine/pyroRulesCheck.mjs",
     "test:pyroshove": "node src/board/pyroShoveCheck.mjs",
     "test:pyrostage": "node --import ./src/engine/testAssetStub.mjs src/board/pyroStageCheck.mjs",

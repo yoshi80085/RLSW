@@ -8,7 +8,7 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 // for its viewer; this boundary also enforces it before copying actor data.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null }) {
+  bots = [], bats = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null }) {
   spirits=spirits.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   shadowDecoys=shadowDecoys.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   const visible = new Set(spirits.map(s => s.id));
@@ -116,6 +116,7 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
     vortex:vortex ? {hex:vortex.hex} : null,
     vortices:vortices.map(v => ({hex:v.hex})),
     bots:(bots??[]).map(b => ({hex:b.num, color:b.color})), spotlight,
+    bats:(bats??[]).map(b => ({key:b.key, num:b.num, flight:b.flight ?? 0, targetId:b.targetId ?? null})),
     // 🔦 The four corner lights (engine/systems/spotlights.js): where each is
     // parked, its seat's colour, and whether anyone sits there (an empty seat's
     // light is scenery, drawn dim). The hexes are public board state. Pose halos

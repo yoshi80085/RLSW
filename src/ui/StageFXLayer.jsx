@@ -9,11 +9,10 @@
 //     the Disco Inferno banner in the board container.
 // All game logic (damage, ticking, the round schedule) lives in Game.
 // =============================================================================
-import React from "react";
 import { HEX_BY_NUM } from "../board/hexMap.js";
 import { pointyCorners } from "../board/hexGeometry.js";
 import { LIMELIGHT_HEX } from "../data/gameConstants.js";
-import { STAGE_FX_META } from "../data/stageEffects.js";
+import { STAGE_FX_META, BAT_STEP_MS, BAT_FAN_GAIN, BAT_DAMAGE } from "../data/stageEffects.js";
 import { smokeHexNums } from "../board/stageFx.js";
 
 const LASER_PALETTE = ['#ff2266', '#22ff88', '#22aaff', '#ffee22', '#cc44ff'];
@@ -25,8 +24,8 @@ const flamePath = (w, h) =>
   ` C ${w * 0.3} ${-h * 0.55}, ${w} ${-h * 0.35}, ${w} 0` +
   ` C ${w * 0.55} ${h * 0.16}, ${-w * 0.55} ${h * 0.16}, ${-w} 0 Z`;
 
-export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, HS, SCALE }) {
-  if (!smokeFx && !laserFx && !pyroFx && !animatronics?.length) return null;
+export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, batsFx, HS, SCALE }) {
+  if (!smokeFx && !laserFx && !pyroFx && !animatronics?.length && !batsFx) return null;
   const P = n => {
     const h = HEX_BY_NUM[n];
     return h ? { x: Math.round(h.px * SCALE), y: Math.round(h.py * SCALE) } : null;
@@ -50,6 +49,7 @@ export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, HS, 
         @keyframes stagefx-smoke-breathe { 0%,100%{transform:scale(1)} 50%{transform:scale(1.07)} }
         @keyframes stagefx-arm-pulse { 0%,100%{opacity:.35} 50%{opacity:1} }
         @keyframes stagefx-bot-bob { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-2.5px)} }
+        @keyframes stagefx-bat-wing { 0%,100%{transform:scaleY(.55)} 50%{transform:scaleY(1)} }
         @keyframes stagefx-warn-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
         @keyframes stagefx-flame { 0%,100%{transform:scaleY(1) scaleX(1)} 30%{transform:scaleY(1.14) scaleX(.94)}
           60%{transform:scaleY(.88) scaleX(1.07)} 80%{transform:scaleY(1.08) scaleX(.97)} }
@@ -218,6 +218,22 @@ export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, HS, 
         );
       })}
 
+      {batsFx?.bats.map((bat, i) => {
+        const p = P(bat.num); if (!p) return null;
+        return <g key={bat.key} transform={`translate(${p.x},${p.y})`} style={{ transition: 'transform 1.2s ease' }}>
+          <title>Bat on #{bat.num} — enter this hex for +{BAT_FAN_GAIN} fans</title>
+          <circle r={HS * .65} fill="#bc8cff" opacity={.12} />
+          <g style={{ animation: `stagefx-bot-bob 1.2s ${i * .2}s ease-in-out infinite` }}>
+            <g style={{ animation: `stagefx-bat-wing .42s ${i * .1}s ease-in-out infinite` }}>
+              <path d={`M 0 0 Q ${-HS * .6} ${-HS * .65} ${-HS * .88} 0 L ${-HS * .65} ${HS * .22} Q ${-HS * .4} 0 ${-HS * .3} ${HS * .3} L 0 ${HS * .1} M 0 0 Q ${HS * .6} ${-HS * .65} ${HS * .88} 0 L ${HS * .65} ${HS * .22} Q ${HS * .4} 0 ${HS * .3} ${HS * .3} L 0 ${HS * .1}`}
+                fill="#271433" stroke="#bc8cff" strokeWidth={1.2} />
+            </g>
+            <ellipse rx={HS * .16} ry={HS * .27} fill="#1a0c24" stroke="#bc8cff" strokeWidth={1} />
+            <path d={`M ${-HS * .15} ${-HS * .12} L ${-HS * .18} ${-HS * .38} L 0 ${-HS * .2} L ${HS * .18} ${-HS * .38} L ${HS * .15} ${-HS * .12}`} fill="#271433" stroke="#bc8cff" />
+            {[-1, 1].map(s => <circle key={s} cx={s * HS * .07} cy={-HS * .08} r={HS * .035} fill="#ff445c" />)}
+          </g>
+        </g>;
+      })}
       {/* ── 💨 SMOKE MACHINE — drawn LAST so it covers standees ── */}
       {smokeFx && (() => {
         const hub = P(LIMELIGHT_HEX);
@@ -257,7 +273,7 @@ export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, HS, 
 }
 
 // ── HTML marquee + status pills ──────────────────────────────────────────────
-export function StageFXBanner({ banner, smokeFx, laserFx, pyroFx, animatronics }) {
+export function StageFXBanner({ banner, smokeFx, laserFx, pyroFx, animatronics, batsFx }) {
   const pills = [
     smokeFx && { icon: '💨', color: '#9fb8cc',
       text: `SMOKE — spreads, ${smokeFx.roundsLeft} round${smokeFx.roundsLeft !== 1 ? 's' : ''} left` },
@@ -269,6 +285,8 @@ export function StageFXBanner({ banner, smokeFx, laserFx, pyroFx, animatronics }
         : `PYRO wave ${pyroFx.wave} — burning! Stay clear` },
     animatronics?.length > 0 && { icon: '🤖', color: '#88ffcc',
       text: `ANIMATRONICS ×${animatronics.length} — hunting the nearest Spirit` },
+    batsFx && { icon: '🦇', color: '#bc8cff',
+      text: `BATS ×${batsFx.bats.length} · move in ${Math.ceil((BAT_STEP_MS - (batsFx.elapsedMs ?? 0)) / 1000)}s · eat +${BAT_FAN_GAIN} fans / bite −${BAT_DAMAGE} Vibe · FP → slow turns → nearest` },
   ].filter(Boolean);
 
   const meta = banner ? STAGE_FX_META[banner.id] : null;

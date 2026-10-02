@@ -159,6 +159,8 @@ import { canHop, shukuchiLandings, hopIsActivation, hopBudgetPatch,
 import { shukuchiHopped } from "./engine/actions.js";
 // 🎆 Pyro v2 (2026-10-02): the mortars fire every END TURN and stop a shove.
 import { pyroTurnEnded, pyroTurnStarted, pyroChargeStruck } from "./engine/actions.js";
+import { batsTicked, batTurnTimed } from './engine/actions.js';
+import { BAT_STEP_MS, BAT_ROUNDS, BAT_FAN_GAIN, BAT_DAMAGE } from './data/stageEffects.js';
 import { isArmedPyroHex } from "./engine/systems/stageFx.js";
 import { PYRO_VERSION } from "./data/stageEffects.js";
 // 🧪 Testing Grounds levers — real engine actions so an exported sandbox log still replays.
@@ -2157,6 +2159,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const smokeFx = engineState.stageFx.smoke;
   const pyroFx = engineState.stageFx.pyro;
   const animatronics = engineState.stageFx.animatronics;
+  const batsFx = engineState.stageFx.bats;
   // `key` re-arms the beam CSS animation per pattern; roundsLeft is unique per
   // pattern within the one laser show a game can have (deck never repeats).
   const laserFx = engineState.stageFx.laser
@@ -2165,7 +2168,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   /** 🎇 True when at least one Stage Effect is active on the board. */
   function anyStageEffectActive() {
     const fx = engineRef.current.stageFx;
-    return !!(fx?.smoke || fx?.laser || fx?.pyro || fx?.animatronics);
+    return !!(fx?.smoke || fx?.laser || fx?.pyro || fx?.animatronics?.length || fx?.bats);
   }
 
   // ─── BOARD MINI-GOALS — Lost Chords ── (ENGINE-owned — Phase 6a, migrated) ──
@@ -5782,6 +5785,54 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (draw?.round === round) activateStageFx(draw.fxId, { round, rounds: draw.rounds, untilRound: draw.untilRound });
   }
 
+  // Only the acting client advances this clock. Its elapsed time is an action
+  // payload, so replays and peers never consult their own wall clocks.
+  const batClockRef = useRef({ turnKey: null, ms: 0, pendingMs: 0 });
+  const batClockCallbackRef = useRef(null);
+  batClockCallbackRef.current = delta => {
+    const st = engineRef.current, clock = batClockRef.current;
+    const turnKey = `${st.acting}:${st.turn.count}`;
+    if (clock.turnKey !== turnKey) Object.assign(clock, { turnKey, ms: 0, pendingMs: 0 });
+    if (!canAct || st.winner || winnerRef.current || battleStateRef.current || activeEventRef.current || document.hidden) return;
+    clock.ms += delta;
+    if (!st.stageFx.bats) { clock.pendingMs = 0; return; }
+    clock.pendingMs += delta;
+    if (clock.pendingMs < 1000) return;
+    const next = dispatch(batsTicked(st.stageFx.bats.tick, st.acting, st.turn.count, clock.ms, clock.pendingMs));
+    clock.pendingMs = 0;
+    if (next.stageFx.lastBats !== st.stageFx.lastBats) {
+      for (const hit of next.stageFx.lastBats?.hits ?? []) {
+        // Damage is already in the engine; this plays the hit and handles KD.
+        applyVibeDamage(hit.spiritId, hit.damage, 'Bats', null, { alreadyApplied: true });
+      }
+    }
+  };
+  useEffect(() => {
+    let previous = performance.now();
+    const timer = setInterval(() => {
+      const now = performance.now(), delta = now - previous;
+      previous = now;
+      // A suspended tab cannot unleash a backlog of bat moves on return.
+      if (delta > 0 && delta <= 1000) batClockCallbackRef.current?.(delta);
+    }, 250);
+    return () => clearInterval(timer);
+  }, []);
+  useEffect(() => {
+    const report = engineState.stageFx.lastBats;
+    if (!report) return;
+    for (const eaten of report.eaten) {
+      const name = engineRef.current.spirits.find(s => s.id === eaten.spiritId)?.name;
+      addLog(`🦇 ${name} EATS a bat on #${eaten.hexNum} — +${eaten.gain} fans! A fresh bat takes flight.`);
+      triggerEffectFlash(eaten.spiritId, '🦇', `+${eaten.gain} FANS!`, '#bc8cff');
+      if (eaten.gain) flashFanFx(eaten.spiritId, 'gain', eaten.gain);
+    }
+    for (const hit of report.hits) {
+      const name = engineRef.current.spirits.find(s => s.id === hit.spiritId)?.name;
+      addLog(`🦇 A bat reaches ${name} — −${hit.damage} Vibe! It flies back into the stage.`);
+      triggerEffectFlash(hit.spiritId, '🦇', 'BAT BITE!', '#bc8cff');
+    }
+  }, [engineState.stageFx.lastBats]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // `show` = { round, rounds, untilRound } from a scheduled draw. The Testing
   // Grounds button passes no `rounds`, which gives each effect its old length.
   function activateStageFx(fxId, show = {}) {
@@ -5819,6 +5870,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     if (fxId === 'animatronics') {
       addLog(`🤖 ${st.animatronics.length} animatronics wake on the stage edge — they stalk the nearest Spirit once a round (${howLong(ANIMATRONIC_ROUNDS)})!`);
+    }
+    if (fxId === 'bats') {
+      batClockRef.current.pendingMs = 0;
+      addLog(`🦇 Four bats take flight — one hex every ${BAT_STEP_MS / 1000}s. FP first, slow turns next, distance last. Eat one for +${BAT_FAN_GAIN} fans; get caught for −${BAT_DAMAGE} Vibe. Four stay flying (${howLong(BAT_ROUNDS)}).`);
     }
   }
 
@@ -6607,7 +6662,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Apply damage to a spirit — handles KD/KO.
   // attackerId (optional): the Spirit credited with this hit. Drives Azrael's
   // knockdown-streak Fame for Metalness Monster.
-  function applyVibeDamage(targetId, dmg, sourceLabel, attackerId) {
+  function applyVibeDamage(targetId, dmg, sourceLabel, attackerId, { alreadyApplied = false } = {}) {
     // 👤 Ronin being attacked dismisses shadow
     if (characterId(targetId) === 'cosmic_ronin' && dmg > 0) dismissShadowIllusion('the Ronin was attacked', targetId);
     // 🪦 The glow-and-debt Shamisen's "a hit resets every cooldown" lived here
@@ -6631,7 +6686,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // here — which would have tallied every client hit as TAKEN by somebody and
     // DEALT by nobody, and the tie-break's third rung would have been dead in the
     // shipped game while passing every headless test.
-    dispatch(damageApplied(targetId, dmg, attackerId ?? null));
+    if (!alreadyApplied) dispatch(damageApplied(targetId, dmg, attackerId ?? null));
     // Check for knock-down after state settles
     setTimeout(() => {
       // Phase 5c slice 2b: read the freshly-reduced engine spirits directly
@@ -9541,6 +9596,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // ─── END TURN ────────────────────────────────────────────────────────────────
   function endTurn() {
     if (!canAct) return; // N4/N7: only the controlling client ends the turn
+    const timed = engineRef.current;
+    const clock = batClockRef.current;
+    dispatch(batTurnTimed(timed.acting, timed.turn.count,
+      clock.turnKey === `${timed.acting}:${timed.turn.count}` ? clock.ms : 0));
     const s = spirits.find(sp => sp.id === acting.id);
 
     // The engine resolves the turn end: limelight verdict, turn counter,
@@ -14769,7 +14828,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 actingId:acting?.id, viewerId:smokeViewerId, turn:engineState.turn.count, battle:battleState,
                 slides:slideOffAnimations, flashes:effectFlashes, thump:deckThump,
                 laser:laserFx, pyro:pyroFx, smoke:smokeFx, slime:slimeTiles,
-                fire:flamingHexes, vortex:gravityVortex, bots:animatronics,
+                fire:flamingHexes, vortex:gravityVortex, bots:animatronics, bats:batsFx?.bats,
                 tentacle:tentacleFx,
                 // 🔦 The corner lights + who is holding a pose under one.
                 spotlights:{ hexes:engineState.board?.spotlights, poses:engineState.limelight?.spotPoses },
@@ -16323,7 +16382,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               {/* ── 🎇 STAGE EFFECTS — smoke cloud / lasers / pyro / animatronics.
                   Mounted late so the smoke draws OVER the standees. ── */}
               <StageFXBoardLayer smokeFx={smokeFx} laserFx={laserFx} pyroFx={pyroFx}
-                animatronics={animatronics} HS={HS} SCALE={SCALE} />
+                animatronics={animatronics} batsFx={batsFx} HS={HS} SCALE={SCALE} />
 
               {/* ── ❓ THE UNSURE CROWD — a neutral audience watching from the foreground, below
                   the stage. When a Spirit wins them over they light up, cheer, and stream home. ── */}
@@ -16428,7 +16487,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             </BoardViewport>
             {/* 🎇 Stage Effect activation marquee + active-effect status pills */}
             <StageFXBanner banner={stageFxBanner} smokeFx={smokeFx} laserFx={laserFx}
-              pyroFx={pyroFx} animatronics={animatronics} />
+              pyroFx={pyroFx} animatronics={animatronics} batsFx={batsFx} />
           </div>
         </div>
 

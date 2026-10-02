@@ -18,6 +18,7 @@ import {
   HEADLINER_CHANGED,
   STAGE_FX_DRAWN, STAGE_FX_ACTIVATED, STAGE_FX_TURN_TICKED, STAGE_FX_ROUND_TICKED,
   PYRO_TURN_ENDED, PYRO_TURN_STARTED, PYRO_CHARGE_STRUCK,
+  BATS_TICKED, BAT_TURN_TIMED,
   BOARD_SYNCED,
   SPOTLIGHT_HEALED, SPOTLIGHT_MOVED, TOKENS_SCATTERED, THRASH_TOKENS_SPAWNED, FLAMING_DECAYED,
   EVENT_RESPAWN_TICKED, EVENT_HEX_SPAWNED, CHARGE_ZONES_TICKED,
@@ -28,6 +29,7 @@ import {
   SANDBOX_SEAT_TAKEN, SANDBOX_REFILLED,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
+import { applyBatsTicked, applyBatTurnTimed, collectBatEntries } from './systems/bats.js';
 import { applyMarqueeCardWon, applyMarqueeCardArmed } from "./systems/marqueeCards.js";
 import {
   applyTurnStarted, applyTurnEnded, applyTurnSkipped,
@@ -78,7 +80,10 @@ import { applySandboxSeatTaken, applySandboxRefilled } from "./systems/sandbox.j
 export function applyAction(state, action, rng = restoreRng(state.rng)) {
   // 🔦 One invariant after EVERY action: a spotlight pose ends the moment its
   // Spirit leaves the hex it was struck on — see `enforceSpotPoses`.
-  const next = enforceSpotPoses(reduce(state, action, rng));
+  let next = enforceSpotPoses(reduce(state, action, rng));
+  if ([MOVE_STEP, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRIT_PATCHED, SPIRIT_SLID].includes(action.type)) {
+    next = collectBatEntries(state, next, rng);
+  }
   // Persist rng position so the next applyAction resumes the same stream.
   return { ...next, rng: rng.state() };
 }
@@ -144,6 +149,8 @@ function reduce(state, action, rng) {
     case PYRO_TURN_ENDED:        return applyPyroTurnEnded(state, action);
     case PYRO_TURN_STARTED:      return applyPyroTurnStarted(state, action, rng);
     case PYRO_CHARGE_STRUCK:     return applyPyroChargeStruck(state, action);
+    case BATS_TICKED:            return applyBatsTicked(state, action, rng);
+    case BAT_TURN_TIMED:         return applyBatTurnTimed(state, action);
 
     // -- Phase 6a: board state --
     case BOARD_SYNCED:           return applyBoardSynced(state, action);

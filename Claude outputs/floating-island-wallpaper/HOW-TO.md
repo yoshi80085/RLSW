@@ -10,6 +10,7 @@
 ### What's on screen
 - **Clock (top-left):** time, date, today's weather for Yamagata, and the month calendar. Japanese holidays are dotted pink; hover one to see its name.
 - **Fan (opposite corner):** hover over it for today's weather; click it for a headline, and click again for the next one.
+- **The fan as DJ:** when music plays on your PC (Spotify or anything else Windows shows as now playing), he cheers on every new song and tells a fact about the band or the song. Click him for another fact. With no music, or no internet, a click gives a news headline as before. Facts come from Wikipedia and MusicBrainz, so no Spotify login is needed. In `preview.html` use the Artist / Song boxes and **Play track** to try it.
 - **Sky:** follows Yamagata's real sunrise and sunset:
   - Night (violet)
   - Dawn (dark twilight blue)
@@ -17,7 +18,7 @@
   - Dusk (dark pink-purple)
 - **Sun:** on clear days it crosses the sky, then fades into a rose afterglow at sunset.
 - **On the hour:** lightning, a cheer from the crowd, and the fan calls the time.
-- **Music:** when music plays on your PC, the spotlights, crowd and fan move to the beat.
+- **Music:** when music plays on your PC, the spotlights glow to the beat and the crowd and fan **dance in time with it**. Slow, mellow music: they sway slowly, one lean every two beats. Fast or heavy music: they bang, a hop and a head-nod on every beat. If they go heavy too soon or too late, change **Groove: how easily the fans go heavy** in Customise. `preview.html` has Slow 68 and Heavy 150 test buttons.
 
 ### Using it
 On an empty part of the desktop:

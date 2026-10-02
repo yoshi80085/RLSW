@@ -246,9 +246,23 @@ export function makeGrandstand({corner='blue',color='#8a91ff',diehards=6,casuals
     // sees their fan's reactions"). `mood` +1 jumps, −1 sags, a tie a polite
     // bounce; `amount` 0–1 eases it in. Applied ON TOP of `tick`, so it must be
     // called after it every frame and simply not called once the bout is over.
-    react:(t,mood,amount,{reduced=false}={})=>{
+    // 🥁 `groove` ({phase,sway,bang,lag}) is OPTIONAL and used only by the Floating Island
+    // wallpaper (2026-10-02): the crowd moves on a beat clock instead of the fixed bounce.
+    // `phase` counts beats; `sway` leans the fans slowly (one lean per two beats), `bang` hops
+    // and nods them once per beat. Without `groove` nothing here changes.
+    react:(t,mood,amount,{reduced=false,groove=null}={})=>{
       fans.forEach((f,k)=>{
-        if(reduced||!amount||!mood){f.rotation.x=0;f.rotation.z=0;return;}   // settles back
+        if(f.userData.restX==null)f.userData.restX=f.position.x;
+        if(groove&&!reduced){
+          const ph=groove.phase-(k%9)*(groove.lag??.035),p=ph-Math.floor(ph),sway=groove.sway??0,bang=groove.bang??0,s=Math.sin(Math.PI*ph);
+          f.position.x=f.userData.restX+sway*.03*s;
+          f.position.y+=bang*.16*Math.sin(Math.PI*p);                 // up between beats, landing on each one
+          f.rotation.x=bang*.4*Math.pow(1-p,2.2);                     // the nod peaks ON the beat
+          f.rotation.z=sway*.2*s+bang*.1*s;
+          return;
+        }
+        if(reduced||!amount||!mood){f.rotation.x=0;f.rotation.z=0;f.position.x=f.userData.restX;return;}   // settles back
+        f.position.x=f.userData.restX;
         const beat=Math.abs(Math.sin(t*7+k*1.3));
         f.position.y+=mood>0?amount*mood*beat*.22:amount*mood*.06;
         f.rotation.x=mood<0?-mood*amount*.35:0;

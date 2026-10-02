@@ -1287,7 +1287,7 @@ const config = {
 
   // exact Fisher-Yates results for the two boundary rands
   assert.deepEqual(shuffledStageFxDeck(() => 0),
-    ["laser_show", "pyrotechnics", "animatronics", "smoke_machine"],
+    [...IDS.slice(1), IDS[0]],
     "rand→0 rotates the deck deterministically");
   assert.deepEqual(shuffledStageFxDeck(() => 0.99), IDS.slice(),
     "rand→~1 leaves the deck in identity order");

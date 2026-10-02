@@ -4,6 +4,7 @@
 //
 // Growth plan (see src/MULTIPLAYER_HANDOFF.md §5): each extraction phase adds
 // its action types here.
+import { BAT_STEP_MS } from '../data/stageEffects.js';
 
 export const GAME_INIT = "GAME_INIT";
 
@@ -74,6 +75,8 @@ export const STAGE_FX_DRAWN        = "STAGE_FX_DRAWN";
 export const STAGE_FX_ACTIVATED    = "STAGE_FX_ACTIVATED";
 export const STAGE_FX_TURN_TICKED  = "STAGE_FX_TURN_TICKED";
 export const STAGE_FX_ROUND_TICKED = "STAGE_FX_ROUND_TICKED";
+export const BATS_TICKED = "BATS_TICKED";
+export const BAT_TURN_TIMED = "BAT_TURN_TIMED";
 // 🎆 pyro v2 (2026-10-02) — the mortars fire per TURN and stop a shove
 export const PYRO_TURN_ENDED    = "PYRO_TURN_ENDED";
 export const PYRO_TURN_STARTED  = "PYRO_TURN_STARTED";
@@ -478,6 +481,13 @@ export function stageFxTurnTicked() {
  */
 export function stageFxRoundTicked() {
   return { type: STAGE_FX_ROUND_TICKED };
+}
+
+export function batsTicked(tick, spiritId, turnCount, currentTurnMs = 0, elapsedMs = BAT_STEP_MS) {
+  return { type: BATS_TICKED, tick, spiritId, turnCount, currentTurnMs, elapsedMs };
+}
+export function batTurnTimed(spiritId, turnCount, durationMs) {
+  return { type: BAT_TURN_TIMED, spiritId, turnCount, durationMs };
 }
 
 // ── Phase 6a: board state ───────────────────────────────────────────────────
