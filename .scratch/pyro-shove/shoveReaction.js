@@ -49,6 +49,7 @@ export const PYRO_SHOVE = Object.freeze({
   // ── camera ──
   cam:'arena', shake:0.5, punch:0.5, follow:'on',
   // ── compare with Astra's study ──
+  show:'sequence', deployLead:2.3, sympathy:'on', sympGap:0.6, sympStagger:0.2, holdS:3.4, cannonsOn:'on', cannonDelay:0.5, curtainOn:'on', mechVol:1, launchVol:1, flameVol:1, curtainVol:0.8,
   astraStrength:1, astraKnockdown:'off',
 });
 

@@ -47,6 +47,7 @@ const DIR_LABEL = ['South-east', 'North-east', 'North', 'North-west', 'South-wes
 
 const GROUPS = [
   { id:'setup',   title:'Set-up — who, and which way' },
+  { id:'show',    title:'★ The whole firing sequence', open:true, hot:true },
   { id:'approach',title:'The shove (the game\'s own)' },
   { id:'contact', title:'1 · Contact, fuse & hit-stop', open:true, hot:true },
   { id:'launch',  title:'2 · The launch', open:true, hot:true },
@@ -64,6 +65,19 @@ const S = (group, key, label, options, help = '') => ({ type:'seg', group, key, 
 const ONOFF = [['on', 'On'], ['off', 'Off']];
 
 const LEVERS = [
+  S('show', 'show', 'What to play', [['sequence', 'Whole sequence (deploy → fire → retract)'], ['shove', 'Just the shove (mortar already up)']], 'Sequence: the mortars rise and arm, the shove lands, the show fires, then everything retracts.'),
+  R('show', 'deployLead', 'Deploy lead-in', 2.1, 5, 0.1, ' s', 'Time for the mortars to rise and arm before the shove starts. Under ~2.1 s the shove arrives before they are up.'),
+  S('show', 'sympathy', 'Other mortars fire in sympathy', ONOFF, 'After the struck mortar goes, the armed ones follow.'),
+  R('show', 'sympGap', 'Sympathy delay after the bang', 0.1, 2.5, 0.05, ' s'),
+  R('show', 'sympStagger', 'Stagger between them', 0, 0.8, 0.02, ' s'),
+  R('show', 'holdS', 'Hold before retracting', 0.5, 8, 0.1, ' s', 'How long after the last mortar fires before they fold away.'),
+  S('show', 'cannonsOn', 'Blasters (perimeter cannons)', ONOFF),
+  R('show', 'cannonDelay', 'Blasters fire after the bang', 0, 3, 0.05, ' s'),
+  S('show', 'curtainOn', 'Spark curtain', ONOFF),
+  R('show', 'mechVol', 'Mechanism sounds (rise / lock / retract)', 0, 1.8, 0.05),
+  R('show', 'launchVol', 'Mortar launches (the sympathy ones)', 0, 1.8, 0.05),
+  R('show', 'flameVol', 'Blaster flames', 0, 1.8, 0.05),
+  R('show', 'curtainVol', 'Curtain fizz', 0, 1.8, 0.05),
   S('setup', 'who', 'Who is pushed', Object.keys(NAMES).map(k => [k, NAMES[k]])),
   S('setup', 'facing', 'Which way it faces', [['pusher', 'Toward the pusher (the board\'s own)'], ['camera', 'Toward the camera']],
     'A shove keeps the piece\'s facing. Astra\'s lane always faces the pusher, so keep this on "pusher" when comparing.'),
@@ -285,7 +299,7 @@ function plan() {
 }
 function buildScenario() {
   const d = L.dir, pusherHex = hexAt(d, -2), startHex = hexAt(d, -1), midHex = CENTRE, mortarHex = hexAt(d, 1), beyondHex = hexAt(d, 2);
-  const p = plan(), lead = 0.55, tc = lead + (p.total + p.land) / 1000;
+  const p = plan(), lead = 0.55 + (L.show === 'sequence' ? L.deployLead : 0), tc = lead + (p.total + p.land) / 1000;
   const wMortar = hexWorld(mortarHex), travel = wMortar.clone().sub(hexWorld(midHex)).setY(0).normalize();
   const yawPusher = standeeYaw(facingAngle(startHex, pusherHex)), yawRival = L.facing === 'camera' ? 0 : yawPusher;
   const yawPusherPiece = L.facing === 'camera' ? 0 : standeeYaw(facingAngle(pusherHex, startHex));
@@ -317,14 +331,53 @@ function playCue(c) {
     case 'crown': sfx.crown(); break;
     case 'land': case 'bounce': sfx.land(c.power, L.rattle, L.dust); break;
     case 'burn': sfx.burn(c.dur, 0.6); break;
+    case 'unlock': sfx.unlock(L.mechVol * 0.7, c.pan); break;
+    case 'lift': sfx.lift(L.mechVol * 0.6, c.pan); break;
+    case 'lock': sfx.lock(L.mechVol * 0.7, c.pan); break;
+    case 'release': sfx.release(L.mechVol * 0.7, c.pan); break;
+    case 'retract': sfx.retract(L.mechVol * 0.6, c.pan); break;
+    case 'seal': sfx.seal(L.mechVol * 0.7, c.pan); break;
+    case 'launch': sfx.launch(L.launchVol, c.pan); break;
+    case 'burst': sfx.crown(0.7 * L.launchVol, c.pan); break;
+    case 'flame': sfx.flame(L.flameVol, c.pan); break;
+    case 'curtain': sfx.curtain(L.curtainVol, c.pan); break;
   }
 }
 
 // ── the clock ────────────────────────────────────────────────────────────────
 let S_ = 0, playing = true, holdMs = 0, stoppedAtIgnite = false, lastCue = 0, loopWait = 0, END = 5;
 let TL = timeline(L), CUES = [];
+const PANS = [0, -0.7, 0.7, 0.35];
+// ⭐ The whole firing sequence, in scene seconds: Astra's cue (deploy → fire[] → retract, blasters, curtain) retimed around MY bang.
+let SEQ = null;
+function seqTimes() {
+  if (L.show !== 'sequence') return null;
+  const bang = SC.TC + TL.ti, deployedAt = 0.15, fireAt = [bang];
+  SC.armed.forEach((h, i) => fireAt.push(L.sympathy === 'on' ? bang + L.sympGap + i * L.sympStagger : Infinity));
+  const last = Math.max(...fireAt.filter(Number.isFinite)), endAt = last + L.holdS, showAt = bang + L.cannonDelay;
+  const curtainEnd = L.curtainOn === 'on' ? showAt + 0.9 + 6.6 : 0;
+  return { bang, deployedAt, fireAt, endAt, showAt, end:Math.max(endAt + 1.5, curtainEnd) };
+}
+function seqCues() {
+  if (!SEQ) return []; const out = [], n = 1 + SC.armed.length;
+  for (let i = 0; i < n; i++) {
+    const pan = PANS[i], d = SEQ.deployedAt + i * 0.05, e = SEQ.endAt + i * 0.05;
+    out.push({ at:d + 0.02, type:'unlock', pan }, { at:d + 0.38, type:'lift', pan }, { at:d + 1.86, type:'lock', pan }, { at:e + 0.02, type:'release', pan }, { at:e + 0.08, type:'retract', pan }, { at:e + 1.3, type:'seal', pan });
+    if (i > 0 && Number.isFinite(SEQ.fireAt[i])) out.push({ at:SEQ.fireAt[i], type:'launch', pan }, { at:SEQ.fireAt[i] + 1.5, type:'burst', pan });
+  }
+  if (L.cannonsOn === 'on') out.push({ at:SEQ.showAt, type:'flame', pan:0 });
+  if (L.curtainOn === 'on') out.push({ at:SEQ.showAt + 0.9, type:'curtain', pan:0 });
+  return out;
+}
+function pyroCue(struckAt) {
+  if (!SEQ) return { deployedAt:-10, fireAt:[struckAt, Infinity, Infinity, Infinity], endAt:Infinity, showAt:Infinity, hit:SC.mortarHex.num };
+  const shift = struckAt - SEQ.bang;
+  return { deployedAt:SEQ.deployedAt, fireAt:SEQ.fireAt.map(f => f + shift), endAt:SEQ.endAt, showAt:SEQ.showAt, hit:SC.mortarHex.num };
+}
 function recompute() {
-  ensurePieces(); buildScenario(); TL = timeline(L); CUES = cues(L).map(c => ({ ...c, abs:SC.TC + c.at })); END = SC.TC + TL.end;
+  ensurePieces(); buildScenario(); TL = timeline(L); SEQ = seqTimes();
+  CUES = [...cues(L).map(c => ({ ...c, abs:SC.TC + c.at })), ...seqCues().map(c => ({ ...c, abs:c.at }))].sort((a, b) => a.abs - b.abs);
+  END = Math.max(SC.TC + TL.end, SEQ ? SEQ.end : 0);
   const sc = $('scrub'); sc.max = Math.round(END * 1000);
 }
 function restart(play = true) { S_ = 0; lastCue = 0; stoppedAtIgnite = false; holdMs = 0; loopWait = 0; playing = play; }
@@ -455,10 +508,10 @@ function frame(now) {
   pyroA.root.visible = useA; pyroB.root.visible = useA && showB;
   decoys.forEach(d => { d.group.visible = !useA; }); decoysB.forEach(d => { d.group.visible = !useA && showB; });
   if (useA) {
-    const inf = Infinity, st = { mortars:true, cannons:false, fireworks:L.shell === 'on' && L.crown > 0, curtain:false, guides:true, width:Math.max(0.5, Math.min(1.8, L.fireball || 0.5)),
-      height:7, burst:3.6 * Math.max(0.3, L.crown), density:Math.max(0.05, L.sparks), stagger:0.18, palette:'gold' };
-    pyroA.update(S, st, { deployedAt:-10, fireAt:[SC.TC + TL.ti, inf, inf, inf], endAt:inf, showAt:inf, hit:SC.mortarHex.num }); tweakMortar(pyroA, age, true);
-    if (showB) { pyroB.update(S, st, { deployedAt:-10, fireAt:[SC.TC, inf, inf, inf], endAt:inf, showAt:inf, hit:SC.mortarHex.num }); tweakMortar(pyroB, 0, false); }
+    const seq = !!SEQ, st = { mortars:true, cannons:seq && L.cannonsOn === 'on', fireworks:L.shell === 'on' && L.crown > 0, guides:true, width:Math.max(0.5, Math.min(1.8, L.fireball || 0.5)),
+      height:7, burst:3.6 * Math.max(0.3, L.crown), density:Math.max(0.05, L.sparks), stagger:0.18, palette:'gold', curtain:seq && L.curtainOn === 'on' };
+    pyroA.update(S, st, pyroCue(SC.TC + TL.ti)); tweakMortar(pyroA, age, true);
+    if (showB) { pyroB.update(S, st, pyroCue(SC.TC)); tweakMortar(pyroB, 0, false); }
   }
   // tiles: armed mortars glow, the struck hex flashes
   const pulse = 0.22 + 0.08 * Math.sin(time * 3);
@@ -497,7 +550,7 @@ function fmt(l, v) {
 }
 function onChange(key) {
   // anything that changes the staging or the timeline rebuilds it; the clock is left where it is
-  const rebuild = ['dir', 'who', 'facing', 'pushStyle', 'pushSpeed'].includes(key);
+  const rebuild = ['dir', 'who', 'facing', 'pushStyle', 'pushSpeed', 'show', 'deployLead'].includes(key);
   recompute(); if (rebuild) { restart(true); } else { lastCue = S_; stoppedAtIgnite = S_ >= SC.TC + TL.ti; }
   if (key === 'cam') aimCamera();
   if (['volume', 'bass'].includes(key)) applyMix();
@@ -553,7 +606,7 @@ function buildPanel() {
   });
   const au = $('audition');
   for (const [label, fn] of [['🔩 Plate', () => sfx.plate()], ['💥 Boom', () => sfx.boom(L.boom, L.tail)], ['✨ Crackle', () => sfx.crackle(L.crackle)], ['🚀 Shell', () => sfx.shell()], ['🎆 Burst', () => sfx.crown()],
-    ['🪨 Land', () => sfx.land(1, L.rattle, L.dust)], ['🔥 Burn', () => sfx.burn(2.4, 0.6)]]) {
+    ['🪨 Land', () => sfx.land(1, L.rattle, L.dust)], ['🔓 Unlock', () => sfx.unlock(1)], ['⬆ Lift', () => sfx.lift(1)], ['🔒 Lock', () => sfx.lock(1)], ['💨 Release', () => sfx.release(1)], ['⬇ Retract', () => sfx.retract(1)], ['🚪 Seal', () => sfx.seal(1)], ['🚀 Launch', () => sfx.launch(1)], ['🔥 Blaster', () => sfx.flame(1)], ['🎇 Curtain', () => sfx.curtain(1)], ['🔥 Burn', () => sfx.burn(2.4, 0.6)]]) {
     const b = document.createElement('button'); b.textContent = label; b.addEventListener('click', () => { wake(); fn(); }); au.appendChild(b);
   }
   $('copyBtn').addEventListener('click', async () => {

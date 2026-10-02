@@ -60,6 +60,12 @@ export function createBlastSfx() {
     s.start(t, Math.random() * 1.5); s.stop(t + dur + 0.05); s.onended = () => { s.disconnect(); f.disconnect(); g.disconnect(); };
   }
   const now = (delay = 0) => ctx.currentTime + 0.01 + delay;
+  // a stereo lane: voices on the left/right of the board. pan 0 = the plain buses.
+  function lane(pan) {
+    if (!pan) return { air:airBus, bass:bassBus };
+    const a = ctx.createStereoPanner(), b = ctx.createStereoPanner(); a.pan.value = b.pan.value = Math.max(-1, Math.min(1, pan));
+    a.connect(airBus); b.connect(bassBus); return { air:a, bass:b };
+  }
 
   return {
     ensure, live, setMix, get running() { return live(); },
@@ -97,9 +103,9 @@ export function createBlastSfx() {
       tone('sawtooth', 300, 1500, t, 0.8, 0.04, airBus, 0.05);
     },
     /** The aerial burst: a soft thump and a crackle of stars. */
-    crown() {
-      if (!live()) return; const t = now();
-      tone('sine', 95, 40, t, 0.6, 0.55, bassBus); noise(brown, t, 0.7, 0.6, bassBus, { type:'lowpass', f0:300, f1:80, q:0.4 });
+    crown(sc = 1, pan = 0) {
+      if (!live()) return; const t = now(); const { air:airBus, bass:bassBus } = lane(pan);
+      tone('sine', 95, 40, t, 0.6, 0.55 * sc, bassBus); noise(brown, t, 0.7, 0.6 * sc, bassBus, { type:'lowpass', f0:300, f1:80, q:0.4 });
       noise(white, t, 0.12, 0.3, airBus, { type:'highpass', f0:1800, q:0.6 });
       for (let i = 0; i < 26; i++) noise(white, t + 0.05 + Math.random() * 1.1, 0.02 + Math.random() * 0.025, 0.05 + Math.random() * 0.1, airBus, { type:'highpass', f0:4000 + Math.random() * 3000, q:0.7, attack:0.001 });
     },
@@ -120,6 +126,64 @@ export function createBlastSfx() {
           noise(white, t + dt, 0.018, 0.1 * rattle * power / (1 + i * 0.4), airBus, { type:'bandpass', f0:3600 + Math.random() * 900, q:1.8, attack:0.001 });
         }
       }
+    },
+
+    // ── THE MECHANISM (deploy / retract) — my voices for Astra's cue times ──────────
+    /** Latch releases: a sharp clack and a small iron tick. */
+    unlock(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air, bass } = lane(pan);
+      tone('square', 1500, 800, t, 0.035, 0.16 * lv, air); noise(white, t, 0.05, 0.4 * lv, air, { type:'bandpass', f0:2400, f1:1800, q:1.6 });
+      tone('sine', 150, 80, t + 0.03, 0.12, 0.45 * lv, bass);
+    },
+    /** The barrel rises: a hydraulic whirr with a ratchet of petal ticks. */
+    lift(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air, bass } = lane(pan), d = 1.5;
+      tone('sawtooth', 60, 130, t, d, 0.13 * lv, bass, 0.12); tone('sine', 380, 560, t + 0.1, d - 0.2, 0.05 * lv, air, 0.2);
+      noise(white, t, d, 0.12 * lv, air, { type:'bandpass', f0:500, f1:1100, q:1.2, attack:0.15 });
+      for (let i = 0; i < 9; i++) noise(white, t + 0.08 + i * 0.13, 0.02, 0.2 * lv, air, { type:'bandpass', f0:3200, q:2, attack:0.001 });
+    },
+    /** Locked home: a heavy clunk with a short ring. */
+    lock(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air, bass } = lane(pan);
+      tone('sine', 140, 52, t, 0.2, 0.8 * lv, bass, 0.003); noise(white, t, 0.06, 0.45 * lv, air, { type:'bandpass', f0:2000, f1:1300, q:1.3 });
+      tone('sine', 1180, 1150, t, 0.35, 0.06 * lv, air, 0.002);
+    },
+    /** Pressure released: a pneumatic hiss. */
+    release(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air } = lane(pan);
+      noise(white, t, 0.4, 0.28 * lv, air, { type:'highpass', f0:3400, f1:1500, q:0.6, attack:0.01 }); tone('sine', 110, 70, t, 0.1, 0.2 * lv, bassBus);
+    },
+    /** The barrel sinks: the whirr, reversed. */
+    retract(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air, bass } = lane(pan), d = 1.0;
+      tone('sawtooth', 130, 55, t, d, 0.12 * lv, bass, 0.05); noise(white, t, d, 0.1 * lv, air, { type:'bandpass', f0:1100, f1:450, q:1.2, attack:0.05 });
+      for (let i = 0; i < 6; i++) noise(white, t + i * 0.15, 0.02, 0.15 * lv, air, { type:'bandpass', f0:3000, q:2, attack:0.001 });
+    },
+    /** Petals seal shut: a soft thud and a last hiss. */
+    seal(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air, bass } = lane(pan);
+      tone('sine', 100, 45, t, 0.18, 0.6 * lv, bass, 0.004); noise(white, t, 0.18, 0.12 * lv, air, { type:'highpass', f0:3000, f1:1800, q:0.6 });
+    },
+    // ── THE SHOW — the other mortars, the blasters, the curtain ─────────────────────
+    /** A lighter mortar than the struck one: thump, whoosh, shell climbing. */
+    launch(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air, bass } = lane(pan);
+      tone('sine', 112, 40, t, 0.4, 0.8 * lv, bass, 0.005); noise(brown, t, 0.5, 0.7 * lv, bass, { type:'lowpass', f0:700, f1:140, q:0.5 });
+      noise(white, t, 0.1, 0.35 * lv, air, { type:'highpass', f0:2200, f1:1500, q:0.5, attack:0.002 });
+      noise(white, t + 0.05, 0.8, 0.14 * lv, air, { type:'bandpass', f0:500, f1:3000, q:2, attack:0.05 });
+    },
+    /** Blasters (the perimeter cannons): a roaring gout of flame. */
+    flame(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air, bass } = lane(pan);
+      noise(white, t, 1.2, 0.38 * lv, air, { type:'bandpass', f0:350, f1:1100, q:0.8, attack:0.1 });
+      noise(brown, t, 1.3, 0.8 * lv, bass, { type:'lowpass', f0:380, f1:90, q:0.5, attack:0.08 }); tone('sine', 70, 38, t, 0.8, 0.5 * lv, bass, 0.04);
+      for (let i = 0; i < 14; i++) noise(white, t + 0.1 + Math.random() * 1, 0.02 + Math.random() * 0.02, (0.05 + Math.random() * 0.1) * lv, air, { type:'highpass', f0:3000 + Math.random() * 3000, q:0.8, attack:0.001 });
+    },
+    /** The spark curtain: a long fizzing shower. */
+    curtain(lv = 1, pan = 0) {
+      if (!live() || lv <= 0) return; const t = now(), { air } = lane(pan);
+      noise(white, t, 3.4, 0.11 * lv, air, { type:'highpass', f0:4500, f1:3200, q:0.6, attack:0.35 });
+      for (let i = 0; i < 70; i++) noise(white, t + 0.1 + Math.random() * 3.1, 0.015 + Math.random() * 0.02, (0.04 + Math.random() * 0.08) * lv, air, { type:'highpass', f0:4000 + Math.random() * 3500, q:0.8, attack:0.001 });
     },
     /** Flames: a soft roar with a crackle. */
     burn(dur, amt = 0.6) {
