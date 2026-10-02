@@ -29,6 +29,7 @@ import { shovePlan } from '../stage-hazards/motion.js';
 import { PYRO_SHOVE, reactionAt, timeline, timeRate, cues, shakeAt, deployCues, retractCues, volleyCues } from './shoveReaction.js';
 import { createBlastFx, createMortar } from './blastFx.js';
 import { createBlastSfx } from './blastSfx.js';
+import { playPyroCue } from '../../src/audio/pyroSfx.js';
 import { createPyro } from '../stage-pyro/pyro.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
@@ -314,28 +315,8 @@ const wake = () => { sfx.ensure(); applyMix(); unlock.hidden = true; };
 unlock.addEventListener('click', wake);
 window.addEventListener('pointerdown', wake, { capture:true }); window.addEventListener('keydown', wake, { capture:true });
 const applyMix = () => sfx.setMix(L.volume, L.bass);
-function playCue(c) {
-  switch (c.type) {
-    case 'plate': sfx.plate(); break;
-    case 'whine': sfx.whine(c.dur, L.sirenWhine); break;
-    case 'boom': sfx.boom(L.boom, L.tail); break;
-    case 'crackle': sfx.crackle(L.crackle); break;
-    case 'shell': sfx.shell(); break;
-    case 'crown': sfx.crown(); break;
-    case 'land': case 'bounce': sfx.land(c.power, L.rattle, L.dust); break;
-    case 'burn': sfx.burn(c.dur, 0.6); break;
-    case 'unlock': sfx.unlock(L.mechVol * 0.7, c.pan); break;
-    case 'lift': sfx.lift(L.mechVol * 0.6, c.pan); break;
-    case 'lock': sfx.lock(L.mechVol * 0.7, c.pan); break;
-    case 'release': sfx.release(L.mechVol * 0.7, c.pan); break;
-    case 'retract': sfx.retract(L.mechVol * 0.6, c.pan); break;
-    case 'seal': sfx.seal(L.mechVol * 0.7, c.pan); break;
-    case 'launch': sfx.launch(L.launchVol, c.pan); break;
-    case 'burst': sfx.crown(0.7 * L.launchVol, c.pan); break;
-    case 'flame': sfx.flame(L.flameVol, c.pan); break;
-    case 'curtain': sfx.curtain(L.curtainVol, c.pan); break;
-  }
-}
+// 📌 The cue → voice mapping is the game's own (`playPyroCue`, src/audio/pyroSfx.js).
+function playCue(c) { playPyroCue(sfx, c, L); }
 
 // ── the clock ────────────────────────────────────────────────────────────────
 let S_ = 0, playing = true, holdMs = 0, stoppedAtIgnite = false, lastCue = 0, loopWait = 0, END = 5;

@@ -219,3 +219,31 @@ export function createPyroSfx({ context = getRiffAudio, output = getSfxBus } = {
     },
   };
 }
+
+/**
+ * ONE cue → voice mapping for the game and the page (it was the preview's
+ * `playCue`). `L` is a `PYRO_SHOVE`-shaped look; a cue's own `lv` (the show
+ * timeline's level, `pyroShove.js`) wins over the look's default.
+ */
+export function playPyroCue(sfx, c, L) {
+  switch (c.type) {
+    case 'plate': sfx.plate(); break;
+    case 'whine': sfx.whine(c.dur, L.sirenWhine); break;
+    case 'boom': sfx.boom(L.boom, L.tail); break;
+    case 'crackle': sfx.crackle(L.crackle); break;
+    case 'shell': sfx.shell(); break;
+    case 'crown': sfx.crown(); break;
+    case 'land': case 'bounce': sfx.land(c.power, L.rattle, L.dust); break;
+    case 'burn': sfx.burn(c.dur, 0.6); break;
+    case 'unlock': sfx.unlock(c.lv ?? L.mechVol * 0.7, c.pan); break;
+    case 'lift': sfx.lift(c.lv ?? L.mechVol * 0.6, c.pan); break;
+    case 'lock': sfx.lock(c.lv ?? L.mechVol * 0.7, c.pan); break;
+    case 'release': sfx.release(c.lv ?? L.mechVol * 0.7, c.pan); break;
+    case 'retract': sfx.retract(c.lv ?? L.mechVol * 0.6, c.pan); break;
+    case 'seal': sfx.seal(c.lv ?? L.mechVol * 0.7, c.pan); break;
+    case 'launch': sfx.launch(c.lv ?? L.launchVol, c.pan); break;
+    case 'burst': sfx.crown(c.lv ?? 0.7 * L.launchVol, c.pan); break;
+    case 'flame': sfx.flame(c.lv ?? L.flameVol, c.pan); break;
+    case 'curtain': sfx.curtain(c.lv ?? L.curtainVol, c.pan); break;
+  }
+}

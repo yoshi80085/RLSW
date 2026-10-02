@@ -143,12 +143,14 @@ for (const seed of [1, 2, 3, 4, 5, 6, 7, 8]) {
   st = applyAction(st, pyroChargeStruck("vera", h));
   eq(report(st), { event: "struck", wave: 1, hexNum: h, spiritId: "vera" }, "a struck charge reports who and where");
   ok(!pyro(st).hexes.includes(h), "the struck charge is spent");
+  eq(pyro(st).struck, [{ hexNum: h, spiritId: "vera" }], "the state remembers who struck which mortar (the arena plays it off this)");
   eq(pyro(st).hexes.length, PYRO_ROUND_HEXES[0] - 1, "the rest stay armed");
   eq(report(applyAction(st, pyroChargeStruck("vera", h))), null, "a spent charge cannot be struck twice");
   st = applyAction(st, pyroTurnEnded());
   ok(!report(st).hexes.includes(h), "the struck charge does not fire again at END TURN");
   st = applyAction(st, pyroTurnStarted([]));
   ok(!pyro(st).hexes.includes(h), "the re-arm never drops a charge straight back under the launched Spirit");
+  eq(pyro(st).struck, [], "…and a fresh set starts with nothing struck");
 }
 
 // ── §6 the ENGINE's knockback stops on an armed charge ───────────────────────

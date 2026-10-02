@@ -304,7 +304,7 @@ export function applyPyroTurnStarted(state, { occupied = [] }, rng) {
     ...state,
     stageFx: {
       ...fx,
-      pyro: { ...p, phase: "armed", wave, hexes, spentHexes: [] },
+      pyro: { ...p, phase: "armed", wave, hexes, spentHexes: [], struck: [] },
       lastPyro: { event: "armed", wave, hexes },
     },
   };
@@ -319,7 +319,11 @@ export function applyPyroChargeStruck(state, { spiritId, hexNum }) {
       ...fx,
       // Spent, not gone: it fired, and the re-arm must not drop a fresh charge
       // straight back under the Spirit it just launched.
-      pyro: { ...p, hexes: p.hexes.filter(h => h !== hexNum), spentHexes: [...(p.spentHexes ?? []), hexNum] },
+      // `struck` is what the arena reads to play the right Spirit's reaction on
+      // the right mortar — a report alone would be overwritten before a frame
+      // drawn after a batch of dispatches ever saw it.
+      pyro: { ...p, hexes: p.hexes.filter(h => h !== hexNum), spentHexes: [...(p.spentHexes ?? []), hexNum],
+        struck: [...(p.struck ?? []), { hexNum, spiritId }] },
       lastPyro: { event: "struck", wave: p.wave, hexNum, spiritId },
     },
   };

@@ -1,10 +1,55 @@
-# SEQUENCING §A handoffs 8 → 46, archived 2026-09-29 (43, 44 and 45 on 2026-09-30; 46 and 46r on 2026-10-01; 51 on 2026-10-02)
+# SEQUENCING §A handoffs 8 → 46, archived 2026-09-29 (43, 44 and 45 on 2026-09-30; 46 and 46r on 2026-10-01; 51 and 52 on 2026-10-02)
 
 > Moved **unedited** out of `src/SEQUENCING.md` §A on 2026-09-29 (43-stagefx), where they had
 > restacked since 2026-09-04 despite `CLAUDE.md`'s one-handoff rule. Newest first, exactly as
 > they stood. Each has a one-line row in `src/SEQUENCING.md` §C; search here by its id
 > (e.g. `## 42-phone`). ⚠️ Relative links inside were written from `src/` — read `../` as
 > the repo root.
+
+---
+
+## 52-dbcut. 🪦 Db is cut — the cooldowns and the sacrifices are the gate — 2026-10-02
+
+Alex: *"Lets cut Db entirely - no more shops, no more Db, the cooldowns and
+'sacrifices' are the gate, not another economy over what is already doing quite a
+bit."* Also ruled: the ending pays **nothing for now**; the old Séance / Payola /
+Backstage Pass event cards **removed** ("very old"); the Major/Minor bonus
+**removed** ("Each Spirit has their own 'scale' to play in the current version").
+
+- ⚙️ **The gate** — `engine/systems/cooldowns.js`: `canFire(ns, id)` = in the
+  drafted kit **and** off cooldown. `firePatch` only starts the 2-round clock.
+  Every `*_DB_COST`, `FLAT_ABILITY_UNLOCK_DB` and `DB_UPGRADE_THRESHOLD` is gone
+  from `data/gameConstants.js`; `skillTree.js` lost `dbCost` and every "N Db" in
+  the descs.
+- 🎵 **The melody pays fans only** — `melodyCommit.js` has no Db bar, award or
+  `earned`; `melodyPayout.js` keeps style + craft fans and the red/blue stack-root
+  carrot. `ENDING_WEIGHT` is **dormant** (kept, read by nothing that pays) — so the
+  "end on the fifth" pressure is currently **off**. Open, Alex's call.
+- 🛒 **The shop is gone** — `ui/UpgradeModal.jsx` deleted; `upgradesPending`,
+  `pivotPending`, the Db header and the "⬆ UPGRADES · SOON" button removed; the
+  `AbilityWallet` is now just the two drafted abilities + rounds left (anchor
+  renamed `db-bar` → `ability-wallet`). HUD/MatchSurface Db cell removed.
+- 🤖 **Bots + finder** — `evaluate.js` lost the Db horizon/kit terms;
+  `playFinder.js` goals are `drive / sustain / fans` (the `db` goal and its
+  ceiling are gone; tie-breaks shifted — `test:playfinder` documents the new
+  picks). Crowd coach / bubble no longer talk about Db (the crowd speaks a little
+  less often).
+- 🪕 **Open — the Cursed Shamisen's bite.** The Iwato curse used to touch the
+  rival's Db; it now bites fans only. Alex flagged the rules may want a rewrite —
+  **not compensated in code**, see `STATE_OF_PLAY.md` §7.
+- 🧪 **Evidence** — 82 suites, isolated baseline worktree vs this tree: **25 red →
+  22 red**, every remaining red one also red on the baseline with the same first
+  failure (`test:legal`, `test:harness`, `test:skilltree` turned green).
+  `test:slime` and `test:eleven` now get *further* — the Db gate was failing them
+  first — and stop at assertions that fail identically on baseline when given Db
+  (pre-existing, not this change). `check:bundle` 4 warnings (= baseline); lint
+  343 errors (baseline 357).
+- ⚠️ **Removals only, no new visuals** — nothing here went through a `.scratch`
+  preview because nothing new was drawn; the wallet rows are styled as before.
+
+**Next:** Alex's calls on (1) whether the ending should pay anything again,
+(2) the Shamisen's bite now that there is no Db to drain, (3) whether the
+Intergalactic abilities want a sacrifice on top of the cooldown.
 
 ---
 
