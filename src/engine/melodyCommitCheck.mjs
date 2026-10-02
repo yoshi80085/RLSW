@@ -107,7 +107,7 @@ const run = (st, id = RONIN, ctx = {}) => commitMelodyEconomy(st, id, ctx);
   const committed={...nsOf(st,RONIN),...a.patch};
   const nextTurn={...committed,...startTurnNotes(committed).patch};
   deep(nextTurn.lastCommittedMelody,['C','E','G'],'the last melody remains available for a rival-led Riff Off after turn reset');
-  deep(nextTurn.committedMelody,[],'the existing per-turn melody still clears');
+  eq(nextTurn.committedMelody,null,'the existing per-turn melody still clears');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

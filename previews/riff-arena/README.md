@@ -3,9 +3,9 @@
 Run `npm run dev:riffarena`, or open `/RLSW/previews/riff-arena/` on the dev server.
 The `.scratch/riff-arena-preview.html` entry opens the same implementation.
 
-This is an interactive visual preview, pending the project's visual dial-in.
-It does not replace the live match overlay or apply rewards, damage, or knockback
-to game state. No Spirit-back artwork was installed.
+This is the tuning preview for the approved design now integrated into live
+matches. This standalone page does not apply rewards, damage, or knockback to
+game state; the live game does. No Spirit-back artwork was installed.
 
 ## What is playable
 
@@ -101,3 +101,20 @@ assertion in `selftest.mjs:457` (4 versus 11), before reaching these suites.
 
 No new wager, shield damage or payout formula was added. The 64-exchange bound
 exists only in bot search: it returns an unresolved forecast, never a winner.
+
+## Final verification — 2026-10-02
+
+- Passed: 16 live engine/visual scenarios, 10 mounted input scenarios, both real
+  Game journeys, 34 preview checks, 120 melody assertions, 73 turn-flow checks,
+  127,598 legacy riff parity assertions and the client reference check.
+- The final bundle has zero warnings; all four new production modules pass lint.
+- Corrected one new regression-test expectation: the existing per-turn melody
+  clears to `null`, while `lastCommittedMelody` preserves the actual notes.
+- Chromium, desktop viewport: a real Game bout reached exchange 3, rendered the
+  growing/moving core and shaking standees, then applied damage, knockback and
+  Headliner. No browser console errors. Screenshot: `.scratch/riff-final-live.jpg`.
+- Re-ran `test:all`: it still stops at the existing `selftest.mjs:457` combat
+  assertion (4 versus 11). Architecture verification still reports the same
+  seven unrelated laser/smoke modules absent from its map; all Riff modules are
+  listed. These are not reported as passing. Two-device network latency/skew
+  and empirical bot difficulty remain playtest items.
