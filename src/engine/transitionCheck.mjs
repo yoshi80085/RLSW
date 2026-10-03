@@ -73,9 +73,7 @@ const rngOf = (seed = 5) => makeRng(seed);
 const armed = (st) => {
   const here = HEX_BY_NUM[START];
   const nb = axialNeighbors(here.q, here.r).map(({ q, r }) => HEX_BY_QR[`${q},${r}`]).filter(Boolean)[0];
-  // ⚔️ Two hexes straight ahead — the Swing reaches 2–3 since 2026-10-03.
-  const two = HEX_BY_QR[`${2 * nb.q - here.q},${2 * nb.r - here.r}`];
-  return withSpirit(withSpirit(st, METAL, { num: two.num }), RONIN, { facing: angleTo(here, nb) });
+  return withSpirit(withSpirit(st, METAL, { num: nb.num }), RONIN, { facing: angleTo(here, nb) });
 };
 
 const ofKind = (acts, k) => acts.filter(a => a.kind === k);

@@ -169,7 +169,7 @@ import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
-import { tentacleOptions, legalActions, swingCone, SONIC_AP_COST } from "./engine/policies/legalActions.js";
+import { tentacleOptions, legalActions, SONIC_AP_COST } from "./engine/policies/legalActions.js";
 // 🧠 THE SEARCHER — the headless bot from the §6.6 bench, wired into the chair.
 // ⚠️ `POLICIES.searcher` is used as a CHOOSER ONLY; `playTurn` is not, because it
 // would advance the seeded rng outside `dispatch()`. See "THE SEARCHER, IN THE
@@ -2499,7 +2499,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       pages: [
         { body: ['Track committed — those notes are now Action Points (AP). MOVE across hexes, FACE to turn (1 AP), and FIGHT!',
                  'Attacks fire into the cone or beam you are FACING. Sneaking up behind someone isn\'t just rude — it\'s tactics, baby! Hit a rival in the wedge behind them and they lose an EXTRA note off their Sustain stack. Watch for the 🔪 badge while you aim — that\'s a back with nobody home.'], anchor: 'actions-bar' },
-        { body: 'Two ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the jab, 2–3 hexes ahead — too close and you cannot swing. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
+        { body: 'Two ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
           anchor: 'actions-bar', act: 'swing' },
         { body: 'Two — 🔊 SONIC (1 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
           anchor: 'actions-bar' },
@@ -6598,11 +6598,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     return readStack(spiritId, notes);
   }
 
-  // Returns hex nums the Swing can hit: the forward wedge, 2–3 hexes out and
-  // never adjacent (2026-10-03). One copy, in the engine — the click, the tint,
-  // the 3D attack tiles and the bots all read `swingCone`.
+  // Returns hex nums in the forward attack cone of a spirit
+  // Cone = forward hex + 2 diagonal-forward hexes (120° arc)
   function getSwingCone(spirit) {
-    return swingCone(spirit);
+    const hex = HEX_BY_NUM[spirit.num];
+    if (!hex) return new Set();
+    const neighbors = getFlatTopNeighborSlots(hex);
+    const cone = new Set();
+    neighbors.forEach(nb => {
+      const angle = angleTo(hex, nb);
+      const diff  = angleDiff(angle, spirit.facing ?? 0);
+      if (diff <= Math.PI / 2.2) cone.add(nb.num); // ~80° half-arc = forward 3 hexes
+    });
+    return cone;
   }
 
   // Returns rival spirits in the attacker's swing cone
@@ -10806,7 +10814,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSwing(target.id); setAction(null); }
-      else addLog("⚔️ That spirit is not in your swing cone — the Swing reaches 2–3 hexes ahead, not next door!");
+      else addLog("⚔️ That spirit is not in your swing cone!");
       return;
     }
     if (action === "face") {
@@ -12942,7 +12950,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
                       : canSwing
                       ? "Drive vs Drive (1 AP). The loser takes the total difference as Vibe damage and is pushed one hex. Ties break evenly."
-                      : "The jab (1 AP) — no rival 2–3 hexes ahead in your cone (a rival right next to you is too close). Hover to see the swing range."}
+                      : "The jab (1 AP) — no rival in your cone. Hover to see the swing range."}
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
                       else if (canSwing) {

@@ -975,14 +975,6 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 // plan rather than a target. One number, two consumers, no transcription.
 export const SONIC_BEAM_REACH = 3;
 
-// ⚔️ THE SWING'S REACH — 2 to 3 hexes, never next door (Alex, 2026-10-03:
-// *"it should be unable to fire from only 1 space away … must be 2 - 3 spaces
-// away"*). `legalActions.swingCone` builds the forward wedge from these; the
-// client's `getSwingCone` reads the same function, so the highlight, the click
-// and the bots agree.
-export const SWING_MIN_RANGE = 2;
-export const SWING_MAX_RANGE = 3;
-
 // ☀️ SUNBEAM — the whiteout.
 export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
 export const SUNBEAM_LINGER_CHANCE   = 0.5;  // odds the burn sears in for a 2nd turn

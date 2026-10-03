@@ -20,9 +20,8 @@ for(const name of ['document','HTMLElement','Element','Node','MutationObserver']
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const config=buildTestingGroundsConfig({beginnerMode:false});config.seed=44;
 config.spirits=config.spirits.map(s=>({...s,cpu:false,vibe:100,maxVibe:100}));
-// ⚔️ The rival stands two hexes ahead — the Swing reaches 2–3 since 2026-10-03.
-const a=HEX_BY_NUM[config.spirits[0].num],step=neighborInDirection(a,0),b=neighborInDirection(step,angleTo(a,step));
-config.spirits[0].facing=angleTo(a,step);config.spirits[1].num=b.num;
+const a=HEX_BY_NUM[config.spirits[0].num],b=neighborInDirection(a,0);
+config.spirits[0].facing=angleTo(a,b);config.spirits[1].num=b.num;
 let state;
 const root=createRoot(document.getElementById('root'));
 const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent.includes(text));
