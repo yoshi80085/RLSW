@@ -41,7 +41,7 @@ export const BOT_PERSONALITIES = {
     // found — he hunts the ladder on the board instead of buying it.
     skillOrder:[] },
   moshlord: { name:'The Mosh Lord', emoji:'🤘', note:'combat',
-    blurb:'pure aggression — Thrash, hunts the wounded and the leader, swings for knockouts.',
+    blurb:'pure aggression — Thrash, hunts the wounded and the leader, goes for knockouts.',
     move:{ center:1.0, rival:1.9, token:0.6, spotlight:0.8, edgeFear:0.5, rear:1.7, rearFear:0.4 },
     skillOrder:[] },
   diva:     { name:'The Diva',     emoji:'✨', note:'clean',

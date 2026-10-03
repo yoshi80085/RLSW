@@ -46,7 +46,7 @@ await act(async()=>root.render(<Game gameState={config} onReturnToLobby={()=>{}}
 await click(button('Continue to Melody'));
 for(let i=0;i<3;i++)await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
 await click(button('Commit (3 notes'));
-await click(button('Swing'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));
+await click(button('Thrash'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));
 assert.ok(state.battle?.swingClash,'live client uses engine clash verdict');
 assert.equal(phase(),'swing_attacker','the Swing opens waiting on the attacker');
 assert.equal(document.querySelector('[data-board-view]')?.dataset.boardView,'3d');

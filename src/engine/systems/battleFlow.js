@@ -914,7 +914,7 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
     const shove=yield* knockback({state,fromId:winner,targetId:loser,spaces:1,amps,fameThisTurn});
     state=yield {kind:'peek'};
     if(!shove.endedByKnockdown&&!shove.targetRelocated) {
-      const hit=yield* vibeDamage({state,targetId:loser,dmg:damage,sourceLabel:'Swing clash',attackerId:winner,fameThisTurn});
+      const hit=yield* vibeDamage({state,targetId:loser,dmg:damage,sourceLabel:'Thrash clash',attackerId:winner,fameThisTurn});
       fameThisTurn=hit.fameThisTurn;
     }
     state=yield {kind:'peek'};

@@ -740,7 +740,7 @@ export function BattleMeterOverlay({
                     <input type="checkbox" checked={skipBattleIntros}
                       onChange={e => setSkipBattleIntros(e.target.checked)}
                       style={{accentColor:noteColor, cursor:'pointer'}}/>
-                    ⏭ auto-skip battle cinematics (swings, sonics & riff-offs)
+                    ⏭ auto-skip battle cinematics (thrashes, sonics & riff-offs)
                   </label>
                 </div>
               )}
@@ -1184,7 +1184,7 @@ export function BattleMeterOverlay({
         let moveFlash = null;
         if (phase === 'result' && !sonicAttack) {
           moveFlash = attackerWon
-            ? { text: battleState.danceName ?? 'SWING', color: '#44ddff' }
+            ? { text: battleState.danceName ?? 'THRASH', color: '#44ddff' }
             : { text:'whiff…', color:'#6688aa', whiff:true };
         }
 
@@ -1930,7 +1930,7 @@ export function BattleMeterOverlay({
                 </div>
               </div>
               <div style={{fontSize:10, color:'#6a8aaa', letterSpacing:2, textAlign:'center', minWidth:260}}>
-                {phase==='enter_attacker'     && '⚔️ SWING!'}
+                {phase==='enter_attacker'     && '⚔️ THRASH!'}
                 {phase==='flash_drive'        && `${attacker?.name?.split(' ')[0]} DRIVE: ${atkStat}`}
                 {phase==='pick_drive_slide'   && `↙ pick slides ${atkStat} toward attacker…`}
                 {phase==='enter_defender'     && `${defender?.name} steps up!`}
@@ -2011,7 +2011,7 @@ export function BattleMeterOverlay({
                       return (
                         <>
                           <div style={{fontSize:15, color:'#88ccff', marginBottom:4}}>
-                            {attacker?.name} {isSonic ? 'misfires' : 'swings wide'} — <strong style={{color:'#4488ff'}}>{selfDmg} Vibe self-damage!</strong>
+                            {attacker?.name} {isSonic ? 'misfires' : 'thrashes wide'} — <strong style={{color:'#4488ff'}}>{selfDmg} Vibe self-damage!</strong>
                           </div>
                           <div style={{fontSize:10, color:'#6a8aaa', marginBottom:4}}>
                             Attack {atkTotal} vs Defense {defTotal} — margin {margin}

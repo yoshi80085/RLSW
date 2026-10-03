@@ -17,7 +17,7 @@ export function MarqueeHand({ cards = [] }) {
   return (
     <RailBtn className="btn" disabled data-marquee-hand={held.length}
       style={{ borderColor: GOLD, color: GOLD, cursor: "help", opacity: 1 }}
-      title={`🃏 Your cards:\n${held.map(c => `${c.icon} ${c.name} — ${c.text}`).join("\n")}\n\nPlay one at the roll: press "Use a card" above the Roll button in a Swing or a Sonic.`}>
+      title={`🃏 Your cards:\n${held.map(c => `${c.icon} ${c.name} — ${c.text}`).join("\n")}\n\nPlay one at the roll: press "Use a card" above the Roll button in a Thrash or a Sonic.`}>
       🃏 {held.map(c => c.icon).join(" ")}
     </RailBtn>
   );

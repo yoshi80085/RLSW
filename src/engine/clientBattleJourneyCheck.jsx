@@ -72,7 +72,7 @@ const vibe = spiritId => Number(document.querySelector(`[data-spirit-id="${spiri
   const startingDefenderVibe = vibe(defenderId);
   assert.equal(startingAttackerVibe, config.spirits[0].vibe, 'attacker Vibe is visible before combat');
   assert.equal(startingDefenderVibe, config.spirits[1].vibe, 'rival Vibe is visible before combat');
-  await click(button('Swing'));
+  await click(button('Thrash'));
   await click(document.querySelector(`[data-hex-num="${defenderHex.num}"]`));
   assert.ok(document.querySelector('[data-battle-phase]'), 'Swing opens the battle overlay');
   console.log('Opened battle overlay');
@@ -95,7 +95,7 @@ const vibe = spiritId => Number(document.querySelector(`[data-spirit-id="${spiri
   assert.ok(observedState.spirits.find(s => s.id === attackerId).vibe < startingAttackerVibe,
     'the deterministic whiff applies Vibe self-damage');
   assert.ok(document.querySelector('[data-tip-anchor="end-turn"]'), 'player returns to the action rail');
-  assert.equal(button('Swing')?.disabled, true, 'the spent Action Token disables another Swing');
+  assert.equal(button('Thrash')?.disabled, true, 'the spent Action Token disables another Swing');
   console.log('PASS: melody, Swing target, both dice, result, close, Vibe consequence, spent action');
 }
 process.exit(0);

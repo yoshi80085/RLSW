@@ -2499,7 +2499,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       pages: [
         { body: ['Track committed — those notes are now Action Points (AP). MOVE across hexes, FACE to turn (1 AP), and FIGHT!',
                  'Attacks fire into the cone or beam you are FACING. Sneaking up behind someone isn\'t just rude — it\'s tactics, baby! Hit a rival in the wedge behind them and they lose an EXTRA note off their Sustain stack. Watch for the 🔪 badge while you aim — that\'s a back with nobody home.'], anchor: 'actions-bar' },
-        { body: 'Two ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
+        { body: 'Two ways to RUIN someone\'s set. One — ⚔️ THRASH (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
           anchor: 'actions-bar', act: 'swing' },
         { body: 'Two — 🔊 SONIC (1 AP): the ranged beam off your amp rig, 2–3 hexes straight ahead (never next door). Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
           anchor: 'actions-bar' },
@@ -2513,12 +2513,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     combat: {
       title: '⚔️ Battle!',
       pages: [
-        { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
+        { body: 'A THRASH is a melee battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
         { body: ['A SONIC is the ranged version, and it rolls differently: you throw your whole rig pool and KEEP THE HIGHEST die. The defender answers with a d6 — unless they\'re caught outside their own amp range, in which case they\'ve got no rig to brace with and scramble a d4. Position is damage.', 'Both of you beam-to-beam AND both inside your own range? That\'s not an attack any more. That\'s a RIFF-OFF.'], anchor: 'stat-knobs' },
         { body: ['The fine print your rival hopes you skip:',
-                 'Your stacks are AMMUNITION. A landed Swing burns 2 notes off your Drive Stack; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
+                 'Your stacks are AMMUNITION. A landed Thrash burns 2 notes off your Drive Stack; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
                  `Land it in the wedge BEHIND them and they shed ${REAR_FRAY_BONUS} more. Facing decides what you can hit AND what you can brace against — it cuts both ways, so mind which way YOUR back is pointing.`,
-                 'Swinging also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
+                 'Thrashing also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
     },
     fans: {
@@ -4411,7 +4411,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog('🛡️ '+nm+' releases '+report.sustainFray.frayed+' fading Sustain note(s); the root holds.');
     }
     if (report.halvedByAxeSwing && report.refreshedCount > 0) {
-      addLog(`🪓 Axe Swing whiff — stock recovery halved this turn!`);
+      addLog(`🪓 Thrash whiff — stock recovery halved this turn!`);
     }
     if (report.drainedByVortex > 0) {
       const d = report.drainedByVortex;
@@ -4589,7 +4589,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // (v1 stance route removed — v2 stances are fixed ability kits, no learning tiers)
     if (skillId === 'goes_to_11')   addLog(`🔊 ${spirit?.name} — GOES TO 11! Set your attack to exactly ${ELEVEN_DRIVE} and shrug off knockback — but it eats your Sustain stack and blows your amp for a turn. If you were already louder, it turns you down. That's the joke, and it's also the rule.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
-    if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
+    if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Thrash from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Take it up, and from your next turn tune its ${SHAMISEN_STRINGS} strings with Iwato notes in the chord step. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes (your Action Token) — their scale becomes Iwato for ${CURSE_TURNS} turns.`);
@@ -6875,7 +6875,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!attacker || !defender) return;
 
     if (live.turn.moveStepsLeft < 1) {
-      addLog(`⚔️ Not enough Action Points — Swing costs 1 AP. Move steps left: ${live.turn.moveStepsLeft}`);
+      addLog(`⚔️ Not enough Action Points — Thrash costs 1 AP. Move steps left: ${live.turn.moveStepsLeft}`);
       return;
     }
 
@@ -6909,7 +6909,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const verdict=rollState.battle;
     recordBattleTotals(attacker.id,targetId,verdict.atkTotal,verdict.defTotal,verdict.attackerWon);
     logCardPlayed(verdict,attacker);
-    burnChargesAfterBattle([attacker.id,targetId],'the Swing clash spent it');
+    burnChargesAfterBattle([attacker.id,targetId],'the Thrash clash spent it');
     setNoteField(attacker.id,{swingExposed:true});
     addLog('⚔️ '+attacker.name+' and '+defender.name+' clash: Drive '+verdict.atkTotal+' vs '+verdict.defTotal+'.');
     startSwingPresentation(verdict);
@@ -7711,7 +7711,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // NUMBER — a rival standing at 2 is the single most confusing refusal this
     // ability can produce, because he is visibly right there in the lane.
     if (distToTarget < PSYCHO_BUSHIDO_MIN_RANGE) {
-      addLog(`🌀 Too close to draw — Psycho Bushido needs ${PSYCHO_BUSHIDO_MIN_RANGE} hexes of run-up. Back off, or Swing.`);
+      addLog(`🌀 Too close to draw — Psycho Bushido needs ${PSYCHO_BUSHIDO_MIN_RANGE} hexes of run-up. Back off, or Thrash.`);
       return;
     }
     // ⚡ THE AP BILL IS FLAT, SO IT CAN BE CHECKED BEFORE THE DASH COMMITS.
@@ -9352,7 +9352,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       powers=[swingBeamPower(verdict.atkTotal,verdict.dicePool),swingBeamPower(verdict.defTotal,verdict.defenderDicePool)];
       mark({...next});
       const n=(verdict.rolledPool??verdict.dicePool).length;
-      return {label:`Roll ${n}`,sub:`${n} Drive dice · ${defender?.name??'the Rival'} swings back`};
+      return {label:`Roll ${n}`,sub:`${n} Drive dice · ${defender?.name??'the Rival'} thrashes back`};
     }};
     const beat=(value)=>{
       phase(value);
@@ -9363,7 +9363,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const split=SWING_BEATS.findIndex(([,name])=>name==='swing_rival');
     // 🎯 The bout opens on the pair first — see the Sonic's `BATTLE_INTRO`.
     T(()=>awaitBattleRoll({id:battleCueId('swing',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,cardSeat:true,
-      lead:'Swing! Roll your Drive',sub:`${verdict.dicePool.length} Drive dice · ${defender?.name??'the Rival'} swings back`,
+      lead:'Thrash! Roll your Drive',sub:`${verdict.dicePool.length} Drive dice · ${defender?.name??'the Rival'} thrashes back`,
       label:`Roll ${verdict.dicePool.length}`,color:attacker?.color,
       onRoll:()=>{
         mark({swingRollAt:performance.now()});
@@ -9372,7 +9372,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         T(()=>{
           phase('swing_rival');
           awaitBattleRoll({id:battleCueId('swing',verdict,'rival'),spiritId:verdict.defenderId,isCurrent,
-            lead:`${defender?.name??'The Rival'} swings back`,sub:`${verdict.defenderDicePool.length} Drive dice · Drive against Drive`,
+            lead:`${defender?.name??'The Rival'} thrashes back`,sub:`${verdict.defenderDicePool.length} Drive dice · Drive against Drive`,
             label:`Roll ${verdict.defenderDicePool.length}`,color:defender?.color,
             onRoll:()=>{
               mark({swingRivalRollAt:performance.now()});
@@ -10802,11 +10802,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (action === "swing") {
       // 👤 Swinging at the double looks exactly like swinging at the Ronin —
       // right up until the blade meets nothing.
-      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'swing', 'swing', num); return; }
+      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'swing', 'Thrash', num); return; }
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSwing(target.id); setAction(null); }
-      else addLog("⚔️ That spirit is not in your swing cone!");
+      else addLog("⚔️ That spirit is not in your Thrash cone!");
       return;
     }
     if (action === "face") {
@@ -11862,7 +11862,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 title:'Fast-forward: cycle game speed 1× → 2× → 4×. Presentation only — the rules do not change.',
                 onClick: cycleGameSpeed },
               { kind:'toggle', icon:'⏭', label:'Fast battles', color:'#ccff44', on: skipBattleIntros,
-                title:'Compress the pre-die battle animations (swings, sonics & riff-off intros). The die-click itself is never skipped.',
+                title:'Compress the pre-die battle animations (thrashes, sonics & riff-off intros). The die-click itself is never skipped.',
                 onClick:() => setSkipBattleIntros(v => !v) },
               { kind:'toggle', icon:'🎨', label:'Lite FX', color:'#ffaa22', on: liteFx,
                 title:'Reduce GPU-heavy visual effects in battles (filters, shadows, blend modes). Helps if battles stutter or freeze.',
@@ -12943,19 +12943,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
                       : canSwing
                       ? "Drive vs Drive (1 AP). The loser takes the total difference as Vibe damage and is pushed one hex. Ties break evenly."
-                      : "The jab (1 AP) — no rival in your cone. Hover to see the swing range."}
+                      : "The jab (1 AP) — no rival in your cone. Hover to see the Thrash range."}
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
                       else if (canSwing) {
                         setAction('swing');
-                        addLog('⚔️ SWING — click a rival in your cone to attack! (1 AP)');
+                        addLog('⚔️ THRASH — click a rival in your cone to attack! (1 AP)');
                         // 🎲 Same dice source as the Sonic — say where any extra die came from.
                         const swingWhy = actingNoteState?.atEleven ? null
                           : drivePowerNote(drivePowerBreakdown(actingNoteState ?? {}, acting?.id, homeSpotlightDrive(engineState, acting?.id)));
                         if (swingWhy) addLog(`🎲 ${swingWhy}.`);
                       }
                     }}>
-                    ⚔️ Swing{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
+                    ⚔️ Thrash{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
                   </RailBtn>
                 </div>
               );
@@ -13227,7 +13227,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     : stack.length === 0
                     ? 'Goes to 11 — the price is your SUSTAIN stack, and yours is empty. Voice some armour first.'
                     : quieter
-                    ? `⚠️ Goes to 11 would turn you DOWN — you are already swinging at ⚔️${asIs}. The amp only goes to eleven. (Still buys knockback immunity, and still costs your stack ${stack.join(' ')} and your rig.)`
+                    ? `⚠️ Goes to 11 would turn you DOWN — you are already hitting at ⚔️${asIs}. The amp only goes to eleven. (Still buys knockback immunity, and still costs your stack ${stack.join(' ')} and your rig.)`
                     : `Goes to 11 — set your attack to exactly ${ELEVEN_DRIVE} (from ⚔️${asIs}) and shrug off knockback. Costs your whole Sustain stack (${stack.join(' ')}) and blows your amp: no Sonic and a bare d4 on defence for a full turn.`}
                   onClick={() => { if (canCall) callEleven(); }}>
                   {cranked
