@@ -26,7 +26,8 @@ import {
   LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor,
 } from "../data/gameConstants.js";
 import { SPIRIT_DEFS } from "../data/spirits.js";
-import { MODELLED_KINDS, UNMODELLED_KINDS } from "./policies/transition.js";
+import { MODELLED_KINDS, UNMODELLED_KINDS, applyBotAction } from "./policies/transition.js";
+import { makeRng } from "./rng.js";
 import { BOT_CLIENT_KINDS, BOT_CLIENT_GAPS } from "./policies/bot.js";
 import { CORNERS } from "../data/corners.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
@@ -309,6 +310,18 @@ const faceRivalAt = (st, rivalId, step = 0, dist = 1) => {
     withSpirit(confirmed(baseState()), RONIN, { num: CORNERS.blue.homeNum, facing: angleTo(here, front) }),
     METAL, { num: ahead(here, front, 2).num });
   ok(ofKind(legalActions(atHome, RONIN), 'sonic').length > 0, 'inside the rig radius the Sonic is live');
+
+  // 🔊 A SONIC SPENDS ONE DRIVE NOTE, OFF THE TOP, HIT OR MISS (Alex, 2026-10-03 —
+  // the 09-11 whole-charge rule left the shooter empty for the next Thrash).
+  const charged = withNs(atHome, RONIN, { driveStack: ['C', 'E', 'G', 'B'] });
+  const shot = ofKind(legalActions(charged, RONIN), 'sonic')[0];
+  ok(shot, 'the charged fixture offers a Sonic');
+  for (const seed of [1, 2, 3]) {
+    const r = applyBotAction(charged, shot, { rng: makeRng(seed), view: { fameThisTurn: {} } });
+    ok(r.ok, `the Sonic resolves (seed ${seed})`);
+    assert.deepEqual(r.state.noteStates[RONIN].driveStack, ['C', 'E', 'G'],
+      `🔊 a Sonic takes ONE note off the top of the Drive stack, not the whole charge (seed ${seed})`);
+  }
 
   // Same geometry, transplanted to the far corner — out of the blue amp's reach.
   const farHome = HEX_BY_NUM[CORNERS.red.homeNum];

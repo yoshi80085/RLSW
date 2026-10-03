@@ -236,6 +236,7 @@ Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
+| `56-sonic1note` | 2026-10-03 | Sonic spends 1 Drive note off the top again (the 09-11 whole-charge rule reversed — an empty rig was a free kill for the next Thrash). `SONIC_DRIVE_SPEND` wired into the client and `transition.js`. `test:legal`. |
 | `55-sonicreach` | 2026-10-03 | Sonic reaches 2–3 hexes, never adjacent: `SONIC_MIN_RANGE`, `sonicBeam` skips hex 1; client `getSonicBeam` delegates to it; Blaster of Ra keeps the full line (`getBlasterBeam`). A same-day Swing version of this rule was reverted — Alex meant the Sonic. `test:legal`, `test:sonicjourney`, `test:riffarenajourney`. |
 | `54-sonic1ap` | 2026-10-03 | Sonic Attack costs 1 AP (was 2): `SONIC_AP_COST` and every client gate/charge/label read it; riff-off follows. `test:legal`. |
 | `53-pyro` | 2026-10-02 | **LIVE — §A above.** Pyro v2: Astra's mortars fire at every END TURN (5/10/13 by show round), a shove stops on one, 3 Vibe; the pyro-shove preview ported into `board/pyroMortars.js` / `pyroShove.js` / `pyroBlast.js` / `pyroStage.js` and `audio/pyroSfx.js`. `test:pyrorules`, `test:pyroshove`, `test:pyrostage`. |

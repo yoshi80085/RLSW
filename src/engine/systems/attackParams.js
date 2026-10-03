@@ -72,8 +72,10 @@ export const CHARGE_DIE_CEILING = 12;
 //     BEFORE the roll (after the chord stats are derived off the full stack —
 //     get that order wrong and the beam is weaker than the one the player fires).
 //
-// Both transcribed from the client (`resolveSwing`'s `.slice(2)` and
-// `initiateSonicAttack`'s `sonicSpendN = 1`), not invented here.
+// Both read by the client too (`initiateSonicAttack` pays SONIC_DRIVE_SPEND off
+// the TOP). ⚠️ From 2026-09-15 to 10-03 the Sonic spent the WHOLE stack (the
+// 09-11 ruling) while this constant sat unused; Alex reversed it — an empty rig
+// is a free kill for the next Thrash.  `legalActionsCheck` §10 pins it.
 export const SWING_DRIVE_SPEND = 2;
 export const SONIC_DRIVE_SPEND = 1;
 

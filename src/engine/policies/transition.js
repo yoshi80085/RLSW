@@ -609,9 +609,14 @@ export function applyBotAction(state, action, ctx = {}) {
       // that never sets it on the attacker prices melee as risk-free and
       // over-rates it — exactly the direction §7 warns about.
       if (rollKind === 'sonic') {
+        // 🔊 ONE note off the TOP (Alex, 2026-10-03 — back from the 09-11
+        // whole-charge rule): an empty rig after every Sonic left the shooter
+        // defenceless against the next Thrash (Drive vs Drive), which with 3–4
+        // players is a free kill. The dice were already derived off the full
+        // stack above, so the volley the player sees is the one that counts.
         const stack = pre?.noteStates?.[spiritId]?.driveStack ?? [];
         if (stack.length) {
-          next = patchNs(next, spiritId, { driveStack: [] }, rng);
+          next = patchNs(next, spiritId, { driveStack: stack.slice(0, -SONIC_DRIVE_SPEND) }, rng);
         }
       } else {
         next = patchNs(next, spiritId, { swingExposed: true }, rng);

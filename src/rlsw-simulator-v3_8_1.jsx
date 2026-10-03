@@ -98,7 +98,7 @@ import { micAvailable, startMicListening } from "./audio/micPitch.js";
 import riffOffSong from "./music/Riff_off_song.mp3";
 import battleSong  from "./music/battle_song.mp3";
 import moshpitSong from "./music/Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
-import { attackParams, rigFor } from "./engine/systems/attackParams.js";
+import { attackParams, rigFor, SONIC_DRIVE_SPEND } from "./engine/systems/attackParams.js";
 import { scheduleSonicVolley, scheduleSonicBarrage } from "./board/sonicPresentation.js";
 import { SWING_TIMING, SWING_BEATS, SWING_GATE } from './board/swingTiming.js';
 import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
@@ -8248,7 +8248,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const params=attackParams(engineRef.current,attacker.id,targetId,'sonic');
     const {_derived,...rollOptions}=params;
     if(_derived.consumedSmashExposed)setNoteField(targetId,{smashExposed:false});
-    setNoteField(attacker.id,{driveStack:[]});
+    // 🔊 ONE note off the TOP, hit or miss (Alex, 2026-10-03) — not the whole
+    // stack. Spending everything left the shooter empty for the next Thrash.
+    const sonicStack=engineRef.current.noteStates[attacker.id]?.driveStack??[];
+    if(sonicStack.length){
+      const spent=sonicStack.slice(-SONIC_DRIVE_SPEND);
+      setNoteField(attacker.id,{driveStack:sonicStack.slice(0,-SONIC_DRIVE_SPEND)});
+      showSpentNotes(attacker.id,spent,'drive');
+    }
     const rolled=maybeCodeInjection(dispatch(attackRolled('sonic',attacker.id,targetId,rollOptions)),attacker.id,targetId).battle;
     burnChargesAfterBattle([attacker.id,targetId],'the Sonic volley spent it');
     logCardPlayed(rolled,attacker);
@@ -13043,7 +13050,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       : outOfRange
                       ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
-                      ? `Sonic Attack (1 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
+                      ? `Sonic Attack (1 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends 1 Drive note, hit or miss. Facing rivals with working amps trigger a RIFF-OFF.`
                       : "Sonic Attack (1 AP) — build Drive and aim at a rival 2–3 hexes directly ahead (next door is too close)."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
