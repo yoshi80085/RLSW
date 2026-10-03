@@ -30,7 +30,12 @@ export function useAbilityDemo(look = ABILITY_DEMO) {
   return ok ? get : null;
 }
 
-/** Hover/focus → open after `openDelay`; leave → close after `closeDelay` (the window itself counts as staying). */
+/**
+ * Hover/focus → open after `openDelay`; leave → close after `closeDelay` (the window itself counts as staying).
+ * ⚠️ The open is a DWELL, not a reflex: passing the cursor over the rows must not
+ * spawn a window (Alex, 2026-10-03). Pressing a row (picking it) cancels a
+ * pending open — a click is not a request to watch the demo.
+ */
 export function useAbilityPopout(look = ABILITY_DEMO) {
   const [open, setOpen] = useState(null);
   const timer = useRef(0);
@@ -39,12 +44,13 @@ export function useAbilityPopout(look = ABILITY_DEMO) {
   const show = (skill, el) => {
     clear();
     if (!hasDemo(skill.id)) { setOpen(null); return; }
-    timer.current = setTimeout(() => setOpen({ skill, rect:el.getBoundingClientRect() }), open ? 0 : look.openDelay);
+    timer.current = setTimeout(() => setOpen({ skill, rect:el.getBoundingClientRect() }), open ? look.swapDelay : look.openDelay);
   };
   const hide = () => { clear(); timer.current = setTimeout(() => setOpen(null), look.closeDelay); };
   const bind = skill => ({
     onPointerEnter:e => show(skill, e.currentTarget), onPointerLeave:hide,
     onFocus:e => show(skill, e.currentTarget), onBlur:hide,
+    onPointerDown:() => { if (!open) clear(); },
     onKeyDown:e => { if (e.key === 'Escape') { clear(); setOpen(null); } },
   });
   // 📌 The window is placed off the row's rect AT OPEN; a scroll would leave it

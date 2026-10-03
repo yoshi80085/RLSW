@@ -120,6 +120,14 @@ console.log('§5 the wiring');
   ok('the canvas never takes a click', /\.draft-standee-layer\{[^}]*pointer-events:none/.test(css));
   ok('the popped card is drawn LAST, over its neighbours', /sort\(\(a, b\) => a\.p - b\.p\)/.test(stage));
   ok('a standee is clipped to the panel it scrolls in (it must not draw over the lobby header)', /scrollersOf\(slot\)/.test(stage) && !/'hidden'\) out\.push/.test(stage) && /setScissor\(sx0/.test(stage));
+  ok('the canvas LIVES in the panel it scrolls in, so a scroll moves it with the cards (no catch-up jump, Alex 2026-10-03)',
+    /host = s \?\? document\.body/.test(stage) && /host\.append\(canvas, story\)/.test(stage) && /scrollersOf\(slot\)\[0\]/.test(stage));
+  ok('…the layer and the story are absolute, never fixed over the window',
+    /\.draft-standee-layer\{position:absolute/.test(css) && /\.draft-story\{position:absolute/.test(css) && !/\.draft-standee-layer\{position:fixed/.test(css));
+  ok('…and every standee is drawn in CANVAS px (viewport and scissor), not window px',
+    /setViewport\(fx, box\.h - fy - f\.vh/.test(stage) && /setScissor\(sx0, box\.h - sy1/.test(stage));
+  ok('a static scroller is made the containing block, and put back on dispose',
+    /s\.style\.position = 'relative'/.test(stage) && /host\.style\.position = hostPosition/.test(stage));
   ok('the story is built with textContent, never innerHTML', !/innerHTML/.test(stage));
   ok('dispose takes the canvas, the story and the GPU context away', /canvas\.remove\(\); story\.remove\(\)/.test(stage) && /forceContextLoss\(\)/.test(stage));
   ok('the roster asks canUseWebGL before it builds anything', /useState\(\(\) => canUseWebGL\(\)\)/.test(draft));

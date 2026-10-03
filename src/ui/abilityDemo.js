@@ -72,7 +72,12 @@ import { CURSED_SHAMISEN_CD, SONIC_BEAM_REACH } from '../data/gameConstants.js';
 // The preview page reads its defaults from here.
 export const ABILITY_DEMO = Object.freeze({
   // the window
-  openDelay:220, closeDelay:160, side:'auto', width:400, aspect:0.62, frame:'glow', inGuide:'on',
+  // ⏳ openDelay 220 → 2000 (Alex, 2026-10-03: "simply hovering over the button
+  // shouldn't spawn the window right away"). At 220 ms a cursor merely PASSING
+  // over the rows spawned a WebGL window under it. `swapDelay` is the dwell to
+  // move an already-open window to another row — a sweep across the rows no
+  // longer flickers through every demo (it was 0).
+  openDelay:2000, swapDelay:400, closeDelay:160, side:'auto', width:400, aspect:0.62, frame:'glow', inGuide:'on',
   // the picture
   camera:'side', zoom:1, orbit:0.12, backdrop:'island', island:0.6,
   // the script

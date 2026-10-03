@@ -39,9 +39,16 @@ const ronin = abilitiesFor('cosmic_ronin').map(s => s.id);
 for (const id of DEMO_ABILITIES) ok(ronin.includes(id), `${id} is a real Ronin ability`);
 ok(hasDemo('shukuchi') && hasDemo('psycho_bushido') && hasDemo('cursed_shamisen'), 'Shukuchi, Bushido and the Shamisen have demos');
 ok(!hasDemo('shadow_illusion'), 'Shadow Illusion keeps the text guide');
-for (const [k, v] of Object.entries({ openDelay:220, closeDelay:160, side:'auto', width:400, sound:'off', diceSpeed:2.6, scenario:'cycle' }))
+for (const [k, v] of Object.entries({ openDelay:2000, swapDelay:400, closeDelay:160, side:'auto', width:400, sound:'off', diceSpeed:2.6, scenario:'cycle' }))
   ok(ABILITY_DEMO[k] === v, `default ${k} = ${JSON.stringify(v)}`);
 
+ok(ABILITY_DEMO.openDelay >= 1000, 'the pop-out waits for a real dwell, not a pass-over (Alex, 2026-10-03)');
+ok(ABILITY_DEMO.swapDelay > 0 && ABILITY_DEMO.swapDelay < ABILITY_DEMO.openDelay, 'an open window moves rows after a short beat, never instantly');
+{
+  const hooks = read('./abilityDemoHooks.js');
+  ok(/open \? look\.swapDelay : look\.openDelay/.test(hooks), 'the hook waits swapDelay to move an open window, openDelay to open one');
+  ok(/onPointerDown:\(\) => \{ if \(!open\) clear\(\); \}/.test(hooks), 'pressing a row cancels a pending open');
+}
 ok(KEEP === keepForSeats(2) && KEEP === 2, 'the demo Ronin has two seats: keeps 2 dice a side');
 
 section('1 · Shukuchi: the script is the rule');

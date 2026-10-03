@@ -11,12 +11,21 @@
 // (a preview-only switch). `spiritPickerCheck.mjs` §0 fails if the page and this
 // file drift apart, so move a number here → move it on the page too.
 //
-// 📌 ONE RENDERER FOR EVERY CARD. A single transparent canvas sits over the whole
-// page (pointer-events off) and draws each card's standee into that card's
+// 📌 ONE RENDERER FOR EVERY CARD. A single transparent canvas covers the roster
+// (pointer-events off) and draws each card's standee into that card's
 // rectangle plus a `bleed` margin — the room it has to pop OUT of the card. One
 // canvas per card would be one WebGL context per card, and a page gets a
 // handful; the arena spends two. It is the same trick as `arenaRenderer`'s
 // foreground pass. The popped card is drawn last so it lands over its neighbours.
+//
+// ⚠️ THE CANVAS SCROLLS WITH THE CARDS — it lives IN the panel that scrolls
+// (`position:absolute`), not fixed over the window. It used to be fixed and
+// redrawn every frame at the cards' new place, and the browser scrolls the page
+// on its own thread, ahead of the script: every scroll moved the cards a frame
+// before the standees, which then visibly JUMPED to catch up (Alex, 2026-10-03).
+// Now the browser moves the canvas with the cards in the same paint, and what is
+// drawn on it only depends on where a card sits RELATIVE to the canvas — which a
+// scroll never changes. The backstory panel lives there too, for the same reason.
 //
 // 📌 TWO HALVES, like `standee.js`: the top is pure (timing, framing, which side
 // the story goes) and is what the suite reads; the bottom owns three and the DOM.
@@ -104,10 +113,12 @@ export function canUseWebGL() {
 }
 
 /**
- * Every SCROLLING ancestor — a standee must not draw over the header it scrolled
- * under. ⚠️ Scrollers only, not `overflow:hidden`: the workbench is `hidden` for
- * its rounded corners, and clipping to it would stop the pop at the panel's edge,
- * which is the one place Alex asked it to break out of.
+ * Every SCROLLING ancestor, nearest first. The nearest one is where the canvas
+ * lives, so it scrolls with the cards and is clipped by that panel for free — a
+ * standee must not draw over the header it scrolled under. ⚠️ Scrollers only, not
+ * `overflow:hidden`: the workbench is `hidden` for its rounded corners, and
+ * living in it would stop the pop at the panel's edge, which is the one place
+ * Alex asked it to break out of.
  */
 function scrollersOf(el) {
   const out = [];
@@ -138,15 +149,62 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPI
   renderer.toneMapping = THREE.ACESFilmicToneMapping;           // as arenaRenderer
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.autoClear = false;
+  // 📌 left/top start at 0 so `place()` can steer the canvas by the difference
+  // between where it IS and where it should be, whatever its containing block.
+  canvas.style.left = '0px'; canvas.style.top = '0px';
   document.body.appendChild(canvas);
 
-  // The story lives on <body> too: a transformed ancestor would turn `fixed`
-  // into "fixed to that ancestor", and the lobby has a few.
+  // The story rides beside the canvas (same parent, same containing block), so
+  // it scrolls with the card it belongs to.
   const story = document.createElement('div');
   story.className = 'draft-story';
   story.id = 'spirit-story';
   story.setAttribute('role', 'tooltip');
   document.body.appendChild(story);
+
+  // 🏠 The host: the cards' nearest scrolling panel, else <body> (the page
+  // itself scrolls). Chosen at the first `register`, when there is a card to ask.
+  // A static scroller is made `relative` so it is the canvas's containing block —
+  // otherwise an absolute child would not scroll with it; put back on dispose.
+  let host = null, hostPosition = null;
+  function mount(slot) {
+    if (host) return;
+    const s = scrollersOf(slot)[0];
+    host = s ?? document.body;
+    if (s && getComputedStyle(s).position === 'static') { hostPosition = s.style.position; s.style.position = 'relative'; }
+    host.append(canvas, story);
+  }
+  /** The host's visible width in viewport px — the canvas never widens the page sideways. */
+  function hostSpan() {
+    if (host === document.body) return { x0:0, x1:document.documentElement.clientWidth || window.innerWidth };
+    const r = host.getBoundingClientRect();
+    return { x0:r.left + host.clientLeft, x1:r.left + host.clientLeft + host.clientWidth };
+  }
+  /**
+   * 📐 Size and place the canvas over every card + its bleed; returns its box in
+   * viewport px. Only a LAYOUT change moves it — a scroll moves the cards and the
+   * canvas together, so the box it wants and the box it has stay equal.
+   */
+  function place() {
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const c of cards.values()) {
+      const r = c.slot.getBoundingClientRect();
+      if (!r.width || !r.height) continue;
+      x0 = Math.min(x0, r.left); y0 = Math.min(y0, r.top); x1 = Math.max(x1, r.right); y1 = Math.max(y1, r.bottom);
+    }
+    if (!(x1 > x0)) return null;
+    const span = hostSpan();
+    x0 = Math.floor(Math.max(span.x0, x0 - P.bleed)); x1 = Math.ceil(Math.min(span.x1, x1 + P.bleed));
+    y0 = Math.floor(y0 - P.bleed); y1 = Math.ceil(y1 + P.bleed);
+    const w = x1 - x0, h = y1 - y0, at = canvas.getBoundingClientRect();
+    if (Math.abs(at.left - x0) > 0.5 || Math.abs(at.top - y0) > 0.5) {
+      canvas.style.left = `${parseFloat(canvas.style.left) + x0 - at.left}px`;
+      canvas.style.top = `${parseFloat(canvas.style.top) + y0 - at.top}px`;
+    }
+    const size = renderer.getSize(new THREE.Vector2());
+    if (size.x !== w || size.y !== h) renderer.setSize(w, h);
+    return { x0, y0, w, h };
+  }
 
   const reducedQuery = window.matchMedia?.('(prefers-reduced-motion: reduce)');
   const cards = new Map();
@@ -212,10 +270,10 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPI
     const dt = Math.min(0.1, (now - last) / 1000); last = now;
     const t = now / 1000, reduced = !!reducedQuery?.matches;
     const W = window.innerWidth, H = window.innerHeight;
-    const size = renderer.getSize(new THREE.Vector2());
-    if (size.x !== W || size.y !== H) renderer.setSize(W, H, false);
+    const box = place();
     renderer.setScissorTest(false);
     renderer.clear();
+    if (!box) return;
 
     let maxP = 0, storyCard = null;
     for (const c of cards.values()) {
@@ -232,12 +290,17 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPI
       c.el.style.filter = dim < 0.999 ? `brightness(${0.55 + 0.45 * dim})` : '';
 
       const f = pickerFraming(c.el.getBoundingClientRect(), P);
-      // Clip to the viewport AND the scrolling panel the card lives in.
+      // On screen at all? (The viewport AND every panel it scrolls in.) Only the
+      // story asks — the drawing itself is clipped by the host panel for free.
       let cx0 = 0, cy0 = 0, cx1 = W, cy1 = H;
       for (const el of c.clips) { const r = el.getBoundingClientRect(); cx0 = Math.max(cx0, r.left); cy0 = Math.max(cy0, r.top); cx1 = Math.min(cx1, r.right); cy1 = Math.min(cy1, r.bottom); }
-      const sx0 = Math.max(cx0, f.vx), sy0 = Math.max(cy0, f.vy), sx1 = Math.min(cx1, f.vx + f.vw), sy1 = Math.min(cy1, f.vy + f.vh);
-      c.visible = sx1 > sx0 && sy1 > sy0;
-      if (!c.visible) continue;
+      c.visible = Math.min(cx1, f.vx + f.vw) > Math.max(cx0, f.vx) && Math.min(cy1, f.vy + f.vh) > Math.max(cy0, f.vy);
+      // ⚠️ Scissor to the CANVAS only, in canvas px. Clipping to the viewport or
+      // the panel here would be measured a frame behind a threaded scroll — the
+      // jump this layout exists to remove, moved to the standee's cut edge.
+      const fx = f.vx - box.x0, fy = f.vy - box.y0;
+      const sx0 = Math.max(0, fx), sy0 = Math.max(0, fy), sx1 = Math.min(box.w, fx + f.vw), sy1 = Math.min(box.h, fy + f.vh);
+      if (!(sx1 > sx0 && sy1 > sy0)) continue;
 
       c.cam.fov = P.fov; c.cam.aspect = f.vw / f.vh; c.cam.updateProjectionMatrix();
       c.cam.position.set(0, f.camY, f.camZ); c.cam.lookAt(0, f.lookY, 0);
@@ -257,8 +320,8 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPI
       c.art.material.emissiveIntensity = c.artBase * dim;
       c.lights.forEach((l, i) => { l.intensity = c.lightBase[i] * dim; });
 
-      renderer.setViewport(f.vx, H - f.vy - f.vh, f.vw, f.vh);
-      renderer.setScissor(sx0, H - sy1, sx1 - sx0, sy1 - sy0);
+      renderer.setViewport(fx, box.h - fy - f.vh, f.vw, f.vh);
+      renderer.setScissor(sx0, box.h - sy1, sx1 - sx0, sy1 - sy0);
       renderer.setScissorTest(true);
       renderer.clearDepth();
       renderer.render(c.scene, c.cam);
@@ -271,9 +334,12 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPI
       if (k !== storyKey) { storyHTML(storyCard, typed); storyKey = k; }
       story.style.setProperty('--spirit-color', storyCard.sp.color);
       story.style.width = `${P.storyWidth}px`;
+      // Placed in viewport px as before, then written in the host's px — the
+      // canvas's own left/top are the exchange rate (same containing block).
       const r = storyCard.el.getBoundingClientRect();
-      story.style.left = `${storyX(r, P.storyWidth, W)}px`;
-      story.style.top = `${Math.max(8, Math.min(H - story.offsetHeight - 8, r.top + r.height * 0.12))}px`;
+      const vx = storyX(r, P.storyWidth, W), vy = Math.max(8, Math.min(H - story.offsetHeight - 8, r.top + r.height * 0.12));
+      story.style.left = `${parseFloat(canvas.style.left) + vx - box.x0}px`;
+      story.style.top = `${parseFloat(canvas.style.top) + vy - box.y0}px`;
       story.classList.add('show');
     } else { story.classList.remove('show'); storyKey = ''; }
   }
@@ -282,6 +348,7 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPI
   return {
     register(id, el, slot) {
       if (!el || !slot || cards.has(id) || !SPIRIT_DEFS[id]) return;
+      mount(slot);
       cards.set(id, build(id, el, slot));
     },
     hover(id) { const c = cards.get(id); if (c && c.hoverSince == null) { c.hoverSince = performance.now(); c.dismissed = false; } },
@@ -309,6 +376,8 @@ export function createSpiritPickerStage({ P = SPIRIT_PICKER, color = NEUTRAL_SPI
       cards.clear();
       renderer.dispose(); renderer.forceContextLoss();
       canvas.remove(); story.remove();
+      if (hostPosition != null) host.style.position = hostPosition;
+      host = null;
     },
   };
 }

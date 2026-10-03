@@ -54,8 +54,9 @@
 .draft-portrait.is-3d.is-popped{border-color:var(--spirit-color);box-shadow:0 0 28px color-mix(in srgb,var(--spirit-color) 30%,transparent)}
 .draft-portrait.is-3d:disabled{filter:none;opacity:1}.draft-portrait.is-3d:disabled .draft-portrait-caption{opacity:.55}
 .no-halo .draft-portrait-halo{display:none}
-.draft-standee-layer{position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:20}
-.draft-story{position:fixed;z-index:30;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .28s ease,transform .28s ease;background:linear-gradient(140deg,#233149f2,#0b1221f7);border:1px solid var(--spirit-color,#8fb0ff);border-radius:14px;padding:14px 16px 16px;box-shadow:0 22px 50px #000b,0 0 24px color-mix(in srgb,var(--spirit-color,#8fb0ff) 22%,transparent);font-family:'Saira',sans-serif;color:#e8eef9}
+/* ⚠️ absolute, NOT fixed: the layer lives in the scrolling panel so a scroll moves it with the cards (spiritPickerStage.js) */
+.draft-standee-layer{position:absolute;left:0;top:0;pointer-events:none;z-index:20}
+.draft-story{position:absolute;z-index:30;pointer-events:none;opacity:0;transform:translateY(8px);transition:opacity .28s ease,transform .28s ease;background:linear-gradient(140deg,#233149f2,#0b1221f7);border:1px solid var(--spirit-color,#8fb0ff);border-radius:14px;padding:14px 16px 16px;box-shadow:0 22px 50px #000b,0 0 24px color-mix(in srgb,var(--spirit-color,#8fb0ff) 22%,transparent);font-family:'Saira',sans-serif;color:#e8eef9}
 .draft-story.show{opacity:1;transform:none}
 .draft-story .draft-eyebrow{display:flex;justify-content:space-between}.draft-story .draft-eyebrow i{font-style:normal;color:#ffcf82}
 .draft-story h3{font:600 19px 'Saira',sans-serif;margin:6px 0 1px;color:#f2f6ff}
