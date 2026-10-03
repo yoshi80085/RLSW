@@ -30,7 +30,7 @@ import { MODELLED_KINDS, UNMODELLED_KINDS } from "./policies/transition.js";
 import { BOT_CLIENT_KINDS, BOT_CLIENT_GAPS } from "./policies/bot.js";
 import { CORNERS } from "../data/corners.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
-import { axialNeighbors, angleTo } from "../board/hexGeometry.js";
+import { axialNeighbors, angleTo, axialDist } from "../board/hexGeometry.js";
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -77,11 +77,14 @@ const kinds  = (acts) => new Set(acts.map(a => a.kind));
 const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 
 /** Put `rivalId` on a neighbour of the Ronin and point him at it. */
+// ⚔️ The rival stands TWO hexes straight ahead — inside the Swing's 2–3 reach
+// (2026-10-03) and the Sonic's beam alike.
+const twoAhead = (here, nb) => HEX_BY_QR[`${2 * nb.q - here.q},${2 * nb.r - here.r}`];
 const faceRivalAt = (st, rivalId, step = 0) => {
   const here = HEX_BY_NUM[START];
   const nbs = axialNeighbors(here.q, here.r).map(({ q, r }) => HEX_BY_QR[`${q},${r}`]).filter(Boolean);
   const nb = nbs[step % nbs.length];
-  return withSpirit(withSpirit(st, rivalId, { num: nb.num }), RONIN, { facing: angleTo(here, nb) });
+  return withSpirit(withSpirit(st, rivalId, { num: twoAhead(here, nb).num }), RONIN, { facing: angleTo(here, nb) });
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -261,7 +264,10 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   const self = st.spirits.find(s => s.id === RONIN);
 
   eq(swingCone({ ...self, num: 99999 }).size, 0, 'a Spirit off the map has no cone');
-  ok(swingCone(self).size >= 1 && swingCone(self).size <= 3, 'the cone is the forward hex plus two diagonals');
+  ok(swingCone(self).size >= 1 && swingCone(self).size <= 12, 'the cone is the forward wedge at ranges 2–3 (5 + 7 hexes at most)');
+  const selfHex = HEX_BY_NUM[self.num];
+  ok([...swingCone(self)].every(n => { const h = HEX_BY_NUM[n], d = axialDist(selfHex.q, selfHex.r, h.q, h.r); return d >= 2 && d <= 3; }),
+     '⚔️ every hex in the Swing cone is 2 or 3 away — never adjacent');
   ok(sonicBeam(self).size <= SONIC_BEAM_REACH, `the beam reaches at most ${SONIC_BEAM_REACH}`);
   eq(facingOptions(self).length, 6, 'six neighbours, six facings');
 
@@ -277,8 +283,20 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   ok(ofKind(legalActions(behind, RONIN), 'face').length > 0,
      '...and turning to face them is exactly the AP the geometry is charging you');
 
-  const ahead = withSpirit(facingFront, METAL, { num: front.num });
-  eq(ofKind(legalActions(ahead, RONIN), 'swing').length, 1, 'in the cone, in reach — one Swing, one target');
+  const tooClose = withSpirit(facingFront, METAL, { num: front.num });
+  eq(ofKind(legalActions(tooClose, RONIN), 'swing').length, 0,
+     '⚔️ a rival right in front, next door, is TOO CLOSE to Swing at (2026-10-03)');
+
+  const ahead = withSpirit(facingFront, METAL, { num: twoAhead(here, front).num });
+  eq(ofKind(legalActions(ahead, RONIN), 'swing').length, 1, 'in the cone, two out — one Swing, one target');
+
+  const third = HEX_BY_QR[`${3 * front.q - 2 * here.q},${3 * front.r - 2 * here.r}`];
+  const far = withSpirit(facingFront, METAL, { num: third.num });
+  eq(ofKind(legalActions(far, RONIN), 'swing').length, 1, 'three out is still in reach');
+
+  const fourth = HEX_BY_QR[`${4 * front.q - 3 * here.q},${4 * front.r - 3 * here.r}`];
+  if (fourth) eq(ofKind(legalActions(withSpirit(facingFront, METAL, { num: fourth.num }), RONIN), 'swing').length, 0,
+     'four out is beyond the Swing');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -305,7 +323,8 @@ const faceRivalAt = (st, rivalId, step = 0) => {
     METAL, { num: farFront.num });
 
   eq(ofKind(legalActions(stranded, RONIN), 'sonic').length, 0, '📡 stranded outside the radius: no Sonic at all');
-  ok(ofKind(legalActions(stranded, RONIN), 'swing').length > 0, '...melee still works out there — that is the trade');
+  const strandedSwing = withSpirit(stranded, METAL, { num: twoAhead(farHome, farFront).num });
+  ok(ofKind(legalActions(strandedSwing, RONIN), 'swing').length > 0, '...the Swing still works out there — that is the trade');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

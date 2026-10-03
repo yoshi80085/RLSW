@@ -28,7 +28,7 @@ import assert from "node:assert";
 import { makeInitialState } from "./state.js";
 import { applyAction } from "./reduce.js";
 import { slimeDropped, moveBudgetSet } from "./actions.js";
-import { legalActions, beamActions, tentacleOptions } from "./policies/legalActions.js";
+import { legalActions, beamActions, tentacleOptions, swingCone } from "./policies/legalActions.js";
 import {
   makeActionScorer, beamFor, resolvePersona, NEUTRAL_PERSONA, TENTACLE_RANK_STRIDE,
   STYLE_RANK_STRIDE, STYLE_GAIN_FLOOR,
@@ -215,9 +215,12 @@ function walk(startNum, n) {
   const nbs = axialNeighbors(here.q, here.r).map(({ q, r }) => HEX_BY_QR[`${q},${r}`]).filter(Boolean);
   ok(nbs.length >= 2, 'the fixture hex has room for two rivals');
 
+  // ⚔️ Two hexes out, not next door — the Swing reaches 2–3 since 2026-10-03.
+  const cone = [...swingCone({ num: here.num, facing: angleTo(here, nbs[0]) })];
+  ok(cone.length >= 2, 'the fixture cone has room for two rivals');
   let st = { ...base, acting: MM };
-  st = withSpirit(st, RONIN, { num: nbs[0].num, vibe: 5 });
-  st = withSpirit(st, ZERO,  { num: nbs[1].num, vibe: 1 });   // 🩸 nearly down
+  st = withSpirit(st, RONIN, { num: cone[0], vibe: 5 });
+  st = withSpirit(st, ZERO,  { num: cone[1], vibe: 1 });   // 🩸 nearly down
   st = withSpirit(st, MM,    { facing: angleTo(here, nbs[0]) });
   st = withNs(st, MM, { hasConfirmed: true });
   st = apply(st, moveBudgetSet(5, false));

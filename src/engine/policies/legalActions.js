@@ -39,7 +39,7 @@ import { bushidoLane, bushidoBlockers } from "../systems/bushido.js";
 
 import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
 import { slideTarget, trailRun, canCallSlime } from "../systems/slime.js";
-import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection } from "../../board/hexGeometry.js";
+import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection, facingStep } from "../../board/hexGeometry.js";
 import { usedHas } from "../systems/economy.js";
 import { rigFor } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
@@ -47,7 +47,7 @@ import { canFire } from "../systems/cooldowns.js";
 import { canHop, shukuchiLandings } from "../systems/shukuchi.js";
 import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
-import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, SWING_MIN_RANGE, SWING_MAX_RANGE, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC } from "./bot.js";
 // 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
 // is what keeps his Sonic legal out on the board — used to be imported here as
@@ -71,16 +71,52 @@ export { SONIC_BEAM_REACH };
 // ── Geometry, mirrored from the client ──────────────────────────────────────
 
 /**
- * The Swing cone: the forward hex plus its two diagonal-forward neighbours.
- * Mirrors `getSwingCone`. The half-arc is imported from `bot.js` rather than
+ * The melee cone: the forward hex plus its two diagonal-forward neighbours.
+ * Since 2026-10-03 this is the TENTACLE's arm only — the Swing reaches 2–3
+ * hexes now (`swingCone`). The half-arc is imported from `bot.js` rather than
  * re-typed so there is exactly one number to retune.
  */
-export function swingCone(spirit) {
+export function meleeCone(spirit) {
   const hex = HEX_BY_NUM[spirit?.num];
   if (!hex) return new Set();
   const cone = new Set();
   for (const nb of getFlatTopNeighborSlots(hex)) {
     if (angleDiff(angleTo(hex, nb), spirit.facing ?? 0) <= CONE_HALF_ARC) cone.add(nb.num);
+  }
+  return cone;
+}
+
+// The six axial steps in turning order, so a direction's two neighbours in
+// this list are the diagonals either side of it.
+const AXIAL_RING = [[1, 0], [1, -1], [0, -1], [-1, 0], [-1, 1], [0, 1]];
+
+/**
+ * ⚔️ The Swing's area: the same forward 120° wedge the old melee cone covered
+ * (forward + both forward diagonals), pushed out to hexes
+ * `SWING_MIN_RANGE`–`SWING_MAX_RANGE` away — 5 hexes at range 2, 7 at range 3,
+ * and NOTHING adjacent (Alex, 2026-10-03). Mirrored by the client's
+ * `getSwingCone`, which calls this.
+ *
+ * ⚠️ BUILT ON THE AXIAL GRID, NOT ON PIXEL ANGLES. The board's pixel layout is
+ * not perfectly regular (a forward diagonal two hexes out reads 59.4° on one
+ * side and 60.6° on the other), so an angle test drops a corner hex depending
+ * on facing. Here a hex is in the wedge iff its offset is a·left + b·right
+ * with a, b ≥ 0 — the two diagonals are 120° apart and sum to the forward
+ * step — and its distance is max(a, b).
+ */
+export function swingCone(spirit) {
+  const hex = HEX_BY_NUM[spirit?.num];
+  if (!hex) return new Set();
+  const step = facingStep(spirit.facing ?? 0);
+  const i = AXIAL_RING.findIndex(([q, r]) => q === step.q && r === step.r);
+  const [lq, lr] = AXIAL_RING[(i + 5) % 6], [rq, rr] = AXIAL_RING[(i + 1) % 6];
+  const cone = new Set();
+  for (let a = 0; a <= SWING_MAX_RANGE; a++) {
+    for (let b = 0; b <= SWING_MAX_RANGE; b++) {
+      if (Math.max(a, b) < SWING_MIN_RANGE) continue;
+      const h = HEX_BY_QR[`${hex.q + a * lq + b * rq},${hex.r + a * lr + b * rr}`];
+      if (h) cone.add(h.num);
+    }
   }
   return cone;
 }
@@ -93,7 +129,7 @@ export function swingCone(spirit) {
  * ⚠️ **THE ARM HAS ITS OWN FACING, AND IT IS THE ROAD.** A cone needs a
  * direction and he never turns, so the direction is the one the tentacle
  * travelled to arrive: from the previous hex of the run into the origin. That
- * keeps the Swing's existing cone geometry (one `CONE_HALF_ARC` to retune), and
+ * keeps the old melee cone geometry (`meleeCone`, one `CONE_HALF_ARC`), and
  * it makes HOW HE LAID THE TRAIL into the decision — §2's "his movement is an
  * attack", turned into something a player can aim.
  *
@@ -117,7 +153,7 @@ export function tentacleOptions(state, self) {
       origin: run[k],
       spend:  run.slice(0, k + 1),
       reach:  k + 1,
-      cone:   swingCone({ num: run[k], facing: angleTo(prevHex, originHex) }),
+      cone:   meleeCone({ num: run[k], facing: angleTo(prevHex, originHex) }),
     });
   }
   return out;

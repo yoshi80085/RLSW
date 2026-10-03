@@ -123,9 +123,16 @@ export function neighborInDirection(originHex, angle) {
 // Choose among all six directions, including missing edge cells. A shove must
 // stop (or ring out) at the edge instead of bending toward an existing neighbor.
 export function straightNeighborInDirection(originHex, angle) {
-  const step=axialNeighbors(0,0).reduce((best,cell)=>{
+  const step=facingStep(angle);
+  return HEX_BY_QR[`${originHex.q+step.q},${originHex.r+step.r}`];
+}
+
+// The axial step {q,r} a facing points down, picked from all six directions on
+// the ideal grid (so an edge hex with a missing neighbour still has one).
+export function facingStep(angle) {
+  const {q,r}=axialNeighbors(0,0).reduce((best,cell)=>{
     const diff=angleDiff(angle,Math.atan2((cell.r+cell.q/2)*ROW_SPACING,cell.q*COL_SPACING));
     return !best||diff<best.diff ? {...cell,diff} : best;
   },null);
-  return HEX_BY_QR[`${originHex.q+step.q},${originHex.r+step.r}`];
+  return {q,r};
 }

@@ -236,6 +236,7 @@ Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
+| `55-swingreach` | 2026-10-03 | Swing reaches 2–3 hexes, never adjacent: `swingCone` is the forward 120° wedge at rings 2–3 on the axial grid; client `getSwingCone` delegates to it; the Tentacle keeps the old adjacent cone as `meleeCone`. `test:legal`, `test:score`. |
 | `54-sonic1ap` | 2026-10-03 | Sonic Attack costs 1 AP (was 2): `SONIC_AP_COST` and every client gate/charge/label read it; riff-off follows. `test:legal`. |
 | `53-pyro` | 2026-10-02 | **LIVE — §A above.** Pyro v2: Astra's mortars fire at every END TURN (5/10/13 by show round), a shove stops on one, 3 Vibe; the pyro-shove preview ported into `board/pyroMortars.js` / `pyroShove.js` / `pyroBlast.js` / `pyroStage.js` and `audio/pyroSfx.js`. `test:pyrorules`, `test:pyroshove`, `test:pyrostage`. |
 | `52-dbcut` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Db cut entirely: abilities gated by kit + 2-round cooldown only, melody pays fans only, upgrade shop and old event cards / Major-Minor bonus removed. `test:loadouts`, `test:skilltree`, `test:playfinder`. |

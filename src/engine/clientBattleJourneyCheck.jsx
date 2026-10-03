@@ -24,11 +24,13 @@ config.seed = 4242;
 config.spirits = config.spirits.map(spirit => ({ ...spirit, cpu: false }));
 
 const attackerHex = HEX_BY_NUM[45];
-const defenderHex = neighborInDirection(attackerHex, 0);
-assert.ok(defenderHex, 'battle fixture has a forward neighbouring hex');
+// ⚔️ The defender stands two hexes ahead — the Swing reaches 2–3 since 2026-10-03.
+const stepHex = neighborInDirection(attackerHex, 0);
+const defenderHex = stepHex && neighborInDirection(stepHex, angleTo(attackerHex, stepHex));
+assert.ok(defenderHex, 'battle fixture has a hex two ahead');
 config.spirits[0] = {
   ...config.spirits[0], num: attackerHex.num,
-  facing: angleTo(attackerHex, defenderHex), drive: 0,
+  facing: angleTo(attackerHex, stepHex), drive: 0,
 };
 config.spirits[1] = {
   ...config.spirits[1], num: defenderHex.num, sustain: 100,

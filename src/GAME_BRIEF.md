@@ -98,7 +98,7 @@ Your turn gives you:
 |---|---:|---|
 | Move one hex | 1 | `MOVE_AP_COST` |
 | Change facing | 1 | `FACE_AP_COST` |
-| Swing (melee) | 1 | `SWING_AP_COST` |
+| Swing (reach 2–3) | 1 | `SWING_AP_COST` |
 | Sonic (ranged beam) | 1 | `SONIC_AP_COST` |
 | Smash | 2 | `SMASH_AP_COST` |
 | Drop slime | 1 | `SLIME_AP_COST` |
@@ -124,7 +124,7 @@ change, state which clock it is on.
 
 Every Spirit faces a direction. It matters in three ways:
 
-- **Swing** only reaches a cone in front of you.
+- **Swing** only reaches a cone in front of you, **2–3 hexes out** — a rival next door is too close.
 - **Sonic beams** fire along your facing.
 - **Rear hits** get a bonus (`REAR_ARC`, `REAR_FRAY_BONUS` in `combat.js`) —
   attacking someone from behind fractures their chord harder.
@@ -161,7 +161,7 @@ Prefer abilities that *set* a total over ones that add outside the cap.
 
 ### The three attacks
 
-**⚔️ SWING** — 1 AP, melee, cone in front of you. **Costs 2 notes off your Drive
+**⚔️ SWING** — 1 AP, the forward 120° wedge **2–3 hexes out, never adjacent** (`SWING_MIN_RANGE` / `SWING_MAX_RANGE`, `swingCone`). **Costs 2 notes off your Drive
 stack, on a hit only.** Whiffing keeps your stack.
 
 **🔊 SONIC** — 1 AP, ranged beam along your facing, reach **3**
