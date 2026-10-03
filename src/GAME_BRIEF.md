@@ -98,8 +98,8 @@ Your turn gives you:
 |---|---:|---|
 | Move one hex | 1 | `MOVE_AP_COST` |
 | Change facing | 1 | `FACE_AP_COST` |
-| Swing (melee) | 1 | `SWING_AP_COST` |
-| Sonic (ranged beam) | 2 | `SONIC_AP_COST` |
+| Thrash (melee — was Swing) | 1 | `SWING_AP_COST` |
+| Sonic (ranged beam) | 1 | `SONIC_AP_COST` |
 | Smash | 2 | `SMASH_AP_COST` |
 | Drop slime | 1 | `SLIME_AP_COST` |
 | Melody line | up to 8 notes | `MELODY_MAX` |
@@ -124,7 +124,7 @@ change, state which clock it is on.
 
 Every Spirit faces a direction. It matters in three ways:
 
-- **Swing** only reaches a cone in front of you.
+- **Thrash** (was Swing) only reaches a cone in front of you.
 - **Sonic beams** fire along your facing.
 - **Rear hits** get a bonus (`REAR_ARC`, `REAR_FRAY_BONUS` in `combat.js`) —
   attacking someone from behind fractures their chord harder.
@@ -161,11 +161,11 @@ Prefer abilities that *set* a total over ones that add outside the cap.
 
 ### The three attacks
 
-**⚔️ SWING** — 1 AP, melee, cone in front of you. **Costs 2 notes off your Drive
-stack, on a hit only.** Whiffing keeps your stack.
+**⚔️ THRASH** (was SWING; the code still says `swing`) — 1 AP, melee, cone in front of you. **Costs the attacker 2 notes off the top of the Drive
+stack, win, lose or tie, and needs at least 2 to throw; the defender pays 1** (`SWING_DRIVE_SPEND`, `THRASH_DEFENDER_SPEND`). A tie throws both back a hex, no Vibe.
 
-**🔊 SONIC** — 2 AP, ranged beam along your facing, reach **3**
-(`SONIC_BEAM_REACH`). **Costs 1 note off your Drive stack, hit or miss** — you
+**🔊 SONIC** — 1 AP, ranged beam along your facing, hexes **2–3**
+(`SONIC_MIN_RANGE`–`SONIC_BEAM_REACH`) — a rival next door is too close. **Costs 1 note off your Drive stack, hit or miss** — you
 spent it the moment you projected it. Rolls a **dice pool, keep-highest**:
 
 - Pool size = your rig's **pool tier** (1–3), max 4 dice (`SONIC_POOL_MAX`).

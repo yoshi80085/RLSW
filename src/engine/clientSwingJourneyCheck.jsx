@@ -43,10 +43,14 @@ await act(async()=>root.render(<Game gameState={config} onReturnToLobby={()=>{}}
   if(rivalAt&&damageAt==null&&state&&s.spirits.some((sp,i)=>sp.vibe<(state.spirits[i]?.vibe??sp.vibe)))damageAt=performance.now()-rivalAt;
   state=s;
 }}/>));
+// 🤘 A Thrash needs 2 Drive notes (2026-10-03): voice one more onto the root in the chord step.
+await click([...document.querySelectorAll('button.stack-chip')].find(b=>b.textContent.trim()==='Drive'));
+await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
+assert.equal(state.noteStates[state.acting].driveStack.length,2,'two Drive notes to Thrash with');
 await click(button('Continue to Melody'));
 for(let i=0;i<3;i++)await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
 await click(button('Commit (3 notes'));
-await click(button('Swing'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));
+await click(button('Thrash'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));
 assert.ok(state.battle?.swingClash,'live client uses engine clash verdict');
 assert.equal(phase(),'swing_attacker','the Swing opens waiting on the attacker');
 assert.equal(document.querySelector('[data-board-view]')?.dataset.boardView,'3d');

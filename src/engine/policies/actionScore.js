@@ -347,7 +347,7 @@ export function makeActionScorer(state, spiritId, view = {}) {
 
       // ── VIOLENCE ────────────────────────────────────────────────────────
       // 🎤 `riffOff` ranks here because it IS an attack — the same button as the
-      // Sonic, the same 2 AP, the same "which rival" question. WHETHER to duel at
+      // Sonic, the same AP, the same "which rival" question. WHETHER to duel at
       // all is `evaluate`'s, on the position after it, and `beamSetup` is the
       // term that sees one coming.
       // ⚠️ The comment sits ABOVE the group rather than between two cases: a

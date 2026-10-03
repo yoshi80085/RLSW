@@ -32,9 +32,10 @@ for(const name of ['document','HTMLElement','Element','Node','MutationObserver']
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const config=buildTestingGroundsConfig({beginnerMode:false});config.seed=44;
 config.spirits=config.spirits.map(s=>({...s,cpu:false}));
-const a=HEX_BY_NUM[config.spirits[0].num],b=neighborInDirection(a,0);
-assert.ok(b);config.spirits[0]={...config.spirits[0],facing:angleTo(a,b)};
-config.spirits[1]={...config.spirits[1],num:b.num,facing:angleTo(a,b)};
+// 🔊 The rival stands two hexes down the beam — the Sonic reaches 2–3 since 2026-10-03.
+const a=HEX_BY_NUM[config.spirits[0].num],step=neighborInDirection(a,0),b=step&&neighborInDirection(step,angleTo(a,step));
+assert.ok(b);config.spirits[0]={...config.spirits[0],facing:angleTo(a,step)};
+config.spirits[1]={...config.spirits[1],num:b.num,facing:angleTo(a,step)};
 let state,rollAt=null;const moves=[];const root=createRoot(document.getElementById('root'));
 const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent.includes(text));
 const click=async el=>{assert.ok(el,'click target exists');assert.ok(!el.disabled,'click target enabled');await act(async()=>el.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));};

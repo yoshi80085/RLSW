@@ -219,7 +219,8 @@ function walk(startNum, n) {
   st = withSpirit(st, RONIN, { num: nbs[0].num, vibe: 5 });
   st = withSpirit(st, ZERO,  { num: nbs[1].num, vibe: 1 });   // 🩸 nearly down
   st = withSpirit(st, MM,    { facing: angleTo(here, nbs[0]) });
-  st = withNs(st, MM, { hasConfirmed: true });
+  // 🤘 A Thrash needs 2 Drive notes since 2026-10-03.
+  st = withNs(st, MM, { hasConfirmed: true, driveStack: ['E', 'G'] });
   st = apply(st, moveBudgetSet(5, false));
 
   const acts = legalActions(st, MM, {});

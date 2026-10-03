@@ -72,7 +72,7 @@ export function createClashFigure(color, pose=false) {
 export function createSwingClashVisuals({battle,attacker,defender,pointFor,ampOrigins=[],
   timing={TIMING:SWING_TIMING,DICE:SWING_DICE},tuning}={}) {
   const T=timing.TIMING??SWING_TIMING,D=timing.DICE??SWING_DICE,B={...SWING_BEAM,...tuning};
-  const group=new THREE.Group();group.name='Swing clash';
+  const group=new THREE.Group();group.name='Thrash clash';
   const a=pointFor(attacker.num,.2),b=pointFor(defender.num,.2),mid=a.clone().lerp(b,.5);
   const lane=b.clone().sub(a).setY(0).normalize();
   // ⭐ The attacker throws at 0, the Rival at the gate. `poolStart` is what
@@ -107,9 +107,9 @@ export function createSwingClashVisuals({battle,attacker,defender,pointFor,ampOr
     const clash=t>=T.clash,strikePower=THREE.MathUtils.clamp((t-T.clash)/2.75,0,1);
     // Both raise in place, both totals are read, and only THEN do they close.
     const approach=THREE.MathUtils.clamp((t-T.read)/Math.max(.001,T.clash-T.read),0,1);
-    const label=t<T.attackerRead?'SWING · YOUR DRIVE'
+    const label=t<T.attackerRead?'THRASH · YOUR DRIVE'
       :t<T.attackerAmp?`YOUR DRIVE · ${battle.atkTotal}`
-      :t<T.rivalRead?'SWING · RIVAL DRIVE'
+      :t<T.rivalRead?'THRASH · RIVAL DRIVE'
       :t<T.rivalAmp?`RIVAL DRIVE · ${battle.defTotal}`
       :t<T.clash?`${battle.atkTotal}  ⚔  ${battle.defTotal}`
       :t<T.result?'CLASH'

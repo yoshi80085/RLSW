@@ -267,7 +267,7 @@ export function EventModal({ activeEvent, answerTrivia, answerCommunity, keepPri
               )}
               {isResult && (
                 <div style={{ fontSize: 8.5, color: "#5a7088", textAlign: "center", marginTop: 6 }}>
-                  {kept ? "In the hand — play it with “Use a card” above Roll in a Swing or a Sonic." : "Let go — the hand stays as it was."}
+                  {kept ? "In the hand — play it with “Use a card” above Roll in a Thrash or a Sonic." : "Let go — the hand stays as it was."}
                 </div>
               )}
             </div>

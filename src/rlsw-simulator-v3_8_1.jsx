@@ -98,7 +98,7 @@ import { micAvailable, startMicListening } from "./audio/micPitch.js";
 import riffOffSong from "./music/Riff_off_song.mp3";
 import battleSong  from "./music/battle_song.mp3";
 import moshpitSong from "./music/Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
-import { attackParams, rigFor } from "./engine/systems/attackParams.js";
+import { attackParams, rigFor, SONIC_DRIVE_SPEND, SWING_DRIVE_SPEND } from "./engine/systems/attackParams.js";
 import { scheduleSonicVolley, scheduleSonicBarrage } from "./board/sonicPresentation.js";
 import { SWING_TIMING, SWING_BEATS, SWING_GATE } from './board/swingTiming.js';
 import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
@@ -169,7 +169,7 @@ import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
-import { tentacleOptions, legalActions } from "./engine/policies/legalActions.js";
+import { tentacleOptions, legalActions, sonicBeam, SONIC_AP_COST } from "./engine/policies/legalActions.js";
 // 🧠 THE SEARCHER — the headless bot from the §6.6 bench, wired into the chair.
 // ⚠️ `POLICIES.searcher` is used as a CHOOSER ONLY; `playTurn` is not, because it
 // would advance the seeded rng outside `dispatch()`. See "THE SEARCHER, IN THE
@@ -2499,9 +2499,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       pages: [
         { body: ['Track committed — those notes are now Action Points (AP). MOVE across hexes, FACE to turn (1 AP), and FIGHT!',
                  'Attacks fire into the cone or beam you are FACING. Sneaking up behind someone isn\'t just rude — it\'s tactics, baby! Hit a rival in the wedge behind them and they lose an EXTRA note off their Sustain stack. Watch for the 🔪 badge while you aim — that\'s a back with nobody home.'], anchor: 'actions-bar' },
-        { body: 'Two ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
+        { body: 'Two ways to RUIN someone\'s set. One — ⚔️ THRASH (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
           anchor: 'actions-bar', act: 'swing' },
-        { body: 'Two — 🔊 SONIC (2 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
+        { body: 'Two — 🔊 SONIC (1 AP): the ranged beam off your amp rig, 2–3 hexes straight ahead (never next door). Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
           anchor: 'actions-bar' },
         { body: '🔥 THE RIFF-OFF is the big one, and you don\'t pick it from a menu — you EARN it. Aim a Sonic at a rival facing straight back down the same beam and it escalates into a head-to-head rhythm duel. Straight skill.',
           anchor: 'fame-bar', emote: 'fame' },
@@ -2513,12 +2513,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     combat: {
       title: '⚔️ Battle!',
       pages: [
-        { body: 'A SWING is a Thrash battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
+        { body: 'A THRASH is a melee battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
         { body: ['A SONIC is the ranged version, and it rolls differently: you throw your whole rig pool and KEEP THE HIGHEST die. The defender answers with a d6 — unless they\'re caught outside their own amp range, in which case they\'ve got no rig to brace with and scramble a d4. Position is damage.', 'Both of you beam-to-beam AND both inside your own range? That\'s not an attack any more. That\'s a RIFF-OFF.'], anchor: 'stat-knobs' },
         { body: ['The fine print your rival hopes you skip:',
-                 'Your stacks are AMMUNITION. A landed Swing burns 2 notes off your Drive Stack; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
+                 'Your stacks are AMMUNITION. A Thrash burns 2 notes off your Drive Stack win or lose (you need 2 to throw one) and your rival burns 1; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
                  `Land it in the wedge BEHIND them and they shed ${REAR_FRAY_BONUS} more. Facing decides what you can hit AND what you can brace against — it cuts both ways, so mind which way YOUR back is pointing.`,
-                 'Swinging also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
+                 'Thrashing also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
     },
     fans: {
@@ -4411,7 +4411,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog('🛡️ '+nm+' releases '+report.sustainFray.frayed+' fading Sustain note(s); the root holds.');
     }
     if (report.halvedByAxeSwing && report.refreshedCount > 0) {
-      addLog(`🪓 Axe Swing whiff — stock recovery halved this turn!`);
+      addLog(`🪓 Thrash whiff — stock recovery halved this turn!`);
     }
     if (report.drainedByVortex > 0) {
       const d = report.drainedByVortex;
@@ -4589,7 +4589,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // (v1 stance route removed — v2 stances are fixed ability kits, no learning tiers)
     if (skillId === 'goes_to_11')   addLog(`🔊 ${spirit?.name} — GOES TO 11! Set your attack to exactly ${ELEVEN_DRIVE} and shrug off knockback — but it eats your Sustain stack and blows your amp for a turn. If you were already louder, it turns you down. That's the joke, and it's also the rule.`);
     if (skillId === 'master_moshpits') addLog(`🤘 ${spirit?.name} — MASTER OF MOSHPITS! Pull 3 fans onto the board for a pit — +2 Drive that stands until the next pit.`);
-    if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Swing from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
+    if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Thrash from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
     if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Take it up, and from your next turn tune its ${SHAMISEN_STRINGS} strings with Iwato notes in the chord step. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes (your Action Token) — their scale becomes Iwato for ${CURSE_TURNS} turns.`);
@@ -6628,35 +6628,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     );
   }
 
-  // Returns hex nums in the Sonic Attack beam.
-  // STRAIGHT LINE ONLY: exactly the 3 hexes directly in front of the spirit,
-  // stepping along the facing axis. No cone, no splash — aim with your facing.
+  // Returns hex nums in the Sonic Attack beam: STRAIGHT LINE ONLY, hexes 2–3
+  // directly in front — never the one next door (2026-10-03). One copy, in the
+  // engine (`sonicBeam`), so the click, the tint, the riff-off check and the
+  // bots agree. The Blaster of Ra keeps the whole 1–3 line (`getBlasterBeam`).
   function getSonicBeam(spirit) {
-    const originHex = HEX_BY_NUM[spirit.num];
-    if (!originHex) return new Set();
-    // Lock in the axial step from the first forward neighbour, then repeat it —
-    // this guarantees a perfectly straight line (no staircase drift)
-    const first = neighborInDirection(originHex, spirit.facing ?? 0);
-    if (!first) return new Set();
-    const dq = first.q - originHex.q;
-    const dr = first.r - originHex.r;
-    // (☀️ SUNBEAM's beam-reach bonus was REMOVED — Sunbeam is an on-hit blind
-    // now, not a range capstone. The beam is a flat 3 for everyone.)
-    const reach = 3;
-    const beam = new Set();
-    let q = originHex.q, r = originHex.r;
-    for (let depth = 0; depth < reach; depth++) {
-      q += dq; r += dr;
-      const hex = HEX_BY_QR[`${q},${r}`];
-      if (!hex) break; // beam runs off the edge of the stage
-      beam.add(hex.num);
-    }
-    return beam;
+    return sonicBeam(spirit);
+  }
+  function getBlasterBeam(spirit) {
+    return sonicBeam(spirit, { minRange: 1 });
   }
 
   // Returns rivals in the sonic beam
-  function getRivalsInBeam(attacker) {
-    const beam = getSonicBeam(attacker);
+  function getRivalsInBeam(attacker, beam = getSonicBeam(attacker)) {
     return spirits.filter(s =>
       !s.knockedOut &&
       s.id !== attacker.id &&
@@ -6896,7 +6880,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!attacker || !defender) return;
 
     if (live.turn.moveStepsLeft < 1) {
-      addLog(`⚔️ Not enough Action Points — Swing costs 1 AP. Move steps left: ${live.turn.moveStepsLeft}`);
+      addLog(`⚔️ Not enough Action Points — Thrash costs 1 AP. Move steps left: ${live.turn.moveStepsLeft}`);
+      return;
+    }
+    // 🤘 A Thrash costs SWING_DRIVE_SPEND Drive notes win, lose or tie (Alex,
+    // 2026-10-03), so it needs that many in the stack. `battleConsequences`
+    // charges both sides; this is only the gate.
+    if ((live.noteStates[acting.id]?.driveStack?.length ?? 0) < SWING_DRIVE_SPEND) {
+      addLog(`⚔️ Not enough Drive — a Thrash burns ${SWING_DRIVE_SPEND} Drive notes, win or lose.`);
       return;
     }
 
@@ -6930,7 +6921,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const verdict=rollState.battle;
     recordBattleTotals(attacker.id,targetId,verdict.atkTotal,verdict.defTotal,verdict.attackerWon);
     logCardPlayed(verdict,attacker);
-    burnChargesAfterBattle([attacker.id,targetId],'the Swing clash spent it');
+    burnChargesAfterBattle([attacker.id,targetId],'the Thrash clash spent it');
     setNoteField(attacker.id,{swingExposed:true});
     addLog('⚔️ '+attacker.name+' and '+defender.name+' clash: Drive '+verdict.atkTotal+' vs '+verdict.defTotal+'.');
     startSwingPresentation(verdict);
@@ -6989,7 +6980,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const unusedIdxs = stock.map((_, i) => i).filter(i => !usedHas(used, i));
     const thrown = unusedIdxs.length;
     if (thrown < 2) { addLog('🌀 Nothing to blast — you need at least 2 unused notes to fire.'); return; }
-    const targets = getRivalsInBeam(acting);
+    const targets = getRivalsInBeam(acting, getBlasterBeam(acting));
     if (!targets.length) { addLog('🌀 No rivals in the beam — line up the shot.'); return; }
 
     const stepsBefore = moveStepsLeft;
@@ -7732,7 +7723,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // NUMBER — a rival standing at 2 is the single most confusing refusal this
     // ability can produce, because he is visibly right there in the lane.
     if (distToTarget < PSYCHO_BUSHIDO_MIN_RANGE) {
-      addLog(`🌀 Too close to draw — Psycho Bushido needs ${PSYCHO_BUSHIDO_MIN_RANGE} hexes of run-up. Back off, or Swing.`);
+      addLog(`🌀 Too close to draw — Psycho Bushido needs ${PSYCHO_BUSHIDO_MIN_RANGE} hexes of run-up. Back off, or Thrash.`);
       return;
     }
     // ⚡ THE AP BILL IS FLAT, SO IT CAN BE CHECKED BEFORE THE DASH COMMITS.
@@ -7979,6 +7970,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!shadowDecoys.some(d => d.num === num && d.id !== acting.id)) return false;
     if (mode === 'cone') return getSwingCone(acting).has(num);
     if (mode === 'beam') return getSonicBeam(acting).has(num);
+    if (mode === 'blaster') return getBlasterBeam(acting).has(num);
     const a = HEX_BY_NUM[acting.num], b = HEX_BY_NUM[num];
     return !!a && !!b && axialDist(a.q,a.r,b.q,b.r) === 1;
   }
@@ -7993,7 +7985,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // a Blaster that didn't leave you Exposed), the discount itself would announce
   // that the standee was fake. The wasted tempo is the payoff for the bluff.
   //
-  //   kind: 'swing' (1 AP) | 'sonic' (2 AP)
+  //   kind: 'swing' (1 AP) | 'sonic' (1 AP)
   //         | 'smash' | 'blaster' (2 AP minimum, then ALL movement, hurls the
   //           attacker's whole unused stock, leaves them Exposed)
   function resolveShadowWhiff(attacker, kind, label, targetNum) {
@@ -8001,7 +7993,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const si = noteStates[ownerId]?.shadowIllusion;
     if (!si || !attacker) return false;
     const heavy  = kind === 'smash' || kind === 'blaster';
-    const apCost = kind === 'swing' ? 1 : 2;
+    const apCost = kind === 'swing' ? 1 : kind === 'sonic' ? SONIC_AP_COST : 2;
+    // 🤘🔊 A whiff on the double pays the attack's FULL price, Drive notes
+    // included — or the missing bill would be the tell (Alex, 2026-10-03).
+    const driveCost = kind === 'swing' ? SWING_DRIVE_SPEND : kind === 'sonic' ? SONIC_DRIVE_SPEND : 0;
     if (actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return false; }
     if (moveStepsLeft < apCost) {
       addLog(`⚔️ Not enough Action Points — that costs ${apCost} AP.`);
@@ -8025,6 +8020,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       setNoteField(attacker.id, { usedStockIdx: usedAdd(used, unusedIdxs), smashExposed: true });
     } else {
       dispatch(beatsSpent(apCost, true));
+      const stack = engineRef.current.noteStates[attacker.id]?.driveStack ?? [];
+      const spent = driveCost ? stack.slice(-driveCost) : [];
+      if (spent.length) {
+        setNoteField(attacker.id, { driveStack: stack.slice(0, stack.length - spent.length) });
+        showSpentNotes(attacker.id, spent, 'drive');
+      }
     }
     setAction(null);
 
@@ -8251,12 +8252,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const attacker=live.spirits.find(s=>s.id===live.acting);
     const defender=live.spirits.find(s=>s.id===targetId&&!s.knockedOut);
     if(!canAct||!attacker||!defender||battleStateRef.current||live.turn.actionTokenUsed)return;
-    if(moveStepsLeft<2||!getSonicBeam(attacker).has(defender.num))return;
+    if(moveStepsLeft<SONIC_AP_COST||!getSonicBeam(attacker).has(defender.num))return;
     const nsA=live.noteStates[attacker.id]??{};
     const rig=rigFor(attacker,nsA,live);
     if(!rig.inRange||!rig.pool.length){addLog('🔊 Build Drive and use a working amp before firing.');return;}
     if(characterId(attacker.id)==='cosmic_ronin')dismissShadowIllusion('the Ronin attacked', attacker.id);
-    dispatch(beatsSpent(2,true));setAction(null);
+    dispatch(beatsSpent(SONIC_AP_COST,true));setAction(null);
     if(!live.limelight.posing[targetId]&&getSonicBeam(defender).has(attacker.num)&&rigForSpirit(defender).inRange) {
       burnChargesAfterBattle([attacker.id,targetId],'the riff-off spent it');
       startRiffOff(attacker,defender);return;
@@ -8268,7 +8269,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const params=attackParams(engineRef.current,attacker.id,targetId,'sonic');
     const {_derived,...rollOptions}=params;
     if(_derived.consumedSmashExposed)setNoteField(targetId,{smashExposed:false});
-    setNoteField(attacker.id,{driveStack:[]});
+    // 🔊 ONE note off the TOP, hit or miss (Alex, 2026-10-03) — not the whole
+    // stack. Spending everything left the shooter empty for the next Thrash.
+    const sonicStack=engineRef.current.noteStates[attacker.id]?.driveStack??[];
+    if(sonicStack.length){
+      const spent=sonicStack.slice(-SONIC_DRIVE_SPEND);
+      setNoteField(attacker.id,{driveStack:sonicStack.slice(0,-SONIC_DRIVE_SPEND)});
+      showSpentNotes(attacker.id,spent,'drive');
+    }
     const rolled=maybeCodeInjection(dispatch(attackRolled('sonic',attacker.id,targetId,rollOptions)),attacker.id,targetId).battle;
     burnChargesAfterBattle([attacker.id,targetId],'the Sonic volley spent it');
     logCardPlayed(rolled,attacker);
@@ -9365,7 +9373,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       powers=[swingBeamPower(verdict.atkTotal,verdict.dicePool),swingBeamPower(verdict.defTotal,verdict.defenderDicePool)];
       mark({...next});
       const n=(verdict.rolledPool??verdict.dicePool).length;
-      return {label:`Roll ${n}`,sub:`${n} Drive dice · ${defender?.name??'the Rival'} swings back`};
+      return {label:`Roll ${n}`,sub:`${n} Drive dice · ${defender?.name??'the Rival'} thrashes back`};
     }};
     const beat=(value)=>{
       phase(value);
@@ -9376,7 +9384,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const split=SWING_BEATS.findIndex(([,name])=>name==='swing_rival');
     // 🎯 The bout opens on the pair first — see the Sonic's `BATTLE_INTRO`.
     T(()=>awaitBattleRoll({id:battleCueId('swing',verdict,'attacker'),spiritId:verdict.attackerId,isCurrent,cardSeat:true,
-      lead:'Swing! Roll your Drive',sub:`${verdict.dicePool.length} Drive dice · ${defender?.name??'the Rival'} swings back`,
+      lead:'Thrash! Roll your Drive',sub:`${verdict.dicePool.length} Drive dice · ${defender?.name??'the Rival'} thrashes back`,
       label:`Roll ${verdict.dicePool.length}`,color:attacker?.color,
       onRoll:()=>{
         mark({swingRollAt:performance.now()});
@@ -9385,7 +9393,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         T(()=>{
           phase('swing_rival');
           awaitBattleRoll({id:battleCueId('swing',verdict,'rival'),spiritId:verdict.defenderId,isCurrent,
-            lead:`${defender?.name??'The Rival'} swings back`,sub:`${verdict.defenderDicePool.length} Drive dice · Drive against Drive`,
+            lead:`${defender?.name??'The Rival'} thrashes back`,sub:`${verdict.defenderDicePool.length} Drive dice · Drive against Drive`,
             label:`Roll ${verdict.defenderDicePool.length}`,color:defender?.color,
             onRoll:()=>{
               mark({swingRivalRollAt:performance.now()});
@@ -10444,7 +10452,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         const unlocked  = ns.unlockedSkills ?? [];
         const hasBlaster = characterId(self.id) === 'intergalactic_0' && unlocked.includes('blaster_of_ra');
         // 🪦 The Smash is gone (2026-09-28) — only the Blaster uses this slot now.
-        const finTargets = hasBlaster ? getRivalsInBeam(self) : [];
+        const finTargets = hasBlaster ? getRivalsInBeam(self, getBlasterBeam(self)) : [];
 
         // 1) 🌀💥 BLASTER — turtle-buster: undefendable, so it is what a
         // high-Sustain target can't answer. Fuel gate matches the button.
@@ -10469,7 +10477,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         }
 
         // 3) ⚔️ Regular Swing.
-        const coneNow = getRivalsInCone(self);
+        const coneNow = (ns.driveStack?.length ?? 0) >= SWING_DRIVE_SPEND ? getRivalsInCone(self) : [];
         if (coneNow.length && steps >= 1) {
           const t = botPickTarget(coneNow, self);
           botStepRef.current = 'ending';
@@ -10815,11 +10823,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (action === "swing") {
       // 👤 Swinging at the double looks exactly like swinging at the Ronin —
       // right up until the blade meets nothing.
-      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'swing', 'swing', num); return; }
+      if (isShadowTarget(num, 'cone')) { resolveShadowWhiff(acting, 'swing', 'Thrash', num); return; }
       const rivals = acting ? getRivalsInCone(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSwing(target.id); setAction(null); }
-      else addLog("⚔️ That spirit is not in your swing cone!");
+      else addLog("⚔️ That spirit is not in your Thrash cone!");
       return;
     }
     if (action === "face") {
@@ -10842,20 +10850,20 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const rivals = acting ? getRivalsInBeam(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSonicAttack(target.id); setAction(null); }
-      else addLog("🔊 That spirit is not in your sonic beam!");
+      else addLog("🔊 That spirit is not in your sonic beam — it reaches 2–3 hexes straight ahead, not next door!");
       return;
     }
     if (action === "blaster") {
       // 🌀 Ranged & piercing — clicking any rival in the beam fires at ALL of them.
-      const rivals = acting ? getRivalsInBeam(acting) : [];
+      const rivals = acting ? getRivalsInBeam(acting, getBlasterBeam(acting)) : [];
       if (rivals.some(r => r.num === num)) {
         resolveBlasterOfRa();
         setAction(null);
         // The beam pierces everything in the line — including the double, which
         // comes apart as the shot passes through it.
-        shadowDecoys.filter(d => isShadowTarget(d.num, 'beam')).forEach(d => dismissShadowIllusion('the Blaster of Ra tore through it', d.id));
+        shadowDecoys.filter(d => isShadowTarget(d.num, 'blaster')).forEach(d => dismissShadowIllusion('the Blaster of Ra tore through it', d.id));
       }
-      else if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'blaster', 'Blaster of Ra', num); }
+      else if (isShadowTarget(num, 'blaster')) { resolveShadowWhiff(acting, 'blaster', 'Blaster of Ra', num); }
       else addLog("🌀 Click a rival in your beam to fire the Blaster of Ra!");
       return;
     }
@@ -11031,7 +11039,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!spHex) return null;
     let near = new Set();
     if (kind === 'swing') near = getSwingCone(acting);
-    else if (kind === 'sonic' || kind === 'blaster') near = getSonicBeam(acting);
+    else if (kind === 'sonic') near = getSonicBeam(acting);
+    else if (kind === 'blaster') near = getBlasterBeam(acting);
     else if (kind === 'tentacle') { for (const opt of tentacleOptions(engineState, acting)) for (const n of opt.cone) near.add(n); }
     else if (kind === 'psycho_bushido') {
       const occupied = bushidoBlockers({ spirits, amps, shadowHexes, selfId: acting.id });
@@ -11107,7 +11116,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     // Sonic beam highlight
     if ((previewAction === 'sonic' || previewAction === 'blaster') && acting) {
-      const beam = getSonicBeam(acting);
+      const beam = previewAction === 'blaster' ? getBlasterBeam(acting) : getSonicBeam(acting);
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#0066ff44' : '#0033ff18';
@@ -11159,7 +11168,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     // Sonic beam stroke
     if ((previewAction === 'sonic' || previewAction === 'blaster') && acting) {
-      const beam = getSonicBeam(acting);
+      const beam = previewAction === 'blaster' ? getBlasterBeam(acting) : getSonicBeam(acting);
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#44aaffee' : '#2244ff44';
@@ -11874,7 +11883,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 title:'Fast-forward: cycle game speed 1× → 2× → 4×. Presentation only — the rules do not change.',
                 onClick: cycleGameSpeed },
               { kind:'toggle', icon:'⏭', label:'Fast battles', color:'#ccff44', on: skipBattleIntros,
-                title:'Compress the pre-die battle animations (swings, sonics & riff-off intros). The die-click itself is never skipped.',
+                title:'Compress the pre-die battle animations (thrashes, sonics & riff-off intros). The die-click itself is never skipped.',
                 onClick:() => setSkipBattleIntros(v => !v) },
               { kind:'toggle', icon:'🎨', label:'Lite FX', color:'#ffaa22', on: liteFx,
                 title:'Reduce GPU-heavy visual effects in battles (filters, shadows, blend modes). Helps if battles stutter or freeze.',
@@ -12939,7 +12948,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // tell — so it's tallied exactly like a real rival.
               const shadowCounts = shadowInRange('cone') ? 1 : 0;
               const targetCount = rivals.length + shadowCounts;
-              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const lowDrive = (actingNoteState?.driveStack?.length ?? 0) < SWING_DRIVE_SPEND;
+              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1 || lowDrive;
               const canSwing = !grayed && targetCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
@@ -12952,22 +12962,24 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                           opacity: canSwing ? 1 : 0.4, position:'relative'}}
                     disabled={!canSwing}
                     title={grayed
-                      ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
+                      ? (lowDrive && hasConfirmed && !actionTokenUsed && moveStepsLeft >= 1
+                        ? `The jab (1 AP) — grayed out: a Thrash burns ${SWING_DRIVE_SPEND} Drive notes win or lose, and your Drive stack has fewer.`
+                        : `The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, at least 1 AP and ${SWING_DRIVE_SPEND} Drive notes.`)
                       : canSwing
-                      ? "Drive vs Drive (1 AP). The loser takes the total difference as Vibe damage and is pushed one hex. Ties break evenly."
-                      : "The jab (1 AP) — no rival in your cone. Hover to see the swing range."}
+                      ? `Drive vs Drive (1 AP). You burn ${SWING_DRIVE_SPEND} Drive notes and they burn 1, win, lose or tie. The loser takes the total difference as Vibe damage and is pushed one hex. A tie throws you both back a hex.`
+                      : "The jab (1 AP) — no rival in your cone. Hover to see the Thrash range."}
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
                       else if (canSwing) {
                         setAction('swing');
-                        addLog('⚔️ SWING — click a rival in your cone to attack! (1 AP)');
+                        addLog('⚔️ THRASH — click a rival in your cone to attack! (1 AP)');
                         // 🎲 Same dice source as the Sonic — say where any extra die came from.
                         const swingWhy = actingNoteState?.atEleven ? null
                           : drivePowerNote(drivePowerBreakdown(actingNoteState ?? {}, acting?.id, homeSpotlightDrive(engineState, acting?.id)));
                         if (swingWhy) addLog(`🎲 ${swingWhy}.`);
                       }
                     }}>
-                    ⚔️ Swing{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
+                    ⚔️ Thrash{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : !canSwing && lowDrive ? `(${SWING_DRIVE_SPEND} Drive)` : ''}
                   </RailBtn>
                 </div>
               );
@@ -12983,10 +12995,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const hasBlaster = characterId(acting?.id) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
               if (!hasBlaster) return null;
               const abilityReady = cooldownLeft(ns, 'blaster_of_ra') === 0;
-              const rivals = acting ? getRivalsInBeam(acting) : [];
+              const rivals = acting ? getRivalsInBeam(acting, getBlasterBeam(acting)) : [];
               // 👤 The Shadow Illusion is a legal target here too — it has to be,
               // or the button greying out would reveal it as a fake.
-              const shadowSeen = shadowInRange('beam');
+              const shadowSeen = shadowInRange('blaster');
               const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
               const fuelOk  = unused >= 2;
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
@@ -13045,7 +13057,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // 👤 The double reads as a beam target like any other standee.
               const shadowSeen = shadowInRange('beam');
               const beamCount  = targets.length + (shadowSeen ? 1 : 0);
-              const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
+              const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < SONIC_AP_COST;
               const canSonic = !grayed && !outOfRange && poolNow.length > 0 && beamCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
@@ -13058,12 +13070,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                           opacity: canSonic ? 1 : (outOfRange ? 0.35 : 0.4)}}
                     disabled={!canSonic}
                     title={grayed
-                      ? "Sonic Attack (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
+                      ? "Sonic Attack (1 AP) — grayed out: needs a confirmed turn, your Action Token, and 1 AP."
                       : outOfRange
                       ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
-                      ? `Sonic Attack (2 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
-                      : "Sonic Attack (2 AP) — build Drive and aim at a rival within three hexes directly ahead."}
+                      ? `Sonic Attack (1 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends 1 Drive note, hit or miss. Facing rivals with working amps trigger a RIFF-OFF.`
+                      : "Sonic Attack (1 AP) — build Drive and aim at a rival 2–3 hexes directly ahead (next door is too close)."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
@@ -13073,7 +13085,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       }
                     }}>
                     🔊 Sonic{outOfRange ? ' 📡' : beamCount > 0 ? ` (${beamCount})` : ''} {diceLabel}
-                    {grayed && moveStepsLeft < 2 ? ' (2AP)' : ''}
+                    {grayed && moveStepsLeft < SONIC_AP_COST ? ' (1AP)' : ''}
                   </RailBtn>
                 </div>
               );
@@ -13149,7 +13161,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {(actingNoteState?.unlockedSkills ?? []).includes('tentacle') && (() => {
               const inReach = spirits.filter(sp =>
                 !sp.knockedOut && sp.id !== acting?.id && tentacleAim.has(sp.num));
-              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const lowDrive = (actingNoteState?.driveStack?.length ?? 0) < SWING_DRIVE_SPEND;
+              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1 || lowDrive;
               const canFire = !grayed && inReach.length > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}} {...reachHover('tentacle')}>
@@ -13157,7 +13170,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   style={{borderColor:'#5cff6a', color:'#8dffa0', opacity: canFire ? 1 : 0.45}}
                   disabled={!canFire}
                   title={grayed
-                    ? '🐙 Tentacle — needs a confirmed turn, your Action Token, and 1 AP.'
+                    ? `🐙 Tentacle — a Thrash from the slime: needs a confirmed turn, your Action Token, 1 AP and ${SWING_DRIVE_SPEND} Drive notes.`
                     : tentacleAim.size === 0
                     ? '🐙 Tentacle — no trail to reach through. Walk somewhere first; the road IS the weapon.'
                     : inReach.length === 0
@@ -13239,7 +13252,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     : stack.length === 0
                     ? 'Goes to 11 — the price is your SUSTAIN stack, and yours is empty. Voice some armour first.'
                     : quieter
-                    ? `⚠️ Goes to 11 would turn you DOWN — you are already swinging at ⚔️${asIs}. The amp only goes to eleven. (Still buys knockback immunity, and still costs your stack ${stack.join(' ')} and your rig.)`
+                    ? `⚠️ Goes to 11 would turn you DOWN — you are already hitting at ⚔️${asIs}. The amp only goes to eleven. (Still buys knockback immunity, and still costs your stack ${stack.join(' ')} and your rig.)`
                     : `Goes to 11 — set your attack to exactly ${ELEVEN_DRIVE} (from ⚔️${asIs}) and shrug off knockback. Costs your whole Sustain stack (${stack.join(' ')}) and blows your amp: no Sonic and a bare d4 on defence for a full turn.`}
                   onClick={() => { if (canCall) callEleven(); }}>
                   {cranked
@@ -15459,8 +15472,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       if (!acting || !sp || sp.id === acting.id || sp.knockedOut) return null;
                       if (!['swing', 'smash', 'sonic', 'blaster'].includes(previewAction)) return null;
                       if (isHiddenBySmoke(sp)) return null;
-                      const reach = (previewAction === 'sonic' || previewAction === 'blaster')
-                        ? getSonicBeam(acting) : getSwingCone(acting);
+                      const reach = previewAction === 'sonic' ? getSonicBeam(acting)
+                        : previewAction === 'blaster' ? getBlasterBeam(acting) : getSwingCone(acting);
                       if (!reach.has(hex.num) || !isHitFromBehind(acting, sp)) return null;
                       return (
                         <g style={{ pointerEvents: 'none' }}>

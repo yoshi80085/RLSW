@@ -72,7 +72,11 @@ the cinematic; the automatic rhythm-game riff-off remains its own interaction.
 ### 0.1 Declaration, dice and the held shield
 
 - Keep the existing attack budget: **2 AP and the turn's one attack token**.
-  A projectile Sonic spends the **entire Drive stack**, hit or absorbed.
+  ~~A projectile Sonic spends the **entire Drive stack**, hit or absorbed.~~
+  🪦 **SUPERSEDED 2026-10-03 (Alex): a Sonic spends ONE Drive note off the top,
+  hit or miss** (`SONIC_DRIVE_SPEND`). An empty rig after every Sonic left the
+  shooter defenceless against a Thrash (Drive vs Drive) — with 3–4 players, a
+  free kill. The dice still come off the full stack before the note is paid.
   Derive the dice and save the built chord before spending the stack. An empty
   Drive stack cannot fire.
 - Target a visible Rival in the **three hexes directly ahead**; turn to aim.
@@ -822,7 +826,8 @@ game having two unrelated combat systems.
    chipped out of it fast enough. The Swing costs you a walk into their face and
    `swingExposed` (−1 Sustain until your next turn).
 
-⭐ **BOTH ATTACKS COST THE WHOLE CHARGE** (Alex, 2026-09-11). They are literally
+🪦 **SUPERSEDED 2026-10-03** — Sonic 1 note, Thrash (was Swing) 2 notes on a hit; see §0.1.
+⭐ ~~**BOTH ATTACKS COST THE WHOLE CHARGE**~~ (Alex, 2026-09-11). They are literally
 spending energy to attack. ⚠️ **And the Swing must pay on a WHIFF too.** Today
 `physicalDriveSpend` charges on a hit only, which makes swinging free to attempt;
 under an all-or-nothing model that is fatal — you would Swing every turn and

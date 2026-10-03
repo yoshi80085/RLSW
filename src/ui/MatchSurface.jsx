@@ -96,7 +96,7 @@ function usePocketFloor(immersive) {
 const STEPS = { chord: '1 · Build chord', melody: '2 · Compose melody', move_act: '3 · Move & act' };
 const STEP_ORDER = ['chord', 'melody', 'move_act'];
 const ACTION_LABELS = {
-  move: 'Choose a lit hex', face: 'Choose a facing', swing: 'Choose a Swing target',
+  move: 'Choose a lit hex', face: 'Choose a facing', swing: 'Choose a Thrash target',
   smash: 'Choose a Smash target', sonic: 'Choose a Sonic target', shukuchi: 'Choose a Shukuchi landing',
   psycho_bushido: 'Choose a Bushido target', move_shadow: 'Move the Shadow',
   cursed_shamisen: 'Choose a rival to curse',

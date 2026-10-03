@@ -7,6 +7,7 @@ import * as THREE from 'three';
 import {makeInitialState} from '../engine/state.js';
 import {buildTestingGroundsConfig} from '../data/matchSetup.js';
 import {applyBotAction} from '../engine/policies/transition.js';
+import {SONIC_AP_COST} from '../engine/policies/legalActions.js';
 import {HEX_BY_NUM} from '../board/hexMap.js';
 import {neighborInDirection,angleTo} from '../board/hexGeometry.js';
 let checks=0;
@@ -117,7 +118,7 @@ check('headless duels share continuous escalation, spend their action and apply 
   let long=0,short=0;
   for(let seed=1;seed<=60;seed++){
     const result=applyBotAction(state,{kind:'riffOff',targetId:d},{rng:makeRng(seed),view:{fameThisTurn:{}}});
-    assert.ok(result.ok,result.detail);assert.equal(result.state.battle,null);assert.equal(result.state.turn.moveStepsLeft,3);
+    assert.ok(result.ok,result.detail);assert.equal(result.state.battle,null);assert.equal(result.state.turn.moveStepsLeft,5-SONIC_AP_COST);
     assert.equal(result.state.turn.actionTokenUsed,true);assert.ok([a,d].includes(result.state.headliner));
     assert.equal(result.battle.verdict.close,false);
     if(result.battle.verdict.round>2)long++;if(result.battle.verdict.round===1)short++;

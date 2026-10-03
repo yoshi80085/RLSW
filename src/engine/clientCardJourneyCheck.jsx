@@ -45,7 +45,7 @@ await click(document.querySelector('button[title="Testing Grounds"]'));
 for(let i=0;i<3;i++)await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
 await click(button('Commit (3 notes'));
 ok(document.querySelector('[data-marquee-hand]')?.dataset.marqueeHand==='3','the rail shows the hand');
-await click(button('Swing'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));
+await click(button('Thrash'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));
 ok(state.battle?.swingClash,'the Swing is rolled');
 const before=state.battle;
 const use=await until(()=>document.querySelector('[data-use-card]'),'the attacker is offered the cards');
