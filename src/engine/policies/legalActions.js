@@ -47,7 +47,7 @@ import { canFire } from "../systems/cooldowns.js";
 import { canHop, shukuchiLandings } from "../systems/shukuchi.js";
 import { posingMap } from "../systems/limelight.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
-import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
+import { LIMELIGHT_HEX, STACK_COMMIT_BUDGET, stackCapFor, SMASH_AP_COST, SLIME_AP_COST, SLIME_MOVE_STEPS, SONIC_BEAM_REACH, SONIC_MIN_RANGE, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, SHUKUCHI_AP_PER_HOP } from "../../data/gameConstants.js";
 import { CONE_HALF_ARC } from "./bot.js";
 // 📻 The Boom Box rule — Intergalactic 0 reads distance 0 while charged, which
 // is what keeps his Sonic legal out on the board — used to be imported here as
@@ -124,12 +124,17 @@ export function tentacleOptions(state, self) {
 }
 
 /**
- * The Sonic beam: a STRAIGHT line of 3, not a cone. Mirrors `getSonicBeam`,
- * including the trick that keeps it straight — lock the axial step in from the
- * first forward neighbour and repeat it, rather than re-deriving a direction
- * per hex, which staircases.
+ * The Sonic beam: a STRAIGHT line, not a cone — hexes `SONIC_MIN_RANGE` (2) to
+ * `SONIC_BEAM_REACH` (3) down the facing, never the one next door (2026-10-03).
+ * The client's `getSonicBeam` calls this. The trick that keeps it straight:
+ * lock the axial step in from the first forward neighbour and repeat it,
+ * rather than re-deriving a direction per hex, which staircases.
+ *
+ * `minRange: 1` gives the whole line — the Blaster of Ra's, which still fires
+ * from next door. The near hex is still WALKED either way, so a beam whose
+ * first hex is off the stage still reaches nothing.
  */
-export function sonicBeam(spirit) {
+export function sonicBeam(spirit, { minRange = SONIC_MIN_RANGE } = {}) {
   const origin = HEX_BY_NUM[spirit?.num];
   if (!origin) return new Set();
   const first = neighborInDirection(origin, spirit.facing ?? 0);
@@ -141,7 +146,7 @@ export function sonicBeam(spirit) {
     q += dq; r += dr;
     const hex = HEX_BY_QR[`${q},${r}`];
     if (!hex) break;          // the beam runs off the edge of the stage
-    beam.add(hex.num);
+    if (depth + 1 >= minRange) beam.add(hex.num);
   }
   return beam;
 }
@@ -459,7 +464,7 @@ export function legalActions(state, spiritId, view = {}) {
       }
     }
 
-    // SONIC — 1 AP, the straight beam, and OFFLINE outside your own rig radius.
+    // SONIC — 1 AP, the straight beam 2–3 hexes out (never adjacent), and OFFLINE outside your own rig radius.
     // That last gate is §3.1's worst square made concrete: stranded, the ranged
     // attack simply is not available to you.
     // ⚠️ THROUGH `rigFor`, NOT `sonicRig` DIRECTLY — that is what makes a blown
@@ -512,7 +517,9 @@ export function legalActions(state, spiritId, view = {}) {
       const hasBlaster = characterId(spiritId) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
 
       if (hasBlaster && unusedCount >= 2 && canFire(ns, 'blaster_of_ra')) {
-        const struck = rivals.filter(r => beam.has(r.num)).map(r => r.id);
+        // 🌀 The Blaster keeps the WHOLE line, next door included.
+        const line = sonicBeam(self, { minRange: 1 });
+        const struck = rivals.filter(r => line.has(r.num)).map(r => r.id);
         if (struck.length) {
           out.push({ kind: 'blaster', targetIds: struck, apCost: SMASH_AP_COST, endsMovement: true });
         }

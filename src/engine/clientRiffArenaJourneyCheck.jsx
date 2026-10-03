@@ -7,6 +7,7 @@ import {Game} from '../rlsw-simulator-v3_8_1.jsx';
 import {buildTestingGroundsConfig} from '../data/matchSetup.js';
 import {HEX_BY_NUM} from '../board/hexMap.js';
 import {angleTo,neighborInDirection} from '../board/hexGeometry.js';
+import {SONIC_AP_COST} from './policies/legalActions.js';
 import {makeInitialState} from './state.js';
 import {applyAction} from './reduce.js';
 import {noteSheetPatched,riffOffStarted,riffResultsSubmitted,riffResolved,beatsSpent} from './actions.js';
@@ -21,8 +22,9 @@ for(const method of ['createOscillator','createGain','createBiquadFilter']){
   return n;};
 }
 const config=buildTestingGroundsConfig({beginnerMode:false});config.seed=4242;
-const here=HEX_BY_NUM[55],there=neighborInDirection(here,0),[a,d]=config.spirits.map(s=>s.id);
-config.spirits=config.spirits.map((s,i)=>({...s,cpu:false,...(i===0?{num:here.num,facing:angleTo(here,there)}:i===1?{num:there.num,facing:angleTo(there,here)}:{})}));
+// 🔊 Two hexes apart, beams crossed — the Sonic reaches 2–3 since 2026-10-03.
+const here=HEX_BY_NUM[55],step=neighborInDirection(here,0),there=neighborInDirection(step,angleTo(here,step)),[a,d]=config.spirits.map(s=>s.id);
+config.spirits=config.spirits.map((s,i)=>({...s,cpu:false,...(i===0?{num:here.num,facing:angleTo(here,step)}:i===1?{num:there.num,facing:angleTo(step,here)}:{})}));
 const log=[noteSheetPatched(a,{driveStack:['C','E','G','B'],sustainStack:['C','E','G','B']}),noteSheetPatched(d,{driveStack:['C','E','G','B'],sustainStack:['C','E','G','B'],lastCommittedMelody:['D','F','A']})];
 config.catchUp={log:log.map((action,seq)=>({action,seq}))};
 const root=createRoot(document.getElementById('root'));let state;const actions=[];
@@ -35,10 +37,10 @@ await click(button('Commit (3 notes'));
 const budget=state.turn.moveStepsLeft;
 await click(button('🔊 Sonic'));await click(document.querySelector(`[data-hex-num="${there.num}"]`));
 assert.equal(state.battle.kind,'riffOff');assert.equal(state.battle.arenaVersion,1,'normal Sonic targeting launches the arena duel');
-assert.equal(state.turn.moveStepsLeft,budget-2);assert.equal(state.turn.actionTokenUsed,true);
+assert.equal(state.turn.moveStepsLeft,budget-SONIC_AP_COST);assert.equal(state.turn.actionTokenUsed,true);
 assert.ok(state.noteStates[a].lastCommittedMelody.length===3);assert.deepEqual(state.battle.melodies[1],['D','F','A']);
 assert.ok(!document.querySelector('[data-battle-phase="riff_intro"]'),'old overlay is bypassed');
-console.log('PASS: real Game commit → crossed Sonic beams → arena duel, both melodies, 2 AP and Action Token.');
+console.log('PASS: real Game commit → crossed Sonic beams → arena duel, both melodies, the Sonic AP cost and Action Token.');
 await act(async()=>root.render(null));
 
 // Load a recorded decisive performance through the real catch-up path, then

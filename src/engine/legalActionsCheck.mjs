@@ -77,11 +77,13 @@ const kinds  = (acts) => new Set(acts.map(a => a.kind));
 const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 
 /** Put `rivalId` on a neighbour of the Ronin and point him at it. */
-const faceRivalAt = (st, rivalId, step = 0) => {
+// `dist` hexes straight ahead: 1 for a Swing, 2–3 for a Sonic (2026-10-03).
+const ahead = (here, nb, dist) => HEX_BY_QR[`${here.q + dist * (nb.q - here.q)},${here.r + dist * (nb.r - here.r)}`];
+const faceRivalAt = (st, rivalId, step = 0, dist = 1) => {
   const here = HEX_BY_NUM[START];
   const nbs = axialNeighbors(here.q, here.r).map(({ q, r }) => HEX_BY_QR[`${q},${r}`]).filter(Boolean);
   const nb = nbs[step % nbs.length];
-  return withSpirit(withSpirit(st, rivalId, { num: nb.num }), RONIN, { facing: angleTo(here, nb) });
+  return withSpirit(withSpirit(st, rivalId, { num: ahead(here, nb, dist).num }), RONIN, { facing: angleTo(here, nb) });
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -223,12 +225,14 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   const broke = withTurn(armed, { moveStepsLeft: 0 });
   eq(ofKind(legalActions(broke, RONIN), 'move').length, 0,  '0 AP → nowhere to walk');
   eq(ofKind(legalActions(broke, RONIN), 'swing').length, 0, '0 AP → nothing to swing');
-  eq(ofKind(legalActions(broke, RONIN), 'sonic').length, 0, '0 AP → no Sonic either');
+  eq(ofKind(legalActions(withTurn(faceRivalAt(confirmed(baseState()), METAL, 0, 2), { moveStepsLeft: 0 }), RONIN), 'sonic').length, 0,
+     '0 AP → no Sonic either');
   ok(kinds(legalActions(broke, RONIN)).has('endTurn'), 'broke but never stuck — endTurn survives');
 
   const one = withTurn(armed, { moveStepsLeft: 1 });
   ok(ofKind(legalActions(one, RONIN), 'swing').length > 0, `1 AP affords the Swing (${SWING_AP_COST} AP)`);
-  ok(ofKind(legalActions(one, RONIN), 'sonic').length > 0, `1 AP affords the Sonic (${SONIC_AP_COST} AP)`);
+  const oneBeam = withTurn(faceRivalAt(confirmed(baseState()), METAL, 0, 2), { moveStepsLeft: 1 });
+  ok(ofKind(legalActions(oneBeam, RONIN), 'sonic').length > 0, `1 AP affords the Sonic (${SONIC_AP_COST} AP)`);
   ok(ofKind(legalActions(one, RONIN), 'move').length > 0,  `1 AP still walks (${MOVE_AP_COST} AP)`);
 }
 
@@ -262,7 +266,7 @@ const faceRivalAt = (st, rivalId, step = 0) => {
 
   eq(swingCone({ ...self, num: 99999 }).size, 0, 'a Spirit off the map has no cone');
   ok(swingCone(self).size >= 1 && swingCone(self).size <= 3, 'the cone is the forward hex plus two diagonals');
-  ok(sonicBeam(self).size <= SONIC_BEAM_REACH, `the beam reaches at most ${SONIC_BEAM_REACH}`);
+  ok(sonicBeam(self).size <= SONIC_BEAM_REACH - 1, `the beam is hexes 2–${SONIC_BEAM_REACH}, never the one next door`);
   eq(facingOptions(self).length, 6, 'six neighbours, six facings');
 
   // A rival BEHIND is a rival you cannot hit without turning first.
@@ -277,8 +281,18 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   ok(ofKind(legalActions(behind, RONIN), 'face').length > 0,
      '...and turning to face them is exactly the AP the geometry is charging you');
 
-  const ahead = withSpirit(facingFront, METAL, { num: front.num });
-  eq(ofKind(legalActions(ahead, RONIN), 'swing').length, 1, 'in the cone, in reach — one Swing, one target');
+  const inFront = withSpirit(facingFront, METAL, { num: front.num });
+  eq(ofKind(legalActions(inFront, RONIN), 'swing').length, 1, 'in the cone, in reach — one Swing, one target');
+
+  // 🔊 THE SONIC NEEDS ROOM (2026-10-03): 2–3 hexes down the line, never next door.
+  const beamAt = (d) => ahead(here, front, d) && withSpirit(facingFront, METAL, { num: ahead(here, front, d).num });
+  ok(!sonicBeam(withSpirit(facingFront, RONIN, {}).spirits.find(s => s.id === RONIN)).has(front.num),
+     '🔊 the hex next door is not in the Sonic beam');
+  const sonicsAt = (d) => legalActions(beamAt(d), RONIN).filter(a => a.kind === 'sonic' || a.kind === 'riffOff').length;
+  eq(sonicsAt(1), 0, '🔊 a rival next door is TOO CLOSE for the Sonic');
+  eq(sonicsAt(2), 1, '🔊 two down the line — in the beam');
+  eq(sonicsAt(3), 1, '🔊 three down the line — still in the beam');
+  if (beamAt(4)) eq(sonicsAt(4), 0, '🔊 four down the line is past the beam');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -293,7 +307,7 @@ const faceRivalAt = (st, rivalId, step = 0) => {
 
   const atHome = withSpirit(
     withSpirit(confirmed(baseState()), RONIN, { num: CORNERS.blue.homeNum, facing: angleTo(here, front) }),
-    METAL, { num: front.num });
+    METAL, { num: ahead(here, front, 2).num });
   ok(ofKind(legalActions(atHome, RONIN), 'sonic').length > 0, 'inside the rig radius the Sonic is live');
 
   // Same geometry, transplanted to the far corner — out of the blue amp's reach.
@@ -304,7 +318,8 @@ const faceRivalAt = (st, rivalId, step = 0) => {
     withSpirit(confirmed(baseState()), RONIN, { num: CORNERS.red.homeNum, facing: angleTo(farHome, farFront) }),
     METAL, { num: farFront.num });
 
-  eq(ofKind(legalActions(stranded, RONIN), 'sonic').length, 0, '📡 stranded outside the radius: no Sonic at all');
+  const strandedBeam = withSpirit(stranded, METAL, { num: ahead(farHome, farFront, 2).num });
+  eq(ofKind(legalActions(strandedBeam, RONIN), 'sonic').length, 0, '📡 stranded outside the radius: no Sonic at all');
   ok(ofKind(legalActions(stranded, RONIN), 'swing').length > 0, '...melee still works out there — that is the trade');
 }
 

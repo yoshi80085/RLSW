@@ -164,8 +164,8 @@ Prefer abilities that *set* a total over ones that add outside the cap.
 **⚔️ SWING** — 1 AP, melee, cone in front of you. **Costs 2 notes off your Drive
 stack, on a hit only.** Whiffing keeps your stack.
 
-**🔊 SONIC** — 1 AP, ranged beam along your facing, reach **3**
-(`SONIC_BEAM_REACH`). **Costs 1 note off your Drive stack, hit or miss** — you
+**🔊 SONIC** — 1 AP, ranged beam along your facing, hexes **2–3**
+(`SONIC_MIN_RANGE`–`SONIC_BEAM_REACH`) — a rival next door is too close. **Costs 1 note off your Drive stack, hit or miss** — you
 spent it the moment you projected it. Rolls a **dice pool, keep-highest**:
 
 - Pool size = your rig's **pool tier** (1–3), max 4 dice (`SONIC_POOL_MAX`).

@@ -169,7 +169,7 @@ import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
-import { tentacleOptions, legalActions, SONIC_AP_COST } from "./engine/policies/legalActions.js";
+import { tentacleOptions, legalActions, sonicBeam, SONIC_AP_COST } from "./engine/policies/legalActions.js";
 // 🧠 THE SEARCHER — the headless bot from the §6.6 bench, wired into the chair.
 // ⚠️ `POLICIES.searcher` is used as a CHOOSER ONLY; `playTurn` is not, because it
 // would advance the seeded rng outside `dispatch()`. See "THE SEARCHER, IN THE
@@ -2501,7 +2501,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                  'Attacks fire into the cone or beam you are FACING. Sneaking up behind someone isn\'t just rude — it\'s tactics, baby! Hit a rival in the wedge behind them and they lose an EXTRA note off their Sustain stack. Watch for the 🔪 badge while you aim — that\'s a back with nobody home.'], anchor: 'actions-bar' },
         { body: 'Two ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
           anchor: 'actions-bar', act: 'swing' },
-        { body: 'Two — 🔊 SONIC (1 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
+        { body: 'Two — 🔊 SONIC (1 AP): the ranged beam off your amp rig, 2–3 hexes straight ahead (never next door). Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
           anchor: 'actions-bar' },
         { body: '🔥 THE RIFF-OFF is the big one, and you don\'t pick it from a menu — you EARN it. Aim a Sonic at a rival facing straight back down the same beam and it escalates into a head-to-head rhythm duel. Straight skill.',
           anchor: 'fame-bar', emote: 'fame' },
@@ -6623,35 +6623,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     );
   }
 
-  // Returns hex nums in the Sonic Attack beam.
-  // STRAIGHT LINE ONLY: exactly the 3 hexes directly in front of the spirit,
-  // stepping along the facing axis. No cone, no splash — aim with your facing.
+  // Returns hex nums in the Sonic Attack beam: STRAIGHT LINE ONLY, hexes 2–3
+  // directly in front — never the one next door (2026-10-03). One copy, in the
+  // engine (`sonicBeam`), so the click, the tint, the riff-off check and the
+  // bots agree. The Blaster of Ra keeps the whole 1–3 line (`getBlasterBeam`).
   function getSonicBeam(spirit) {
-    const originHex = HEX_BY_NUM[spirit.num];
-    if (!originHex) return new Set();
-    // Lock in the axial step from the first forward neighbour, then repeat it —
-    // this guarantees a perfectly straight line (no staircase drift)
-    const first = neighborInDirection(originHex, spirit.facing ?? 0);
-    if (!first) return new Set();
-    const dq = first.q - originHex.q;
-    const dr = first.r - originHex.r;
-    // (☀️ SUNBEAM's beam-reach bonus was REMOVED — Sunbeam is an on-hit blind
-    // now, not a range capstone. The beam is a flat 3 for everyone.)
-    const reach = 3;
-    const beam = new Set();
-    let q = originHex.q, r = originHex.r;
-    for (let depth = 0; depth < reach; depth++) {
-      q += dq; r += dr;
-      const hex = HEX_BY_QR[`${q},${r}`];
-      if (!hex) break; // beam runs off the edge of the stage
-      beam.add(hex.num);
-    }
-    return beam;
+    return sonicBeam(spirit);
+  }
+  function getBlasterBeam(spirit) {
+    return sonicBeam(spirit, { minRange: 1 });
   }
 
   // Returns rivals in the sonic beam
-  function getRivalsInBeam(attacker) {
-    const beam = getSonicBeam(attacker);
+  function getRivalsInBeam(attacker, beam = getSonicBeam(attacker)) {
     return spirits.filter(s =>
       !s.knockedOut &&
       s.id !== attacker.id &&
@@ -6984,7 +6968,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const unusedIdxs = stock.map((_, i) => i).filter(i => !usedHas(used, i));
     const thrown = unusedIdxs.length;
     if (thrown < 2) { addLog('🌀 Nothing to blast — you need at least 2 unused notes to fire.'); return; }
-    const targets = getRivalsInBeam(acting);
+    const targets = getRivalsInBeam(acting, getBlasterBeam(acting));
     if (!targets.length) { addLog('🌀 No rivals in the beam — line up the shot.'); return; }
 
     const stepsBefore = moveStepsLeft;
@@ -7974,6 +7958,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!shadowDecoys.some(d => d.num === num && d.id !== acting.id)) return false;
     if (mode === 'cone') return getSwingCone(acting).has(num);
     if (mode === 'beam') return getSonicBeam(acting).has(num);
+    if (mode === 'blaster') return getBlasterBeam(acting).has(num);
     const a = HEX_BY_NUM[acting.num], b = HEX_BY_NUM[num];
     return !!a && !!b && axialDist(a.q,a.r,b.q,b.r) === 1;
   }
@@ -10439,7 +10424,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         const unlocked  = ns.unlockedSkills ?? [];
         const hasBlaster = characterId(self.id) === 'intergalactic_0' && unlocked.includes('blaster_of_ra');
         // 🪦 The Smash is gone (2026-09-28) — only the Blaster uses this slot now.
-        const finTargets = hasBlaster ? getRivalsInBeam(self) : [];
+        const finTargets = hasBlaster ? getRivalsInBeam(self, getBlasterBeam(self)) : [];
 
         // 1) 🌀💥 BLASTER — turtle-buster: undefendable, so it is what a
         // high-Sustain target can't answer. Fuel gate matches the button.
@@ -10837,20 +10822,20 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const rivals = acting ? getRivalsInBeam(acting) : [];
       const target = rivals.find(r => r.num === num);
       if (target) { initiateSonicAttack(target.id); setAction(null); }
-      else addLog("🔊 That spirit is not in your sonic beam!");
+      else addLog("🔊 That spirit is not in your sonic beam — it reaches 2–3 hexes straight ahead, not next door!");
       return;
     }
     if (action === "blaster") {
       // 🌀 Ranged & piercing — clicking any rival in the beam fires at ALL of them.
-      const rivals = acting ? getRivalsInBeam(acting) : [];
+      const rivals = acting ? getRivalsInBeam(acting, getBlasterBeam(acting)) : [];
       if (rivals.some(r => r.num === num)) {
         resolveBlasterOfRa();
         setAction(null);
         // The beam pierces everything in the line — including the double, which
         // comes apart as the shot passes through it.
-        shadowDecoys.filter(d => isShadowTarget(d.num, 'beam')).forEach(d => dismissShadowIllusion('the Blaster of Ra tore through it', d.id));
+        shadowDecoys.filter(d => isShadowTarget(d.num, 'blaster')).forEach(d => dismissShadowIllusion('the Blaster of Ra tore through it', d.id));
       }
-      else if (isShadowTarget(num, 'beam')) { resolveShadowWhiff(acting, 'blaster', 'Blaster of Ra', num); }
+      else if (isShadowTarget(num, 'blaster')) { resolveShadowWhiff(acting, 'blaster', 'Blaster of Ra', num); }
       else addLog("🌀 Click a rival in your beam to fire the Blaster of Ra!");
       return;
     }
@@ -11026,7 +11011,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!spHex) return null;
     let near = new Set();
     if (kind === 'swing') near = getSwingCone(acting);
-    else if (kind === 'sonic' || kind === 'blaster') near = getSonicBeam(acting);
+    else if (kind === 'sonic') near = getSonicBeam(acting);
+    else if (kind === 'blaster') near = getBlasterBeam(acting);
     else if (kind === 'tentacle') { for (const opt of tentacleOptions(engineState, acting)) for (const n of opt.cone) near.add(n); }
     else if (kind === 'psycho_bushido') {
       const occupied = bushidoBlockers({ spirits, amps, shadowHexes, selfId: acting.id });
@@ -11102,7 +11088,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     // Sonic beam highlight
     if ((previewAction === 'sonic' || previewAction === 'blaster') && acting) {
-      const beam = getSonicBeam(acting);
+      const beam = previewAction === 'blaster' ? getBlasterBeam(acting) : getSonicBeam(acting);
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#0066ff44' : '#0033ff18';
@@ -11154,7 +11140,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     // Sonic beam stroke
     if ((previewAction === 'sonic' || previewAction === 'blaster') && acting) {
-      const beam = getSonicBeam(acting);
+      const beam = previewAction === 'blaster' ? getBlasterBeam(acting) : getSonicBeam(acting);
       if (beam.has(hex.num)) {
         const isRival = spirits.some(s => !s.knockedOut && s.id !== acting.id && s.num === hex.num && !isHiddenBySmoke(s));
         return isRival ? '#44aaffee' : '#2244ff44';
@@ -12978,10 +12964,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const hasBlaster = characterId(acting?.id) === 'intergalactic_0' && (ns.unlockedSkills ?? []).includes('blaster_of_ra');
               if (!hasBlaster) return null;
               const abilityReady = cooldownLeft(ns, 'blaster_of_ra') === 0;
-              const rivals = acting ? getRivalsInBeam(acting) : [];
+              const rivals = acting ? getRivalsInBeam(acting, getBlasterBeam(acting)) : [];
               // 👤 The Shadow Illusion is a legal target here too — it has to be,
               // or the button greying out would reveal it as a fake.
-              const shadowSeen = shadowInRange('beam');
+              const shadowSeen = shadowInRange('blaster');
               const unused = (ns.noteStock ?? []).filter((_, i) => !usedHas(ns.usedStockIdx, i)).length;
               const fuelOk  = unused >= 2;
               const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
@@ -13058,7 +13044,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
                       ? `Sonic Attack (1 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
-                      : "Sonic Attack (1 AP) — build Drive and aim at a rival within three hexes directly ahead."}
+                      : "Sonic Attack (1 AP) — build Drive and aim at a rival 2–3 hexes directly ahead (next door is too close)."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
@@ -15454,8 +15440,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       if (!acting || !sp || sp.id === acting.id || sp.knockedOut) return null;
                       if (!['swing', 'smash', 'sonic', 'blaster'].includes(previewAction)) return null;
                       if (isHiddenBySmoke(sp)) return null;
-                      const reach = (previewAction === 'sonic' || previewAction === 'blaster')
-                        ? getSonicBeam(acting) : getSwingCone(acting);
+                      const reach = previewAction === 'sonic' ? getSonicBeam(acting)
+                        : previewAction === 'blaster' ? getBlasterBeam(acting) : getSwingCone(acting);
                       if (!reach.has(hex.num) || !isHitFromBehind(acting, sp)) return null;
                       return (
                         <g style={{ pointerEvents: 'none' }}>

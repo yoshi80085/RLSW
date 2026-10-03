@@ -974,6 +974,11 @@ export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
 // build the beam, and `evaluate` uses it as the distance past which a rival is a
 // plan rather than a target. One number, two consumers, no transcription.
 export const SONIC_BEAM_REACH = 3;
+// 🔊 …and never next door: the Sonic needs a rival 2–3 hexes down the line, so
+// the hex in front of you is not in the beam (Alex, 2026-10-03: *"unable to fire
+// from only 1 space away … must be 2 - 3 spaces away"*). The Blaster of Ra
+// still fires down the whole line from 1 (`sonicBeam(…, { minRange: 1 })`).
+export const SONIC_MIN_RANGE = 2;
 
 // ☀️ SUNBEAM — the whiteout.
 export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
