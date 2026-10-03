@@ -1,0 +1,410 @@
+diff --git a/package.json b/package.json
+index f3708d9..a416ecf 100644
+--- a/package.json
++++ b/package.json
+@@ -27,7 +27,7 @@
+     "lint": "eslint .",
+     "preview": "vite preview",
+     "test:sandbox": "node src/engine/sandboxCheck.mjs",
+-    "test:all": "npm run test:vocab && npm run test:cards && npm run test:cardjourney && npm run test:marqueemarkers && npm run test:marqueejourney && npm run test:engine && npm run test:stagefx && npm run test:pyrorules && npm run test:pyroshove && npm run test:pyrostage && npm run test:pyrojourney && npm run test:sandbox && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:buzzer && npm run test:fametrack && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:shamisenjourney && npm run test:shukuchi && npm run test:shukuchiui && npm run test:bushido && npm run test:bushidoburst && npm run test:bushidoarena && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch && npm run test:journey && npm run test:battlejourney && npm run test:replayjourney && npm run test:bushidoui && npm run test:arena && npm run test:sonic && npm run test:spotlight && npm run test:sonicfx && npm run test:sonicjourney && npm run test:bgm && npm run test:mix && npm run test:dialtick && npm run test:headdial && npm run test:cameradirector && npm run test:movetiles && npm run test:standee && npm run test:standeemove && npm run test:spiritpicker && npm run test:abilitydemo && npm run test:cursedshamisen && npm run test:seatportrait && npm run test:ronintone && npm run test:voiceleak && npm run test:commitstyles && npm run test:spiritsting && npm run test:stockdraw && npm run test:notekeys && npm run test:notekeysjourney && npm run test:numpadjourney && npm run test:scalewheel && npm run test:playfinder && npm run test:crowdcoach && npm run test:crowdbubble && npm run test:loadouts && npm run test:loadoutui && npm run test:dice && npm run test:battledirector && npm run test:battlelens && npm run test:beamlayer && npm run test:attacktiles && npm run test:topview && npm run test:swing && npm run test:riffarena && npm run test:riffarenalive && npm run test:riffarenajourney",
++    "test:all": "npm run test:vocab && npm run test:cards && npm run test:cardjourney && npm run test:marqueemarkers && npm run test:marqueejourney && npm run test:engine && npm run test:stagefx && npm run test:crumbling && npm run test:bats && npm run test:pyrorules && npm run test:pyroshove && npm run test:pyrostage && npm run test:pyrojourney && npm run test:sandbox && npm run test:legal && npm run test:eval && npm run test:transition && npm run test:turnflow && npm run test:determinism && npm run test:battleflow && npm run test:winconditions && npm run test:buzzer && npm run test:fametrack && npm run test:stackslots && npm run test:melody && npm run test:slime && npm run test:eleven && npm run test:score && npm run test:harness && npm run test:riffparity && npm run test:skilltree && npm run test:shamisen && npm run test:shamisenjourney && npm run test:shukuchi && npm run test:shukuchiui && npm run test:bushido && npm run test:bushidoburst && npm run test:bushidoarena && npm run test:client && npm run test:render && npm run test:b0 && npm run test:riff && npm run test:trace && npm run test:arch && npm run test:journey && npm run test:battlejourney && npm run test:replayjourney && npm run test:bushidoui && npm run test:arena && npm run test:sonic && npm run test:spotlight && npm run test:sonicfx && npm run test:sonicjourney && npm run test:bgm && npm run test:mix && npm run test:dialtick && npm run test:headdial && npm run test:cameradirector && npm run test:movetiles && npm run test:standee && npm run test:standeemove && npm run test:spiritpicker && npm run test:abilitydemo && npm run test:cursedshamisen && npm run test:seatportrait && npm run test:ronintone && npm run test:voiceleak && npm run test:commitstyles && npm run test:spiritsting && npm run test:stockdraw && npm run test:notekeys && npm run test:notekeysjourney && npm run test:numpadjourney && npm run test:scalewheel && npm run test:playfinder && npm run test:crowdcoach && npm run test:crowdbubble && npm run test:loadouts && npm run test:loadoutui && npm run test:dice && npm run test:battledirector && npm run test:battlelens && npm run test:beamlayer && npm run test:attacktiles && npm run test:topview && npm run test:swing && npm run test:riffarena && npm run test:riffarenalive && npm run test:riffarenajourney",
+     "test:cursedshamisen": "node --import ./src/engine/testAssetStub.mjs src/board/cursedShamisenCheck.mjs && node --import ./src/engine/testAssetStub.mjs src/board/cursedShamisenArenaCheck.mjs",
+     "test:abilitydemo": "node --import ./src/engine/testAssetStub.mjs src/ui/abilityDemoCheck.mjs",
+     "test:arch": "node --import ./src/engine/testAssetStub.mjs src/engine/architectureCheck.mjs",
+@@ -56,7 +56,8 @@
+     "test:eleven": "node --import ./src/engine/testAssetStub.mjs src/engine/elevenCheck.mjs",
+     "test:engine": "node --import ./src/engine/testAssetStub.mjs src/engine/selftest.mjs",
+     "test:stagefx": "node --import ./src/engine/testAssetStub.mjs src/engine/stageFxScheduleCheck.mjs",
+-    "test:bats": "node --import ./src/engine/testAssetStub.mjs src/engine/batsCheck.mjs",
++    "test:crumbling": "node --import ./src/engine/testAssetStub.mjs src/engine/crumblingCheck.mjs",
++    "test:bats": "node --import ./src/engine/testAssetStub.mjs src/engine/batsCheck.mjs && node scripts/check-bats-journey.mjs",
+     "test:pyrorules": "node --import ./src/engine/testAssetStub.mjs src/engine/pyroRulesCheck.mjs",
+     "test:pyroshove": "node src/board/pyroShoveCheck.mjs",
+     "test:pyrostage": "node --import ./src/engine/testAssetStub.mjs src/board/pyroStageCheck.mjs",
+diff --git a/src/board/batStage.js b/src/board/batStage.js
+index 5d58190..29b90f6 100644
+--- a/src/board/batStage.js
++++ b/src/board/batStage.js
+@@ -6,7 +6,23 @@ export function createBatStage(parent, { pointFor, release }) {
+   const live = new Map();
+   let clock = 0;
+   function model(key) {
++    const container = new THREE.Group(); container.name = `${key}-prop`;
+     const group = new THREE.Group(); group.name = key;
++    const marker = new THREE.Group(); marker.name = `${key}-hex`;
++    const rim = new THREE.Mesh(new THREE.RingGeometry(.82, .94, 6),
++      new THREE.MeshBasicMaterial({ color: 0xd9b5ff, side: THREE.DoubleSide, depthWrite: false }));
++    rim.rotation.x = -Math.PI / 2; marker.add(rim);
++    const fill = new THREE.Mesh(new THREE.CircleGeometry(.82, 6),
++      new THREE.MeshBasicMaterial({ color: 0x9b55ed, transparent: true, opacity: .18, depthWrite: false, side: THREE.DoubleSide }));
++    fill.rotation.x = -Math.PI / 2; fill.position.y = -.005; marker.add(fill);
++    const dot = new THREE.Mesh(new THREE.RingGeometry(.11, .17, 20),
++      new THREE.MeshBasicMaterial({ color: 0xf4ddff, side: THREE.DoubleSide, depthWrite: false }));
++    dot.rotation.x = -Math.PI / 2; dot.position.y = .005; marker.add(dot);
++    const tether = new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]),
++      new THREE.LineDashedMaterial({ color: 0xd9b5ff, transparent: true, opacity: .65,
++        dashSize: .12, gapSize: .1, depthWrite: false }));
++    tether.name = `${key}-tether`;
++    container.add(marker, tether, group); root.add(container);
+     const skin = new THREE.MeshStandardMaterial({ color: 0x201329, roughness: .65,
+       emissive: 0x6b2a99, emissiveIntensity: .35, side: THREE.DoubleSide });
+     const body = new THREE.Mesh(new THREE.SphereGeometry(.18, 12, 8), skin);
+@@ -26,17 +42,20 @@ export function createBatStage(parent, { pointFor, release }) {
+         new THREE.MeshBasicMaterial({ color: 0xff445c }));
+       eye.position.set(side * .07, .12, .13); group.add(eye);
+     }
+-    root.add(group);
+-    return { group, wings, from: new THREE.Vector3(), to: new THREE.Vector3(), start: clock, flight: -1 };
++    return { container, marker, tether, group, wings, from: new THREE.Vector3(), to: new THREE.Vector3(), start: clock, flight: -1 };
+   }
+   return {
+     update(bats = []) {
+       const keys = new Set(bats.map(b => b.key));
+-      for (const [key, b] of live) if (!keys.has(key)) { root.remove(b.group); release(b.group); live.delete(key); }
++      for (const [key, b] of live) if (!keys.has(key)) { root.remove(b.container); release(b.container); live.delete(key); }
+       for (const bat of bats) {
+         const p = pointFor(bat.num, 1.9); if (!p) continue;
+         let b = live.get(bat.key);
+         if (!b) { b = model(bat.key); live.set(bat.key, b); b.group.position.copy(p); b.to.copy(p); }
++        // This marker follows the RULE hex immediately, even while the bat
++        // itself is still flying there. It never bobs or drifts with the prop.
++        b.marker.position.copy(pointFor(bat.num, .24));
++        b.marker.userData.hexNum = bat.num;
+         if (b.flight !== bat.flight || !b.to.equals(p)) {
+           b.from.copy(b.group.position); b.to.copy(p); b.start = clock; b.flight = bat.flight;
+         }
+@@ -47,14 +66,20 @@ export function createBatStage(parent, { pointFor, release }) {
+       let index = 0;
+       for (const b of live.values()) {
+         const phase = time * 15 + index++ * 1.7;
+-        const u = Math.min(1, Math.max(0, (time - b.start) / 1.2));
++        const u = reduced ? 1 : Math.min(1, Math.max(0, (time - b.start) / 1.2));
+         b.group.position.lerpVectors(b.from, b.to, u * u * (3 - 2 * u));
+         if (!reduced) b.group.position.y += Math.sin(u * Math.PI) * .65 + Math.sin(phase * .3) * .09;
+         for (const { pivot, side } of b.wings) pivot.rotation.y = reduced ? side * .15 : Math.sin(phase) * side * .7;
+         b.group.rotation.z = reduced ? 0 : Math.sin(phase * .24) * .08;
++        const endpoints = b.tether.geometry.attributes.position;
++        endpoints.setXYZ(0, b.marker.position.x, b.marker.position.y, b.marker.position.z);
++        endpoints.setXYZ(1, b.group.position.x, b.group.position.y, b.group.position.z);
++        endpoints.needsUpdate = true;
++        b.tether.geometry.computeBoundingSphere();
++        b.tether.computeLineDistances();
+       }
+     },
+     get count() { return live.size; },
+-    dispose() { for (const b of live.values()) release(b.group); live.clear(); parent.remove(root); },
++    dispose() { for (const b of live.values()) release(b.container); live.clear(); parent.remove(root); },
+   };
+ }
+diff --git a/src/data/stageEffects.js b/src/data/stageEffects.js
+index a0ee290..d08ff74 100644
+--- a/src/data/stageEffects.js
++++ b/src/data/stageEffects.js
+@@ -4,7 +4,7 @@
+ // The show gets bigger as the night goes on: Stage Effects fire on a ROUND
+ // SCHEDULE (Alex, 2026-09-29) — round 7, then every 5 rounds — see
+ // `stageFxSchedule` below. Which one is decided by a deck shuffled at game
+-// start — no repeats, so at most 3 of the 4 appear in a game and future effects
++// start — no repeats, so at most 3 of the 5 appear in a game and future effects
+ // slot in by joining the deck.
+ //
+ // 🪦 They used to fire when any Spirit first crossed a Fame threshold. That
+@@ -151,6 +151,16 @@ export const BAT_ROUNDS = 3;
+ export const BAT_FAN_GAIN = 2;
+ export const BAT_DAMAGE = 1;
+ 
++// Crumbling Stage is available to the engine/preview; add it to the live deck
++// only after its board presentation is approved (CLAUDE.md preview rule).
++export const CRUMBLING_META = {
++  name: 'Crumbling Stage', icon: '🕳️', color: '#c49aff',
++  blurb: 'The floor collapses into the abyss. Fall in: lose 10% FP and return to your starting hex next turn.',
++};
++export const CRUMBLING_ROUNDS = 3;
++export const CRUMBLING_HEXES_PER_ROUND = 4;
++export const ABYSS_FP_FRACTION = 0.10;
++
+ // Fisher–Yates shuffle of the effect ids — drawn top-down, one per scheduled show.
+ // `rand` is an injectable 0..1 PRNG (Phase 6b prep — same treatment as the Rock
+ // God / economy rng threading): defaults to Math.random so the still-live
+diff --git a/src/engine/batsCheck.mjs b/src/engine/batsCheck.mjs
+index 5e9fe9b..2b77399 100644
+--- a/src/engine/batsCheck.mjs
++++ b/src/engine/batsCheck.mjs
+@@ -108,10 +108,17 @@ const frame = arenaFrame({ spirits: [], bats: st.stageFx.bats.bats });
+ props.update(frame.bats); props.tick(1);
+ eq(props.count, 4, '3D arena renders four bats');
+ const first = scene.getObjectByName(st.stageFx.bats.bats[0].key);
++const marker = scene.getObjectByName(`${first.name}-hex`);
++eq(marker.userData.hexNum, st.stageFx.bats.bats[0].num, 'ground marker identifies the occupied hex');
++eq(marker.position.y, .24, 'ground marker stays on the board while the bat hovers');
++const markerPosition = marker.position.clone();
+ const wing = first.children.find(c => c.type === 'Group');
+ const angle = wing.rotation.y; props.tick(1.1);
+ ok(angle !== wing.rotation.y, 'wings flap');
++ok(marker.position.equals(markerPosition), 'flapping and bobbing never move the ground marker');
+ props.update(frame.bats.map((b, i) => i ? b : { ...b, num: 56, flight: b.flight + 1 }));
++eq(marker.userData.hexNum, 56, 'ground marker updates to the rule hex before flight finishes');
++eq(marker.position.x, HEX_BY_NUM[56].q, 'marker snaps to the exact destination');
+ props.tick(3, { reduced: true });
+ eq(first.position.x, HEX_BY_NUM[56].q, '3D bat reaches its engine hex');
+ props.update([]); eq(props.count, 0, 'expired bat visuals cleared'); eq(disposed, 4, 'bat resources released');
+diff --git a/src/engine/batsJourneyCheck.jsx b/src/engine/batsJourneyCheck.jsx
+index 74b96bd..9115ea4 100644
+--- a/src/engine/batsJourneyCheck.jsx
++++ b/src/engine/batsJourneyCheck.jsx
+@@ -5,6 +5,9 @@ import { createRoot } from 'react-dom/client';
+ import { Game } from '../rlsw-simulator-v3_8_1.jsx';
+ import { buildTestingGroundsConfig } from '../data/matchSetup.js';
+ import assert from 'node:assert/strict';
++import process from 'node:process';
++import { ALL_HEXES, HEX_BY_NUM } from '../board/hexMap.js';
++import { axialDist } from '../board/hexGeometry.js';
+ 
+ const dom = new JSDOM('<div id="root"></div>', { url: 'http://localhost/', pretendToBeVisual: true });
+ dom.window.Element.prototype.animate = () => ({ cancel() {}, finished: Promise.resolve() });
+@@ -12,6 +15,13 @@ for (const name of ['document', 'HTMLElement', 'Element', 'Node', 'MutationObser
+   Object.defineProperty(globalThis, name, { configurable: true, value: dom.window[name] });
+ }
+ globalThis.IS_REACT_ACT_ENVIRONMENT = true;
++const oscillator = AudioContext.prototype.createOscillator;
++AudioContext.prototype.createOscillator = function () {
++  const o = oscillator.call(this);
++  o.frequency.exponentialRampToValueAtTime = () => {};
++  o.frequency.linearRampToValueAtTime = () => {};
++  return o;
++};
+ const realInterval = globalThis.setInterval, realClear = globalThis.clearInterval;
+ const realNow = performance.now;
+ let now = realNow.call(performance), clockCallback = null;
+@@ -52,9 +62,48 @@ try {
+   Object.defineProperty(document, 'hidden', { configurable: true, value: false });
+   await advance(1000);
+   ok(observed.stageFx.bats.elapsedMs === 1000, 'return has no backlog of movement');
++  const id = observed.acting, bat = observed.stageFx.bats.bats[0];
++  const fansBefore = observed.noteStates[id].casuals;
++  const vibeBefore = observed.spirits.find(s => s.id === id).vibe;
++  await click(button('🧪 TEST'));
++  await click([...document.querySelector(`[data-tg-seat="${id}"]`).querySelectorAll('button')].find(b => b.textContent.includes('Drop')));
++  await click(button('🧪 CLOSE'));
++  await click(document.querySelector(`[data-hex-num="${bat.num}"]`));
++  ok(observed.noteStates[id].casuals === fansBefore + 2, 'board entry awards two fans in the live game');
++  ok(observed.spirits.find(s => s.id === id).vibe === vibeBefore, 'eating a bat costs no Vibe');
++  ok(observed.stageFx.bats.bats.length === 4 && !observed.stageFx.bats.bats.some(b => b.num === bat.num), 'eaten bat respawns clear of the Spirit');
++  ok(document.body.textContent.includes('+2 FANS!'), 'eating feedback flashes on the board');
++  const elapsed = observed.stageFx.bats.elapsedMs;
++  await click(button('🧪 TEST'));
++  await click(button('Move & Act'));
++  await click(button('🧪 CLOSE'));
++  await click(document.querySelector('[data-tip-anchor="end-turn"]'));
++  ok(observed.stageFx.turnTiming[id]?.totalMs >= 31000, 'the live game records decision time when the turn ends');
++  ok(observed.stageFx.bats.elapsedMs === elapsed, 'ending a turn preserves the bat clock');
++  const victimId = observed.acting, hunter = observed.stageFx.bats.bats[0];
++  const hunterHex = HEX_BY_NUM[hunter.num];
++  const occupied = new Set([...observed.spirits.filter(s => s.id !== victimId).map(s => s.num),
++    ...observed.stageFx.bats.bats.map(b => b.num), ...observed.stageFx.bats.obstacles]);
++  const adjacent = ALL_HEXES.find(h => !occupied.has(h.num) && axialDist(h.q, h.r, hunterHex.q, hunterHex.r) === 1);
++  ok(adjacent, 'a clear hex next to the bat is available');
++  await click(button('🧪 TEST'));
++  await click(button('+3 FP'));
++  await click([...document.querySelector(`[data-tg-seat="${victimId}"]`).querySelectorAll('button')].find(b => b.textContent.includes('Drop')));
++  await click(button('🧪 CLOSE'));
++  await click(document.querySelector(`[data-hex-num="${adjacent.num}"]`));
++  const beforeHit = observed.spirits.find(s => s.id === victimId).vibe;
++  const beforeFans = observed.noteStates[victimId].casuals;
++  await advance(30000 - elapsed);
++  const hits = observed.stageFx.lastBats.hits.filter(h => h.spiritId === victimId);
++  ok(hits.length >= 1, 'bat reaches the FP leader from the adjacent hex');
++  ok(observed.spirits.find(s => s.id === victimId).vibe === beforeHit - hits.length,
++    'live damage is applied once per attacking bat');
++  ok(observed.noteStates[victimId].casuals === beforeFans, 'bat attack gives no eating reward');
++  ok(observed.stageFx.bats.bats.length === 4, 'attacking bats also respawn');
+   console.log(`✅ batsJourneyCheck: ${checks} checks passed`);
+ } finally {
+   await act(async () => root.unmount());
+   globalThis.setInterval = realInterval; globalThis.clearInterval = realClear; performance.now = realNow;
++  AudioContext.prototype.createOscillator = oscillator;
+ }
+ process.exit(0);
+diff --git a/src/engine/reduce.js b/src/engine/reduce.js
+index 63003cc..2cad0dd 100644
+--- a/src/engine/reduce.js
++++ b/src/engine/reduce.js
+@@ -30,6 +30,7 @@ import {
+ } from "./actions.js";
+ import { restoreRng } from "./rng.js";
+ import { applyBatsTicked, applyBatTurnTimed, collectBatEntries } from './systems/bats.js';
++import { resolveAbyssEntries } from './systems/crumbling.js';
+ import { applyMarqueeCardWon, applyMarqueeCardArmed } from "./systems/marqueeCards.js";
+ import {
+   applyTurnStarted, applyTurnEnded, applyTurnSkipped,
+@@ -80,7 +81,7 @@ import { applySandboxSeatTaken, applySandboxRefilled } from "./systems/sandbox.j
+ export function applyAction(state, action, rng = restoreRng(state.rng)) {
+   // 🔦 One invariant after EVERY action: a spotlight pose ends the moment its
+   // Spirit leaves the hex it was struck on — see `enforceSpotPoses`.
+-  let next = enforceSpotPoses(reduce(state, action, rng));
++  let next = enforceSpotPoses(resolveAbyssEntries(state, reduce(state, action, rng)));
+   if ([MOVE_STEP, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRIT_PATCHED, SPIRIT_SLID].includes(action.type)) {
+     next = collectBatEntries(state, next, rng);
+   }
+@@ -89,6 +90,9 @@ export function applyAction(state, action, rng = restoreRng(state.rng)) {
+ }
+ 
+ function reduce(state, action, rng) {
++  // Stale movement callbacks cannot pull a fallen Spirit out of the abyss.
++  if ([MOVE_STEP, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRIT_FACED, SPIRIT_SLID].includes(action.type)
++      && state.spirits.find(s => s.id === action.spiritId)?.abyssPending) return state;
+   switch (action.type) {
+     case GAME_INIT:       return state;
+ 
+diff --git a/src/engine/systems/battleFlow.js b/src/engine/systems/battleFlow.js
+index e306f6b..25baa8e 100644
+--- a/src/engine/systems/battleFlow.js
++++ b/src/engine/systems/battleFlow.js
+@@ -392,6 +392,14 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRi
+     curNum = nextHex.num;
+     path.push(curNum);
+ 
++    // The reducer resolves abyss entry before any other landing hazard. Stop
++    // this shove here; its remaining hits must never reach the respawned body.
++    if (spiritOf(state, targetId)?.abyssPending) {
++      yield log(`🕳️ ${nameOf(state, targetId)} falls into the abyss — back next turn!`);
++      yield fx('abyssFall', { spiritId: targetId, hexNum: curNum });
++      return { path, endedByKnockdown: true, fellIntoAbyss: true };
++    }
++
+     // Names come off the LIVE state, not the `target` snapshot taken before the
+     // slide began — a hazard mid-path can respawn them, and the old code read a
+     // stale standee here.
+@@ -821,6 +829,7 @@ export function* riffOffConsequences({ state, battle, verdict, amps = [], fameTh
+ // 4. VIBE DAMAGE — and the knockdown cascade it can open.
+ // ═════════════════════════════════════════════════════════════════════════════
+ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = null, fameThisTurn = {} }) {
++  if (spiritOf(state, targetId)?.abyssPending) return { knockedDown: true, fameThisTurn };
+   if (characterId(targetId) === 'cosmic_ronin' && dmg > 0) {
+     yield hook('dismissShadowIllusion', { reason: 'the Ronin was attacked' });
+   }
+diff --git a/src/engine/systems/combat.js b/src/engine/systems/combat.js
+index 0e7cc0d..b46d995 100644
+--- a/src/engine/systems/combat.js
++++ b/src/engine/systems/combat.js
+@@ -176,6 +176,7 @@ export function resolveKnockdown(spirit, corners = CORNERS, { elimination = true
+  */
+ export function applyDamageApplied(state, action) {
+   const { targetId, dmg = 0, attackerId = null } = action;
++  if (state.spirits.find(s => s.id === targetId)?.abyssPending) return state;
+   // 🎸 THE SCOREBOARD (2026-09-02d). Battle of the Bands breaks a tie at the
+   // buzzer on net Vibe damage, so every landed hit is tallied both ways here —
+   // the one reducer every hit passes through. `dealt` is only credited when
+diff --git a/src/engine/systems/stageFx.js b/src/engine/systems/stageFx.js
+index 72becc6..93e67ec 100644
+--- a/src/engine/systems/stageFx.js
++++ b/src/engine/systems/stageFx.js
+@@ -29,6 +29,7 @@ import {
+ } from "../../board/stageFx.js";
+ import { roundLimitFor } from "./battleFlow.js";
+ import { activateBats } from './bats.js';
++import { activateCrumbling, tickCrumbling } from './crumbling.js';
+ 
+ // ── HAZARDS NEVER START ON A PLAYER (2026-08-05) ─────────────────────────────
+ // Every hazard that picks hexes (laser beams, pyro charges, animatronic spawns)
+@@ -95,7 +96,9 @@ export function applyStageFxActivated(state, { fxId, occupied = [], rounds, pyro
+   // in the engine's own spirit hexes so the no-start-on-a-player rule holds even
+   // if a caller forgets to pass them.
+   const clear = [...new Set([...occupied, ...occupiedHexes(state)])];
+-  if (fxId === "smoke_machine") {
++  if (fxId === "crumbling_stage") {
++    next.crumbling = activateCrumbling(state, clear, scheduled ? rounds : undefined, rng);
++  } else if (fxId === "smoke_machine") {
+     next.smoke = { radius: SMOKE_START_RADIUS, roundsLeft: scheduled ? rounds : SMOKE_ROUNDS };
+   } else if (fxId === "laser_show") {
+     // Beams route around everyone standing on the board — the show opens on
+@@ -376,8 +379,10 @@ export function applyStageFxRoundTicked(state, _action, rng) {
+     }
+   }
+   const bats = fx.bats ? (fx.bats.roundsLeft > 1 ? { ...fx.bats, roundsLeft: fx.bats.roundsLeft - 1 } : null) : null;
++  const crumbling = fx.crumbling ? tickCrumbling(state, rng) : null;
+   return {
+     ...state,
+-    stageFx: { ...fx, smoke, laser, ...(fx.bats ? { bats } : {}), lastRoundTick: { smoke: smokeReport, laser: laserReport } },
++    stageFx: { ...fx, smoke, laser, ...(fx.bats ? { bats } : {}),
++      ...(fx.crumbling ? { crumbling } : {}), lastRoundTick: { smoke: smokeReport, laser: laserReport } },
+   };
+ }
+diff --git a/src/engine/systems/turn.js b/src/engine/systems/turn.js
+index 3e06a0e..c350074 100644
+--- a/src/engine/systems/turn.js
++++ b/src/engine/systems/turn.js
+@@ -9,12 +9,13 @@ import { advanceTurnQueue } from "../../board/boardHelpers.js";
+ import { stepSpotlights, resolveSpotPose } from "./spotlights.js";
+ import { LIMELIGHT_HEX, SLIDE_STEPS_PER_TURN } from "../../data/gameConstants.js";
+ import { applySlimeDecayed } from "./slime.js";
++import { respawnFromAbyss } from './crumbling.js';
+ 
+ /** TURN_STARTED — record whether the spirit begins its turn on the Limelight hex. */
+ export function applyTurnStarted(state0, { spiritId }) {
+   // 🔦 A spotlight pose struck last turn is judged NOW, before anything else
+   // this turn can move the body — `systems/spotlights.js`.
+-  const state = resolveSpotPose(state0, spiritId);
++  const state = resolveSpotPose(respawnFromAbyss(state0, spiritId), spiritId);
+   const sp = state.spirits.find(s => s.id === spiritId);
+   return {
+     ...state,
+diff --git a/src/rlsw-simulator-v3_8_1.jsx b/src/rlsw-simulator-v3_8_1.jsx
+index 29ac4c2..89112a0 100644
+--- a/src/rlsw-simulator-v3_8_1.jsx
++++ b/src/rlsw-simulator-v3_8_1.jsx
+@@ -5801,16 +5801,21 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
+     const next = dispatch(batsTicked(st.stageFx.bats.tick, st.acting, st.turn.count, clock.ms, clock.pendingMs));
+     clock.pendingMs = 0;
+     if (next.stageFx.lastBats !== st.stageFx.lastBats) {
++      const damageBySpirit = new Map();
+       for (const hit of next.stageFx.lastBats?.hits ?? []) {
+-        // Damage is already in the engine; this plays the hit and handles KD.
+-        applyVibeDamage(hit.spiritId, hit.damage, 'Bats', null, { alreadyApplied: true });
++        damageBySpirit.set(hit.spiritId, (damageBySpirit.get(hit.spiritId) ?? 0) + hit.damage);
++      }
++      for (const [spiritId, damage] of damageBySpirit) {
++        // Damage is already in the engine. Multiple bats on one Spirit share
++        // one knockdown check, so losing the last Vibe spends only one life.
++        applyVibeDamage(spiritId, damage, 'Bats', null, { alreadyApplied: true });
+       }
+     }
+   };
+   useEffect(() => {
+     let previous = performance.now();
+     const timer = setInterval(() => {
+-      const now = performance.now(), delta = now - previous;
++      const now = performance.now(), delta = Math.round(now - previous);
+       previous = now;
+       // A suspended tab cannot unleash a backlog of bat moves on return.
+       if (delta > 0 && delta <= 1000) batClockCallbackRef.current?.(delta);
+diff --git a/src/ui/StageFXLayer.jsx b/src/ui/StageFXLayer.jsx
+index 8efb35e..02943a5 100644
+--- a/src/ui/StageFXLayer.jsx
++++ b/src/ui/StageFXLayer.jsx
+@@ -220,9 +220,15 @@ export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, bats
+ 
+       {batsFx?.bats.map((bat, i) => {
+         const p = P(bat.num); if (!p) return null;
+-        return <g key={bat.key} transform={`translate(${p.x},${p.y})`} style={{ transition: 'transform 1.2s ease' }}>
++        return <g key={bat.key}>
++          <g data-bat-hex={bat.num} transform={`translate(${p.x},${p.y})`}>
++            <polygon points={pointyCorners(0, 0, HS * .94)} fill="#9b55ed" fillOpacity={.18}
++              stroke="#d9b5ff" strokeWidth={2} />
++            <text y={HS * .68} textAnchor="middle" fontSize={HS * .28} fontWeight={700}
++              fill="#f4ddff" stroke="#1a0c24" strokeWidth={2} paintOrder="stroke">#{bat.num}</text>
++          </g>
++          <g transform={`translate(${p.x},${p.y})`} style={{ transition: 'transform 1.2s ease' }}>
+           <title>Bat on #{bat.num} — enter this hex for +{BAT_FAN_GAIN} fans</title>
+-          <circle r={HS * .65} fill="#bc8cff" opacity={.12} />
+           <g style={{ animation: `stagefx-bot-bob 1.2s ${i * .2}s ease-in-out infinite` }}>
+             <g style={{ animation: `stagefx-bat-wing .42s ${i * .1}s ease-in-out infinite` }}>
+               <path d={`M 0 0 Q ${-HS * .6} ${-HS * .65} ${-HS * .88} 0 L ${-HS * .65} ${HS * .22} Q ${-HS * .4} 0 ${-HS * .3} ${HS * .3} L 0 ${HS * .1} M 0 0 Q ${HS * .6} ${-HS * .65} ${HS * .88} 0 L ${HS * .65} ${HS * .22} Q ${HS * .4} 0 ${HS * .3} ${HS * .3} L 0 ${HS * .1}`}
+@@ -232,6 +238,7 @@ export function StageFXBoardLayer({ smokeFx, laserFx, pyroFx, animatronics, bats
+             <path d={`M ${-HS * .15} ${-HS * .12} L ${-HS * .18} ${-HS * .38} L 0 ${-HS * .2} L ${HS * .18} ${-HS * .38} L ${HS * .15} ${-HS * .12}`} fill="#271433" stroke="#bc8cff" />
+             {[-1, 1].map(s => <circle key={s} cx={s * HS * .07} cy={-HS * .08} r={HS * .035} fill="#ff445c" />)}
+           </g>
++          </g>
+         </g>;
+       })}
+       {/* ── 💨 SMOKE MACHINE — drawn LAST so it covers standees ── */}

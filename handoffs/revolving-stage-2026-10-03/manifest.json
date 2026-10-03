@@ -1,0 +1,185 @@
+{
+  "createdAt": "2026-10-03T11:17:58.781Z",
+  "baseCommit": "b25813170b217cc5cfe6b1d97a8f9a8892995644",
+  "kind": "isolated-preview-with-source-and-embedded-browser-build",
+  "dependencies": {
+    "three": "0.180.0",
+    "vite": "8.0.10"
+  },
+  "files": [
+    {
+      "path": "CLAUDE_REVOLVING_STAGE_HANDOFF.md",
+      "source": "CLAUDE_REVOLVING_STAGE_HANDOFF.md",
+      "bytes": 6845,
+      "sha256": "6689eae70ce8f9c7014d35c91703c4d5a4593032ec3d5453c7c4d2166688cfe3"
+    },
+    {
+      "path": "CLAUDE_REVOLVING_STAGE_SOURCE.md",
+      "source": null,
+      "bytes": 149734,
+      "sha256": "cc922693acca1e455395477ab59c1b17a0540bb75b4da31c089f3b9d3dbaf50d"
+    },
+    {
+      "path": "context/CLAUDE.md",
+      "source": "CLAUDE.md",
+      "bytes": 15726,
+      "sha256": "52ed36a4c4ffc1b1e97b4c9f0ec8492780531a5bdf6d1d8e0d0960d830afc9b9"
+    },
+    {
+      "path": "context/src/SEQUENCING.md",
+      "source": "src/SEQUENCING.md",
+      "bytes": 32161,
+      "sha256": "cf998a15d18ad6318117a247b98d039703bef7f0bbf31a762f22edc5aaf88197"
+    },
+    {
+      "path": "context/src/STATE_OF_PLAY.md",
+      "source": "src/STATE_OF_PLAY.md",
+      "bytes": 80166,
+      "sha256": "19e3324962500d7c8c8e92a7b349584fae7a2e561cf37831ee7e4c4ef43ad2f1"
+    },
+    {
+      "path": "project/package.json",
+      "source": null,
+      "bytes": 369,
+      "sha256": "35b506c7f9fad5c960e681a235a8ce8d3789b04b31ded3f9a284f34b7b54fc96"
+    },
+    {
+      "path": "project/previews/revolving-stage/audio.js",
+      "source": ".scratch/revolving-stage/audio.js",
+      "bytes": 1665,
+      "sha256": "8215380da9072fce35ffd261d3072cb3bfa5d8076193137f3314f6500b97f3b5"
+    },
+    {
+      "path": "project/previews/revolving-stage/check.mjs",
+      "source": ".scratch/revolving-stage/check.mjs",
+      "bytes": 2257,
+      "sha256": "5b85ef91e8137cadca198f87b5a0b587928ea4909761fb0c8c7dc2f461ae9dc7"
+    },
+    {
+      "path": "project/previews/revolving-stage/index.html",
+      "source": ".scratch/revolving-stage/index.html",
+      "bytes": 5490,
+      "sha256": "3dcf68609799815643f03dc38c2c0271cfa41205d368c51aec2fc3155d431d13"
+    },
+    {
+      "path": "project/previews/revolving-stage/model.js",
+      "source": ".scratch/revolving-stage/model.js",
+      "bytes": 3433,
+      "sha256": "25915061335737fdec68f4886b8185749f8833472369e6a4c0261a756b67c818"
+    },
+    {
+      "path": "project/previews/revolving-stage/preview-clearance.png",
+      "source": ".scratch/revolving-stage/preview-clearance.png",
+      "bytes": 23380,
+      "sha256": "a287c4eb85ad3527d0900f46a5d0ff73a029c8828128225456a43acd177de5db"
+    },
+    {
+      "path": "project/previews/revolving-stage/preview-rings.png",
+      "source": ".scratch/revolving-stage/preview-rings.png",
+      "bytes": 169192,
+      "sha256": "e3fe37ef1df66661239514c8b9f48b35ac17585f1a36fce4a55d3eed7a19c9a4"
+    },
+    {
+      "path": "project/previews/revolving-stage/preview.js",
+      "source": ".scratch/revolving-stage/preview.js",
+      "bytes": 8937,
+      "sha256": "f1b0ddd7b4136bcd47bc2a6bb5dd4eb50403826cae3509e56daca2cdc08aff39"
+    },
+    {
+      "path": "project/previews/revolving-stage/README.md",
+      "source": ".scratch/revolving-stage/README.md",
+      "bytes": 7436,
+      "sha256": "ed2bfa0a5e376c73633a6985a6f2749ed4194a75878166e30c57b2b45b4f5a24"
+    },
+    {
+      "path": "project/previews/revolving-stage/stage.js",
+      "source": ".scratch/revolving-stage/stage.js",
+      "bytes": 16869,
+      "sha256": "382b6d5dd29a2729f49211375d5a45c62ddbf0ace5f8f5872cb3e2dc16c6ec4a"
+    },
+    {
+      "path": "project/previews/revolving-stage/style.css",
+      "source": ".scratch/revolving-stage/style.css",
+      "bytes": 8489,
+      "sha256": "03a124b2381668a0d4c190b37ed6f590f21cf2582b754ba7c52bbe3de557e7c0"
+    },
+    {
+      "path": "project/src/board/constants.js",
+      "source": "src/board/constants.js",
+      "bytes": 471,
+      "sha256": "f64429074e2d21ba73e6bf88e7bd7831e68c81468be39b1d2f58d8f398dacb67"
+    },
+    {
+      "path": "project/src/board/hexMap.js",
+      "source": "src/board/hexMap.js",
+      "bytes": 1938,
+      "sha256": "3f99d71ca937a9e8c123f7440a93c811132fe98ccbcf46f22168927885d76949"
+    },
+    {
+      "path": "project/src/board/standee.js",
+      "source": "src/board/standee.js",
+      "bytes": 19687,
+      "sha256": "e94f1a0e67bd702dc45642ddfbefbb814951b90d901eaa25ef937a7d8a45b2d7"
+    },
+    {
+      "path": "project/src/board/standeeOutlines.js",
+      "source": "src/board/standeeOutlines.js",
+      "bytes": 66827,
+      "sha256": "d949ab5c94f4159cdd87be9080181b9481cdf32800cb4e83bb3787df60e1b120"
+    },
+    {
+      "path": "project/src/data/spiritIdentity.js",
+      "source": "src/data/spiritIdentity.js",
+      "bytes": 464,
+      "sha256": "dae03a2dabba02ce38c9ff7cd74cf471a2e66f76ada3b3ea213ede9069c803de"
+    },
+    {
+      "path": "project/src/data/spirits.js",
+      "source": "src/data/spirits.js",
+      "bytes": 3934,
+      "sha256": "bdd1fb80aa7b1061817341896b6e5664066f5dfc65568c471fa05e42f5491f76"
+    },
+    {
+      "path": "project/src/standees/cosmic_ronin.png",
+      "source": "src/standees/cosmic_ronin.png",
+      "bytes": 2662513,
+      "sha256": "a26303846c403606cb8440bfb5b42ab88cc23de44b6b9b253be58b6afb7742a7"
+    },
+    {
+      "path": "project/src/standees/Glamarchy.png",
+      "source": "src/standees/Glamarchy.png",
+      "bytes": 444068,
+      "sha256": "2ff03228e5f9937a60f06b4267aebaf033446b959831ccbad5e3da4cc25f94e3"
+    },
+    {
+      "path": "project/src/standees/Intergalactic_0.png",
+      "source": "src/standees/Intergalactic_0.png",
+      "bytes": 668511,
+      "sha256": "e69786f45a6a9173a1c926b43f0f3a60b6e0e912fe8431f3ef886d26afddb8f5"
+    },
+    {
+      "path": "project/src/standees/Metalness_monster.png",
+      "source": "src/standees/Metalness_monster.png",
+      "bytes": 4916951,
+      "sha256": "417955a3c6d6d12aaeb3dd4a4a982b6051414a9c2df696816f0c6a09ea612d16"
+    },
+    {
+      "path": "project/vite.config.js",
+      "source": null,
+      "bytes": 35,
+      "sha256": "0220ef756c374def7c727cfa98d8c7bd52a72c96fedba9136a0b2335938cd7b3"
+    },
+    {
+      "path": "README.md",
+      "source": null,
+      "bytes": 442,
+      "sha256": "a9094db18565ffe00440e154dc9ed690c47ffeb4086de3f56e43790c268e9e75"
+    },
+    {
+      "path": "START_HERE.html",
+      "source": null,
+      "bytes": 12261828,
+      "sha256": "a9bcecf1dd4e70a2c897e1521e0b49641cbd3e144c19eb58ea36224979582161"
+    }
+  ]
+}

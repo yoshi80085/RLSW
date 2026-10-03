@@ -1,0 +1,27 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Revolving Stage · Spirit Wars</title><link rel="stylesheet" href="./style.css"></head><body>
+<header><a class="brand" href="../../"><b>SW</b><span>SPIRIT WARS<small>STAGE EFFECT WORKSHOP</small></span></a><span class="edition">06 / MECHANICAL MISCHIEF</span></header>
+<section class="intro"><div><span class="eyebrow">THE FLOOR HAS A MOVE OF ITS OWN</span><h1>Revolving <em>stage.</em></h1><p>Read the arrows. Ride the deck. Reconsider your next move.</p></div><div class="preview">PLAYABLE CONCEPT<span>Rules proposal · not in the live game</span></div></section>
+<main><section class="show">
+ <div id="stage"><div class="stage-top"><span><i></i><b id="phase">READY TO REVOLVE</b></span><small>Drag to orbit · scroll to zoom</small></div><div id="load">Assembling the turntable…</div><div id="countdown" hidden>3</div><div class="stage-bottom"><span id="cue">The gold hexes move. The centre holds.</span><div class="views"><button data-camera="hero" class="active">Arena</button><button data-camera="mechanism">Mechanism</button><button data-camera="top">Top-down</button></div></div></div>
+ <div class="transport"><button class="primary" id="run">Run rotation</button><button id="pause" disabled>Pause</button><button id="reset">Reset positions</button><span id="cycle">CYCLE 01</span></div>
+ <div class="timeline"><span id="elapsed">0.0s</span><input id="timeline" aria-label="Sequence timeline" type="range" min="0" max="8.6" step=".01" value="0"><span id="length">8.6s</span></div>
+ <div class="beats"><button data-beat="warning">01 · Warn</button><button data-beat="lift">02 · Unlock & lift</button><button data-beat="turn">03 · Revolve</button><button data-beat="seat">04 · Seat & lock</button></div>
+ <section class="manifest"><div class="manifest-title"><div><span class="eyebrow">YOUR DESTINATION, BEFORE THE TURN</span><h2>See who rides.</h2></div><button id="stepOff">Step Ronin off</button></div><div id="riders"></div><p id="planNote">An occupied destination is safe: its rider leaves at the same moment.</p></section>
+ <div class="principles"><div><b>THE CENTRE HOLDS</b><p>Limelight stays put. A Spirit holding centre watches the fight rearrange around them.</p></div><div><b>POSITION IS THE PAYOFF</b><p>No damage in this proposal. The opportunity is a new angle, a getaway or a rival delivered to your doorstep.</p></div><div><b>NO SURPRISE DESTINATIONS</b><p>Ghost markers show the landing hexes. The warning gives everyone time to plan before the machinery moves.</p></div></div>
+</section><aside><section class="card"><span class="eyebrow">THE MECHANISM</span><h2>Choose your turn.</h2>
+ <fieldset class="ring-select"><legend>Which rings move?</legend>
+ <label><input type="checkbox" id="ring1" checked><span>01 · Inner ring<small>6 hexes · Ronin & Monster start here</small></span></label>
+ <label><input type="checkbox" id="ring2" checked><span>02 · Middle ring<small>12 hexes · Drive amp starts here</small></span></label>
+ <label><input type="checkbox" id="ring3"><span>03 · Outer ring<small>18 hexes · Intergalactic 0 starts here</small></span></label>
+ </fieldset><div class="ring-presets"><button data-rings="3">Outer only</button><button data-rings="1,3">Alternate rings</button><button data-rings="1,2,3">All three</button></div><p id="ringSummary" class="small">18 moving hexes · centre fixed</p>
+ <label class="select">Direction<select id="direction"><option value="1">Clockwise ↻</option><option value="-1">Counterclockwise ↺</option></select></label>
+ <label class="select">Rotation<select id="steps"><option value="1">60° · one sector</option><option value="2">120° · two sectors</option></select></label>
+ <div class="mini-note">Selected rings lift and turn together. Unselected rings stay locked. Every 60° step lands exactly on the hex grid.</div>
+ <label class="select">Mechanism design<select id="mechanism"><option value="fitted">Fitted to hex openings</option><option value="previous">Previous circular carrier</option></select></label>
+ <div id="sliders"></div>
+ <div class="toggles"><label>Destination ghosts<input id="ghosts" type="checkbox" checked></label><label>Hex numbers<input id="numbers" type="checkbox"></label><label>Facing turns with deck<input id="carryFacing" type="checkbox" checked></label><label>Reduced motion<input id="reduced" type="checkbox"></label></div>
+ <label class="select">Playback<select id="speed"><option value="1">Normal speed</option><option value="0.5">Half speed</option></select></label>
+ <button id="sound" class="full">Enable mechanical sound</button><p id="audioNote" class="small">Sound starts only when enabled.</p>
+ </section><section class="card handoff"><span class="eyebrow">MAKE IT YOURS</span><p>Changing a control restarts this cycle. Completed rotations become the starting point for the next one.</p><div><button id="copy" class="primary">Copy dial-in</button><button id="lookReset">Reset look</button></div><textarea id="dial" readonly hidden aria-label="Copyable revolving stage settings"></textarea><p id="saved" class="small">Saved in this browser. Copy before moving the page or switching browsers.</p></section></aside></main>
+<footer><span>SPIRIT WARS / REVOLVING STAGE</span><span>PROTOTYPE · ACTUAL HEX MAP & SPIRIT ART · PROPOSED MOVEMENT RULES</span></footer>
+<script type="module" src="./preview.js"></script></body></html>

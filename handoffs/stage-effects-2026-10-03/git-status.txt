@@ -1,0 +1,17 @@
+ M package.json
+ M src/board/batStage.js
+ M src/data/stageEffects.js
+ M src/engine/batsCheck.mjs
+ M src/engine/batsJourneyCheck.jsx
+ M src/engine/reduce.js
+ M src/engine/systems/battleFlow.js
+ M src/engine/systems/combat.js
+ M src/engine/systems/stageFx.js
+ M src/engine/systems/turn.js
+ M src/rlsw-simulator-v3_8_1.jsx
+ M src/ui/StageFXLayer.jsx
+?? CLAUDE_STAGE_EFFECTS_HANDOFF.md
+?? handoffs/
+?? scripts/check-bats-journey.mjs
+?? src/engine/crumblingCheck.mjs
+?? src/engine/systems/crumbling.js

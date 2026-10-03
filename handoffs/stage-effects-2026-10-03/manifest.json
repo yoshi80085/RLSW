@@ -1,0 +1,191 @@
+{
+  "baseCommit": "b25813170b217cc5cfe6b1d97a8f9a8892995644",
+  "createdAt": "2026-10-03T00:18:23.126Z",
+  "files": [
+    {
+      "path": "package.json",
+      "bytes": 19687,
+      "sha256": "b57045ed948343cc79f1c10d33f63f2ab17cbf2d71fd37a659a87f26d3fdab37"
+    },
+    {
+      "path": "src/board/batStage.js",
+      "bytes": 4994,
+      "sha256": "1be78deca27505091d5317b32fad8cdb10bcbefb836d8f558b5ef57d60c31b48"
+    },
+    {
+      "path": "src/data/stageEffects.js",
+      "bytes": 11179,
+      "sha256": "5aef64c960745e377affe2e8d9e4e1c6ea198fd36ab9a8c56bd87b9113d5df50"
+    },
+    {
+      "path": "src/engine/batsCheck.mjs",
+      "bytes": 8654,
+      "sha256": "cd79e907bb99abad6dcb117e0ced8185e3ff2f9691ebaf9dd004de0c0120932a"
+    },
+    {
+      "path": "src/engine/batsJourneyCheck.jsx",
+      "bytes": 6723,
+      "sha256": "3648bf53350bb9ebd58a0462519cb220cc5467566f32638f3441cd12154a14da"
+    },
+    {
+      "path": "src/engine/reduce.js",
+      "bytes": 11237,
+      "sha256": "4586d81f57d435d370f15787fe27ee2450dc0ff969b145d7117c84ce6cb09d5d"
+    },
+    {
+      "path": "src/engine/systems/battleFlow.js",
+      "bytes": 62184,
+      "sha256": "c6f375d0ddfd7b8b7aa380ffb6541d2976a9c8991cfd5f402fefec997cc47a3a"
+    },
+    {
+      "path": "src/engine/systems/combat.js",
+      "bytes": 32224,
+      "sha256": "f18d8c498d95cc83ce95ddacfac109c5c2a9dbb6efcf7189f85f66944769ca79"
+    },
+    {
+      "path": "src/engine/systems/stageFx.js",
+      "bytes": 19982,
+      "sha256": "351c7f9ae642de7fe254d3c896709f284a1df16514c1f1077b519d310cbd2080"
+    },
+    {
+      "path": "src/engine/systems/turn.js",
+      "bytes": 11057,
+      "sha256": "57f4ff4d237b9500035aa460db1c8f282e9ff5552895470f15e237d22c047536"
+    },
+    {
+      "path": "src/rlsw-simulator-v3_8_1.jsx",
+      "bytes": 1017865,
+      "sha256": "c89a42fe28023e3927515181cefcdec23e01edb586e011f3ea2bf51da7787892"
+    },
+    {
+      "path": "src/ui/StageFXLayer.jsx",
+      "bytes": 19393,
+      "sha256": "2a810ec5c43c7352f9128bb9a3b397d438e1ca351b805be5fa6f48cc3d1ab6f8"
+    },
+    {
+      "path": "scripts/check-bats-journey.mjs",
+      "bytes": 631,
+      "sha256": "d2dfa3205fcaedb0e82edb344014da9e41da21742b36e303dffe19a3bb595968"
+    },
+    {
+      "path": "src/engine/crumblingCheck.mjs",
+      "bytes": 5606,
+      "sha256": "0b6f5e79e4e1dd340e875e50a14449ae8eb064256ee88d6d271fba7c05dfc627"
+    },
+    {
+      "path": "src/engine/systems/crumbling.js",
+      "bytes": 3927,
+      "sha256": "0abbf47a43e4c9d0416e973087ac8c585ab500c18864ced09c43ca44446780de"
+    },
+    {
+      "path": "CLAUDE.md",
+      "bytes": 15726,
+      "sha256": "52ed36a4c4ffc1b1e97b4c9f0ec8492780531a5bdf6d1d8e0d0960d830afc9b9"
+    },
+    {
+      "path": "CLAUDE_STAGE_EFFECTS_HANDOFF.md",
+      "bytes": 9273,
+      "sha256": "aca9ad936a103fd3ab1074e010a4898279a03c759e7db36d46cc729d42a93ef9"
+    },
+    {
+      "path": "src/STATE_OF_PLAY.md",
+      "bytes": 80166,
+      "sha256": "19e3324962500d7c8c8e92a7b349584fae7a2e561cf37831ee7e4c4ef43ad2f1"
+    },
+    {
+      "path": "src/SEQUENCING.md",
+      "bytes": 32161,
+      "sha256": "cf998a15d18ad6318117a247b98d039703bef7f0bbf31a762f22edc5aaf88197"
+    },
+    {
+      "path": "src/board/batRules.js",
+      "bytes": 2061,
+      "sha256": "5bf09f90ef93a14f7d907bcaa26741713e25a8f6e7c0a2afdbaff6cc292add98"
+    },
+    {
+      "path": "src/engine/systems/bats.js",
+      "bytes": 4564,
+      "sha256": "17f68b8557b28f9c2f0c7eac58dc0b6d005187feba2dad5d0603c7851c003c35"
+    },
+    {
+      "path": ".scratch/stage-bats/batShow.js",
+      "bytes": 4619,
+      "sha256": "9f092121c5963d47df1892b8cbe896444adc6663808c977b3ae483b66726d797"
+    },
+    {
+      "path": ".scratch/stage-bats/full-suite.log",
+      "bytes": 6343,
+      "sha256": "05164660a49bfef80f6bb2d61720b7034c36f9001ce7e33e1be8db48bf3308ec"
+    },
+    {
+      "path": ".scratch/stage-bats/index.html",
+      "bytes": 3082,
+      "sha256": "2042b067929a0863613a565c28e89bd2740211fbdea25c16c17175cda7b7d6e5"
+    },
+    {
+      "path": ".scratch/stage-bats/preview-desktop.png",
+      "bytes": 200226,
+      "sha256": "d4470ec9a61e939362367eed5478853780e3d346e5478ed245d71663d11278db"
+    },
+    {
+      "path": ".scratch/stage-bats/preview.js",
+      "bytes": 14337,
+      "sha256": "973bf5eb7b9b903ddc78bfd4e76003e03a3261b91b4623edfceeea2ee3c0f3f5"
+    },
+    {
+      "path": ".scratch/stage-bats/README.md",
+      "bytes": 1896,
+      "sha256": "ea8d0cf10d3a772f122521c437d1a5062f832edaf2bbf4673652af8401f316c8"
+    },
+    {
+      "path": ".scratch/stage-bats/style.css",
+      "bytes": 4593,
+      "sha256": "72cf22098c9ee82611231811c161fee07359f8556f38517cd4020b5beff7eddb"
+    },
+    {
+      "path": ".scratch/crumbling-stage/index.html",
+      "bytes": 3894,
+      "sha256": "26b03368eac167ba9d8bf49a60ddd9d9c7e33fb449afb034129c9c6364c024c3"
+    },
+    {
+      "path": ".scratch/crumbling-stage/original.html",
+      "bytes": 5848,
+      "sha256": "51f26bf30f738c87d14ebe810c227dd62ee2f2ccaa49c6997de9b970020119f2"
+    },
+    {
+      "path": ".scratch/crumbling-stage/original.js",
+      "bytes": 6366,
+      "sha256": "707b75f17bc28373c268bf9c68175e9d40a9804912abe4073d736122bb07bea0"
+    },
+    {
+      "path": ".scratch/crumbling-stage/preview-desktop.jpg",
+      "bytes": 122850,
+      "sha256": "d172c47b0444f41f44ceaee7a4c87ad1cd9ae3f92ed0df440a14aa651e8e5d5a"
+    },
+    {
+      "path": ".scratch/crumbling-stage/preview.js",
+      "bytes": 7807,
+      "sha256": "4e158ee83925d2a3225ea729f3a33f7ce4dd52fabcf971fc9c2682971da720b7"
+    },
+    {
+      "path": ".scratch/crumbling-stage/README.md",
+      "bytes": 2441,
+      "sha256": "09c17e1620417b1c511694e22363263dbf1a36a09d6a8fc0e7e8c6875d372689"
+    },
+    {
+      "path": ".scratch/crumbling-stage/stage.js",
+      "bytes": 18349,
+      "sha256": "d89878032d6d5fe76baa10e2d8377a06e66ae5ccbf9af368d2ba242deb3029c4"
+    },
+    {
+      "path": ".scratch/crumbling-stage/style.css",
+      "bytes": 8494,
+      "sha256": "b09add43999f3ec57291e8f241ef1c2d80a322208ab9a4ce6edc8bd32b67a3d8"
+    },
+    {
+      "path": ".scratch/crumbling-stage/test-all.log",
+      "bytes": 6321,
+      "sha256": "81546049cc964442a541724f1e579aa1705246357621fa6e7058ed72a87d072b"
+    }
+  ]
+}

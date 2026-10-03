@@ -1,0 +1,19 @@
+{
+  "name": "rlsw-revolving-stage-preview",
+  "private": true,
+  "type": "module",
+  "version": "1.0.0",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "vite --host 127.0.0.1 --port 5175",
+    "test": "node previews/revolving-stage/check.mjs"
+  },
+  "dependencies": {
+    "three": "0.180.0"
+  },
+  "devDependencies": {
+    "vite": "8.0.10"
+  }
+}
