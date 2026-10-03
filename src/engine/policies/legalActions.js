@@ -59,7 +59,7 @@ import { CONE_HALF_ARC } from "./bot.js";
 // ── Costs and caps, named where the client names them ───────────────────────
 
 export const SWING_AP_COST = 1;   // `resolveSwing`: dispatch(beatsSpent(1, true))
-export const SONIC_AP_COST = 2;   // the Sonic button: moveStepsLeft < 2 greys it
+export const SONIC_AP_COST = 1;   // the Sonic button: moveStepsLeft < 1 greys it
 export const MOVE_AP_COST  = 1;   // one hex, one step
 export const FACE_AP_COST  = 1;   // `applySpiritFaced` default cost
 export const MELODY_MAX    = 8;   // `if (melodyLine.length >= 8) return;`
@@ -459,7 +459,7 @@ export function legalActions(state, spiritId, view = {}) {
       }
     }
 
-    // SONIC — 2 AP, the straight beam, and OFFLINE outside your own rig radius.
+    // SONIC — 1 AP, the straight beam, and OFFLINE outside your own rig radius.
     // That last gate is §3.1's worst square made concrete: stranded, the ranged
     // attack simply is not available to you.
     // ⚠️ THROUGH `rigFor`, NOT `sonicRig` DIRECTLY — that is what makes a blown

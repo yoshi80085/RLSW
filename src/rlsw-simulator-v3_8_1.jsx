@@ -169,7 +169,7 @@ import { sandboxNeedsRefill, SANDBOX_AP } from "./engine/systems/sandbox.js";
 import { SHUKUCHI_LOOK, ShukuchiArcs, ShukuchiBudget } from "./ui/ShukuchiOverlay.jsx";
 import { BushidoOverlay } from './ui/BushidoOverlay.jsx';
 import { SKILL_TREE, SKILL_BY_ID } from "./data/skillTree.js";
-import { tentacleOptions, legalActions } from "./engine/policies/legalActions.js";
+import { tentacleOptions, legalActions, SONIC_AP_COST } from "./engine/policies/legalActions.js";
 // 🧠 THE SEARCHER — the headless bot from the §6.6 bench, wired into the chair.
 // ⚠️ `POLICIES.searcher` is used as a CHOOSER ONLY; `playTurn` is not, because it
 // would advance the seeded rng outside `dispatch()`. See "THE SEARCHER, IN THE
@@ -2501,7 +2501,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                  'Attacks fire into the cone or beam you are FACING. Sneaking up behind someone isn\'t just rude — it\'s tactics, baby! Hit a rival in the wedge behind them and they lose an EXTRA note off their Sustain stack. Watch for the 🔪 badge while you aim — that\'s a back with nobody home.'], anchor: 'actions-bar' },
         { body: 'Two ways to RUIN someone\'s set. One — ⚔️ SWING (1 AP): the melee jab. Cheap, defended, literally using your electric instrument as a weapon. Drives your chord into them!',
           anchor: 'actions-bar', act: 'swing' },
-        { body: 'Two — 🔊 SONIC (2 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
+        { body: 'Two — 🔊 SONIC (1 AP): the ranged beam off your amp rig. Less damage, way more Fame and pushback. Only fires from inside your RANGE ring (hover an amp to see it).',
           anchor: 'actions-bar' },
         { body: '🔥 THE RIFF-OFF is the big one, and you don\'t pick it from a menu — you EARN it. Aim a Sonic at a rival facing straight back down the same beam and it escalates into a head-to-head rhythm duel. Straight skill.',
           anchor: 'fame-bar', emote: 'fame' },
@@ -7988,7 +7988,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // a Blaster that didn't leave you Exposed), the discount itself would announce
   // that the standee was fake. The wasted tempo is the payoff for the bluff.
   //
-  //   kind: 'swing' (1 AP) | 'sonic' (2 AP)
+  //   kind: 'swing' (1 AP) | 'sonic' (1 AP)
   //         | 'smash' | 'blaster' (2 AP minimum, then ALL movement, hurls the
   //           attacker's whole unused stock, leaves them Exposed)
   function resolveShadowWhiff(attacker, kind, label, targetNum) {
@@ -8246,12 +8246,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const attacker=live.spirits.find(s=>s.id===live.acting);
     const defender=live.spirits.find(s=>s.id===targetId&&!s.knockedOut);
     if(!canAct||!attacker||!defender||battleStateRef.current||live.turn.actionTokenUsed)return;
-    if(moveStepsLeft<2||!getSonicBeam(attacker).has(defender.num))return;
+    if(moveStepsLeft<SONIC_AP_COST||!getSonicBeam(attacker).has(defender.num))return;
     const nsA=live.noteStates[attacker.id]??{};
     const rig=rigFor(attacker,nsA,live);
     if(!rig.inRange||!rig.pool.length){addLog('🔊 Build Drive and use a working amp before firing.');return;}
     if(characterId(attacker.id)==='cosmic_ronin')dismissShadowIllusion('the Ronin attacked', attacker.id);
-    dispatch(beatsSpent(2,true));setAction(null);
+    dispatch(beatsSpent(SONIC_AP_COST,true));setAction(null);
     if(!live.limelight.posing[targetId]&&getSonicBeam(defender).has(attacker.num)&&rigForSpirit(defender).inRange) {
       burnChargesAfterBattle([attacker.id,targetId],'the riff-off spent it');
       startRiffOff(attacker,defender);return;
@@ -13040,7 +13040,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // 👤 The double reads as a beam target like any other standee.
               const shadowSeen = shadowInRange('beam');
               const beamCount  = targets.length + (shadowSeen ? 1 : 0);
-              const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < 2;
+              const grayed   = !hasConfirmed || actionTokenUsed || moveStepsLeft < SONIC_AP_COST;
               const canSonic = !grayed && !outOfRange && poolNow.length > 0 && beamCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
@@ -13053,12 +13053,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                           opacity: canSonic ? 1 : (outOfRange ? 0.35 : 0.4)}}
                     disabled={!canSonic}
                     title={grayed
-                      ? "Sonic Attack (2 AP) — grayed out: needs a confirmed turn, your Action Token, and 2 AP."
+                      ? "Sonic Attack (1 AP) — grayed out: needs a confirmed turn, your Action Token, and 1 AP."
                       : outOfRange
                       ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
-                      ? `Sonic Attack (2 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
-                      : "Sonic Attack (2 AP) — build Drive and aim at a rival within three hexes directly ahead."}
+                      ? `Sonic Attack (1 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends your whole Drive charge. Facing rivals with working amps trigger a RIFF-OFF.`
+                      : "Sonic Attack (1 AP) — build Drive and aim at a rival within three hexes directly ahead."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }
                       else if (canSonic) {
@@ -13068,7 +13068,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       }
                     }}>
                     🔊 Sonic{outOfRange ? ' 📡' : beamCount > 0 ? ` (${beamCount})` : ''} {diceLabel}
-                    {grayed && moveStepsLeft < 2 ? ' (2AP)' : ''}
+                    {grayed && moveStepsLeft < SONIC_AP_COST ? ' (1AP)' : ''}
                   </RailBtn>
                 </div>
               );

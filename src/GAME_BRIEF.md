@@ -99,7 +99,7 @@ Your turn gives you:
 | Move one hex | 1 | `MOVE_AP_COST` |
 | Change facing | 1 | `FACE_AP_COST` |
 | Swing (melee) | 1 | `SWING_AP_COST` |
-| Sonic (ranged beam) | 2 | `SONIC_AP_COST` |
+| Sonic (ranged beam) | 1 | `SONIC_AP_COST` |
 | Smash | 2 | `SMASH_AP_COST` |
 | Drop slime | 1 | `SLIME_AP_COST` |
 | Melody line | up to 8 notes | `MELODY_MAX` |
@@ -164,7 +164,7 @@ Prefer abilities that *set* a total over ones that add outside the cap.
 **⚔️ SWING** — 1 AP, melee, cone in front of you. **Costs 2 notes off your Drive
 stack, on a hit only.** Whiffing keeps your stack.
 
-**🔊 SONIC** — 2 AP, ranged beam along your facing, reach **3**
+**🔊 SONIC** — 1 AP, ranged beam along your facing, reach **3**
 (`SONIC_BEAM_REACH`). **Costs 1 note off your Drive stack, hit or miss** — you
 spent it the moment you projected it. Rolls a **dice pool, keep-highest**:
 

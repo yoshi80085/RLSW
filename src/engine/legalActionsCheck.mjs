@@ -223,11 +223,12 @@ const faceRivalAt = (st, rivalId, step = 0) => {
   const broke = withTurn(armed, { moveStepsLeft: 0 });
   eq(ofKind(legalActions(broke, RONIN), 'move').length, 0,  '0 AP → nowhere to walk');
   eq(ofKind(legalActions(broke, RONIN), 'swing').length, 0, '0 AP → nothing to swing');
+  eq(ofKind(legalActions(broke, RONIN), 'sonic').length, 0, '0 AP → no Sonic either');
   ok(kinds(legalActions(broke, RONIN)).has('endTurn'), 'broke but never stuck — endTurn survives');
 
   const one = withTurn(armed, { moveStepsLeft: 1 });
   ok(ofKind(legalActions(one, RONIN), 'swing').length > 0, `1 AP affords the Swing (${SWING_AP_COST} AP)`);
-  eq(ofKind(legalActions(one, RONIN), 'sonic').length, 0,  `1 AP cannot afford the Sonic (${SONIC_AP_COST} AP)`);
+  ok(ofKind(legalActions(one, RONIN), 'sonic').length > 0, `1 AP affords the Sonic (${SONIC_AP_COST} AP)`);
   ok(ofKind(legalActions(one, RONIN), 'move').length > 0,  `1 AP still walks (${MOVE_AP_COST} AP)`);
 }
 

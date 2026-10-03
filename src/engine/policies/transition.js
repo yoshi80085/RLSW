@@ -691,7 +691,7 @@ export function applyBotAction(state, action, ctx = {}) {
       const target = (state.spirits ?? []).find(sp => sp.id === action.targetId);
       if (!target) return fail(state, view, 'illegal', 'no such rival');
 
-      // The same price as the Sonic it replaces: 2 AP and the Action Token.
+      // The same price as the Sonic it replaces: SONIC_AP_COST and the Action Token.
       let next = applyAction(state, beatsSpent(SONIC_AP_COST, true), rng);
 
       // ⚡ A riff-off is still a battle, so charges burn off on both sides —
