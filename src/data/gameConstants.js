@@ -980,6 +980,15 @@ export const SONIC_BEAM_REACH = 3;
 // still fires down the whole line from 1 (`sonicBeam(…, { minRange: 1 })`).
 export const SONIC_MIN_RANGE = 2;
 
+// 🤘 THE THRASH BILL (Alex, 2026-10-03): the attacker CHOSE the fight, so he
+// pays SWING_DRIVE_SPEND (2) win, lose or tie, and may not Thrash at all with
+// fewer than that in his Drive stack; the defender didn't choose it but still
+// threw his Drive, so he pays THRASH_DEFENDER_SPEND (1) win, lose or tie (or
+// whatever he has, if less). Both off the TOP, after the dice are thrown.
+// `battleFlow.battleConsequences` is the one place it is charged.
+export const SWING_DRIVE_SPEND = 2;
+export const THRASH_DEFENDER_SPEND = 1;
+
 // ☀️ SUNBEAM — the whiteout.
 export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
 export const SUNBEAM_LINGER_CHANCE   = 0.5;  // odds the burn sears in for a 2nd turn

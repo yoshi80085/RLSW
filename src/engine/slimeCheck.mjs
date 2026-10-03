@@ -359,7 +359,7 @@ function walk(startNum, n) {
   st = { ...st, spirits: st.spirits.map(s => s.id === MM ? { ...s, num: chain[chain.length - 1] } : s) };
   st = apply(st, moveBudgetSet(5, false));
   st = { ...st, noteStates: { ...st.noteStates, [MM]: {
-    ...st.noteStates[MM], hasConfirmed: true, unlockedSkills: ['tentacle'],
+    ...st.noteStates[MM], hasConfirmed: true, unlockedSkills: ['tentacle'], driveStack: ['G', 'B'], // 🤘 a Tentacle is a Thrash: 2 Drive notes (2026-10-03)
   } } };
 
   const self = st.spirits.find(s => s.id === MM);

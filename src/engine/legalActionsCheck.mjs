@@ -28,6 +28,7 @@ import {
 import { SPIRIT_DEFS } from "../data/spirits.js";
 import { MODELLED_KINDS, UNMODELLED_KINDS, applyBotAction } from "./policies/transition.js";
 import { makeRng } from "./rng.js";
+import { SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND } from "./systems/attackParams.js";
 import { BOT_CLIENT_KINDS, BOT_CLIENT_GAPS } from "./policies/bot.js";
 import { CORNERS } from "../data/corners.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
@@ -73,6 +74,9 @@ const withTurn = (st, patch) => ({ ...st, turn: { ...st.turn, ...patch } });
 
 /** A confirmed turn — the action phase. */
 const confirmed = (st) => withNs(st, RONIN, { hasConfirmed: true });
+// 🤘 A Thrash needs SWING_DRIVE_SPEND (2) Drive notes (2026-10-03), so every
+// fixture that stages one gives the Ronin exactly that many.
+const thrashReady = (st) => withNs(st, RONIN, { driveStack: ['C', 'E'] });
 
 const kinds  = (acts) => new Set(acts.map(a => a.kind));
 const ofKind = (acts, k) => acts.filter(a => a.kind === k);
@@ -84,7 +88,7 @@ const faceRivalAt = (st, rivalId, step = 0, dist = 1) => {
   const here = HEX_BY_NUM[START];
   const nbs = axialNeighbors(here.q, here.r).map(({ q, r }) => HEX_BY_QR[`${q},${r}`]).filter(Boolean);
   const nb = nbs[step % nbs.length];
-  return withSpirit(withSpirit(st, rivalId, { num: ahead(here, nb, dist).num }), RONIN, { facing: angleTo(here, nb) });
+  return withSpirit(withSpirit(thrashReady(st), rivalId, { num: ahead(here, nb, dist).num }), RONIN, { facing: angleTo(here, nb) });
 };
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -230,6 +234,13 @@ const faceRivalAt = (st, rivalId, step = 0, dist = 1) => {
      '0 AP → no Sonic either');
   ok(kinds(legalActions(broke, RONIN)).has('endTurn'), 'broke but never stuck — endTurn survives');
 
+  // 🤘 THE THRASH NEEDS 2 DRIVE NOTES (Alex, 2026-10-03) — it costs 2 win or lose.
+  eq(ofKind(legalActions(withNs(armed, RONIN, { driveStack: ['C'] }), RONIN), 'swing').length, 0,
+     `🤘 one Drive note is not enough to Thrash (it burns ${SWING_DRIVE_SPEND})`);
+  eq(ofKind(legalActions(withNs(armed, RONIN, { driveStack: [] }), RONIN), 'swing').length, 0,
+     '🤘 an empty Drive stack cannot Thrash');
+  ok(ofKind(legalActions(armed, RONIN), 'swing').length > 0, `🤘 ${SWING_DRIVE_SPEND} Drive notes can`);
+
   const one = withTurn(armed, { moveStepsLeft: 1 });
   ok(ofKind(legalActions(one, RONIN), 'swing').length > 0, `1 AP affords the Swing (${SWING_AP_COST} AP)`);
   const oneBeam = withTurn(faceRivalAt(confirmed(baseState()), METAL, 0, 2), { moveStepsLeft: 1 });
@@ -262,7 +273,7 @@ const faceRivalAt = (st, rivalId, step = 0, dist = 1) => {
 // 9. GEOMETRY — the cone is not the beam, and neither is "anything adjacent".
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const st = confirmed(baseState());
+  const st = thrashReady(confirmed(baseState()));
   const self = st.spirits.find(s => s.id === RONIN);
 
   eq(swingCone({ ...self, num: 99999 }).size, 0, 'a Spirit off the map has no cone');
@@ -333,7 +344,7 @@ const faceRivalAt = (st, rivalId, step = 0, dist = 1) => {
 
   const strandedBeam = withSpirit(stranded, METAL, { num: ahead(farHome, farFront, 2).num });
   eq(ofKind(legalActions(strandedBeam, RONIN), 'sonic').length, 0, '📡 stranded outside the radius: no Sonic at all');
-  ok(ofKind(legalActions(stranded, RONIN), 'swing').length > 0, '...melee still works out there — that is the trade');
+  ok(ofKind(legalActions(thrashReady(stranded), RONIN), 'swing').length > 0, '...melee still works out there — that is the trade');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -346,7 +357,7 @@ const faceRivalAt = (st, rivalId, step = 0, dist = 1) => {
 
   eq(ofKind(legalActions(withNs(armed, RONIN, { driveStack: ['A'] }), RONIN), 'smash').length, 0,
      '🪦 stock in hand, a voiced chord, a rival in reach — and still no Smash');
-  eq(ofKind(legalActions(withNs(armed, RONIN, { driveStack: ['A'] }), RONIN), 'swing')[0].endsMovement, undefined,
+  eq(ofKind(legalActions(armed, RONIN), 'swing')[0].endsMovement, undefined,
      '...and the Swing is not — the difference is the whole decision');
 }
 

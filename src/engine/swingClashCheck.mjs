@@ -8,7 +8,7 @@ import { battleConsequences, runBattleFlow, vibeDamage } from './systems/battleF
 import { startTurnNotes } from './systems/turnFlow.js';
 import { spiritChord } from './systems/attackParams.js';
 import { HEX_BY_NUM } from '../board/hexMap.js';
-import { neighborInDirection, angleTo } from '../board/hexGeometry.js';
+import { neighborInDirection, angleTo, axialDist } from '../board/hexGeometry.js';
 import { knockbackWobble, createClashFigure } from '../board/swingClashVisuals.js';
 
 const ids=['cosmic_ronin','intergalactic_0'];
@@ -21,9 +21,26 @@ for(const [av,dv,loser,damage] of [[[6,6],[4,4],1,4],[[4,4],[6,6],0,4],[[4],[4],
   const state=fresh(),out=run(state,frozen(av,dv));
   for(let i=0;i<2;i++)assert.equal(out.state.spirits[i].vibe,30-(i===loser?damage:0));
   if(loser!==null){assert.equal(out.state.spirits[loser].hitBackCount,1);assert.notEqual(out.state.spirits[loser].num,state.spirits[loser].num);}
-  else assert.deepEqual(out.state.spirits,state.spirits);
+  else {
+    // 💥 A tie throws BOTH back one hex, straight apart, with no Vibe (2026-10-03).
+    for(let i=0;i<2;i++)assert.notEqual(out.state.spirits[i].num,state.spirits[i].num,`💥 a tie pushes ${ids[i]} back`);
+    const h=i=>HEX_BY_NUM[out.state.spirits[i].num];
+    assert.equal(axialDist(h(0).q,h(0).r,h(1).q,h(1).r),3,'💥 …one hex each, straight apart: next door becomes three apart');
+  }
   assert.deepEqual(out.state.noteStates[ids[1]].sustainStack,state.noteStates[ids[1]].sustainStack);
 }
+// 🤘 THE THRASH BILL (Alex, 2026-10-03): attacker −2, defender −1, off the TOP,
+// on a hit, a miss AND a tie — and a defender with nothing to pay pays nothing.
+const stacked=(atk,def)=>{const s=fresh();return {...s,noteStates:{...s.noteStates,
+  [ids[0]]:{...s.noteStates[ids[0]],driveStack:atk},[ids[1]]:{...s.noteStates[ids[1]],driveStack:def}}};};
+for(const [av,dv,label] of [[[6,6],[4,4],'hit'],[[4,4],[6,6],'miss'],[[4],[4],'tie']]){
+  const out=run(stacked(['C','E','G','B'],['D','F','A']),frozen(av,dv));
+  assert.deepEqual(out.state.noteStates[ids[0]].driveStack,['C','E'],`🤘 the attacker burns 2 off the top on a ${label}`);
+  assert.deepEqual(out.state.noteStates[ids[1]].driveStack,['D','F'],`🤘 the defender burns 1 off the top on a ${label}`);
+}
+{const out=run(stacked(['C','E'],[]),frozen([4],[6]));
+  assert.deepEqual(out.state.noteStates[ids[0]].driveStack,[],'🤘 two notes in, two notes out');
+  assert.deepEqual(out.state.noteStates[ids[1]].driveStack,[],'🤘 an empty defender pays nothing and nothing breaks');}
 let state=fresh();
 const action=attackRolled('swing',...ids,{atkStat:999,defStat:999,posing:true});
 const rolled=applyAction(state,action,makeRng(10));
@@ -44,4 +61,4 @@ assert.equal(recovered.patch.fallen,false);assert.equal(recovered.report.recover
 assert.equal(recovered.patch.usedStockIdx.length,2);
 assert.ok(knockbackWobble(1,10)>knockbackWobble(9,10));
 for(const pose of [false,true]){const figure=createClashFigure('#ff7755',pose);assert.ok(figure.children.length<15);figure.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});}
-console.log('Swing clash: symmetric damage, ties, single-hex push, Drive-only defence, facing, rerolls, determinism, falling, recovery and wobble passed.');
+console.log('Swing clash: the Thrash bill (attacker 2, defender 1, win/lose/tie), ties throw both back, symmetric damage, single-hex push, Drive-only defence, facing, rerolls, determinism, falling, recovery and wobble passed.');

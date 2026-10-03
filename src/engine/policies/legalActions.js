@@ -41,7 +41,7 @@ import { HEX_BY_NUM, HEX_BY_QR } from "../../board/hexMap.js";
 import { slideTarget, trailRun, canCallSlime } from "../systems/slime.js";
 import { axialNeighbors, angleTo, angleDiff, getFlatTopNeighborSlots, neighborInDirection } from "../../board/hexGeometry.js";
 import { usedHas } from "../systems/economy.js";
-import { rigFor } from "../systems/attackParams.js";
+import { rigFor, SWING_DRIVE_SPEND } from "../systems/attackParams.js";
 import { canCallEleven } from "../systems/eleven.js";
 import { canFire } from "../systems/cooldowns.js";
 import { canHop, shukuchiLandings } from "../systems/shukuchi.js";
@@ -432,8 +432,12 @@ export function legalActions(state, spiritId, view = {}) {
       }
     }
 
-    // SWING — 1 AP, the cone.
-    if (ap >= SWING_AP_COST) {
+    // 🤘 THRASH (the code's `swing`) — 1 AP, the cone, and ⭐ AT LEAST
+    // SWING_DRIVE_SPEND (2) NOTES IN THE DRIVE STACK (Alex, 2026-10-03): the
+    // attacker pays 2 win, lose or tie, so with fewer there is nothing to pay
+    // with and the button is grey. The Tentacle below is a Thrash too.
+    const canThrash = (ns.driveStack?.length ?? 0) >= SWING_DRIVE_SPEND;
+    if (ap >= SWING_AP_COST && canThrash) {
       for (const r of rivals) {
         if (cone.has(r.num)) out.push({ kind: 'swing', targetId: r.id, apCost: SWING_AP_COST });
       }
@@ -452,7 +456,7 @@ export function legalActions(state, spiritId, view = {}) {
     // and an unranked beam is just "the first 5", so a long trail would push
     // real options off the end of an arbitrary list. `spend` and `reach` ride on
     // each action so a scorer can price them the moment one exists.
-    if ((ns.unlockedSkills ?? []).includes('tentacle') && canFire(ns, 'tentacle')) {
+    if (canThrash && (ns.unlockedSkills ?? []).includes('tentacle') && canFire(ns, 'tentacle')) {
       for (const opt of tentacleOptions(state, self)) {
         for (const r of rivals) {
           if (!opt.cone.has(r.num)) continue;

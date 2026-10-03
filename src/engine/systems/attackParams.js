@@ -38,7 +38,7 @@ import {
   ATK_BONUS_CAP, CHARGE_FLOOR_BONUS,
   THRASH_DIE, THRASH_CEIL_DIE,
   SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG,
-  SONIC_BASE_DIE, ELEVEN_DRIVE,
+  SONIC_BASE_DIE, ELEVEN_DRIVE, SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND,
 } from "../../data/gameConstants.js";
 import { ampBlown } from "./eleven.js";
 import { isPosing } from "./limelight.js";
@@ -76,7 +76,9 @@ export const CHARGE_DIE_CEILING = 12;
 // the TOP). ⚠️ From 2026-09-15 to 10-03 the Sonic spent the WHOLE stack (the
 // 09-11 ruling) while this constant sat unused; Alex reversed it — an empty rig
 // is a free kill for the next Thrash.  `legalActionsCheck` §10 pins it.
-export const SWING_DRIVE_SPEND = 2;
+// 📌 Both Thrash numbers live in `gameConstants` (battleFlow reads them, and must
+// not import this file's Spirit art); re-exported here for existing importers.
+export { SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND };
 export const SONIC_DRIVE_SPEND = 1;
 
 /**

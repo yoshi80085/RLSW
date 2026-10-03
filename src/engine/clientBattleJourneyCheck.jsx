@@ -61,6 +61,9 @@ const vibe = spiritId => Number(document.querySelector(`[data-spirit-id="${spiri
 {
   await act(async () => root.render(<Game gameState={config} onReturnToLobby={() => {}}
     onEngineState={state => { observedState = state; }} />));
+  // 🤘 A Thrash needs 2 Drive notes (2026-10-03): voice one more onto the root in the chord step.
+  await click([...document.querySelectorAll('button.stack-chip')].find(b => b.textContent.trim() === 'Drive'));
+  await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e => e.parentElement).find(e => e.style.cursor === 'pointer'));
   await click(button('Continue to Melody'));
   const note = [...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')]
     .map(svg => svg.parentElement).find(el => el.style.cursor === 'pointer');

@@ -65,6 +65,7 @@ import {
   SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
+import { SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND } from "../../data/gameConstants.js";
 
 // ── Sunbeam (Intergalactic 0) ────────────────────────────────────────────────
 // Transcribed from rlsw-simulator-v3_8_1.jsx:555-558 at extraction, and this file
@@ -900,17 +901,38 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   } = battle;
   const sonicAttack = battle.attackKind === 'sonic' || !!battle.sonicAttack;
   if(battle.swingClash) {
+    // 🤘 BOTH SIDES PAY, WIN, LOSE OR TIE (Alex, 2026-10-03): the attacker 2
+    // (he chose the fight), the defender 1 (he still threw his Drive). Until
+    // then only the WINNER paid 2 — a defender who lost walked away with his
+    // whole stack after throwing all of it. 🔝 From the TOP (2026-09-27): the
+    // chord steps down its own branch instead of losing its root.
+    for(const [id,n] of [[attackerId,SWING_DRIVE_SPEND],[defenderId,THRASH_DEFENDER_SPEND]]) {
+      const stack=nsOf(state,id).driveStack??[];
+      const spent=stack.slice(-n);
+      if(!spent.length) continue;
+      state=yield patch(id,{driveStack:stack.slice(0,stack.length-spent.length)});
+      yield fx('spentNotes',{spiritId:id,notes:spent,stack:'drive'});
+      yield log(`🎸 ${nameOf(state,id)} burns ${spent.join('+')} from the drive stack in the clash.`);
+    }
+    state=yield {kind:'peek'};
     if(margin===0) {
-      yield log('⚔️ Equal Drive — the clash breaks evenly. No damage or knockback.');
+      // 💥 A TIE THROWS BOTH BACK ONE HEX, NO VIBE (Alex, 2026-10-03: "no
+      // damage, no push sounds boring. The clash sends *both* back 1 space").
+      // ⚠️ The line is fixed BEFORE either moves, so the second shove does not
+      // re-aim off the first one's landing hex. Each push is a real knockback:
+      // walls, bodies, hazards, pyro and ring-outs behave as for any shove.
+      yield log('⚔️ Equal Drive — the clash throws both Spirits back!');
+      const aHex=HEX_BY_NUM[spiritOf(state,attackerId)?.num],dHex=HEX_BY_NUM[spiritOf(state,defenderId)?.num];
+      const line=aHex&&dHex?angleTo(aHex,dHex):undefined;
+      for(const [fromId,targetId,dir] of [[attackerId,defenderId,line],[defenderId,attackerId,line===undefined?undefined:line+Math.PI]]) {
+        state=yield {kind:'peek'};
+        const shove=yield* knockback({state,fromId,targetId,spaces:1,amps,fameThisTurn,direction:dir});
+        if(shove.fameThisTurn)fameThisTurn=shove.fameThisTurn;
+      }
       yield* clearBattleBuffs({attackerId,defenderId});
       return {fameThisTurn};
     }
     const winner=attackerWon?attackerId:defenderId,loser=attackerWon?defenderId:attackerId;
-    const stack=nsOf(state,winner).driveStack??[];
-    // 🔝 From the TOP (Alex, 2026-09-27): the chord steps down two rungs of its
-    // own branch instead of losing its root.
-    state=yield patch(winner,{driveStack:stack.slice(0,-2)});
-    yield fx('spentNotes',{spiritId:winner,notes:stack.slice(-2),stack:'drive'});
     const shove=yield* knockback({state,fromId:winner,targetId:loser,spaces:1,amps,fameThisTurn});
     state=yield {kind:'peek'};
     if(!shove.endedByKnockdown&&!shove.targetRelocated) {

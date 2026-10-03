@@ -161,8 +161,8 @@ Prefer abilities that *set* a total over ones that add outside the cap.
 
 ### The three attacks
 
-**⚔️ THRASH** (was SWING; the code still says `swing`) — 1 AP, melee, cone in front of you. **Costs 2 notes off your Drive
-stack, on a hit only.** Whiffing keeps your stack.
+**⚔️ THRASH** (was SWING; the code still says `swing`) — 1 AP, melee, cone in front of you. **Costs the attacker 2 notes off the top of the Drive
+stack, win, lose or tie, and needs at least 2 to throw; the defender pays 1** (`SWING_DRIVE_SPEND`, `THRASH_DEFENDER_SPEND`). A tie throws both back a hex, no Vibe.
 
 **🔊 SONIC** — 1 AP, ranged beam along your facing, hexes **2–3**
 (`SONIC_MIN_RANGE`–`SONIC_BEAM_REACH`) — a rival next door is too close. **Costs 1 note off your Drive stack, hit or miss** — you

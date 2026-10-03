@@ -98,7 +98,7 @@ import { micAvailable, startMicListening } from "./audio/micPitch.js";
 import riffOffSong from "./music/Riff_off_song.mp3";
 import battleSong  from "./music/battle_song.mp3";
 import moshpitSong from "./music/Master_of_Moshpits_song.mp3";   // 🤘 Master of Moshpits cinematic
-import { attackParams, rigFor, SONIC_DRIVE_SPEND } from "./engine/systems/attackParams.js";
+import { attackParams, rigFor, SONIC_DRIVE_SPEND, SWING_DRIVE_SPEND } from "./engine/systems/attackParams.js";
 import { scheduleSonicVolley, scheduleSonicBarrage } from "./board/sonicPresentation.js";
 import { SWING_TIMING, SWING_BEATS, SWING_GATE } from './board/swingTiming.js';
 import { SONIC_SEQUENCE, sonicContactTime } from './board/sonicSequence.js';
@@ -2516,7 +2516,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         { body: 'A THRASH is a melee battle: both sides roll a d4 — attacker adds DRIVE, defender adds SUSTAIN. Win and you deal up to 4 Vibe damage. Lose as the attacker and you take a 1-Vibe humiliation tap. It\'s supposed to sting.', anchor: 'stat-knobs' },
         { body: ['A SONIC is the ranged version, and it rolls differently: you throw your whole rig pool and KEEP THE HIGHEST die. The defender answers with a d6 — unless they\'re caught outside their own amp range, in which case they\'ve got no rig to brace with and scramble a d4. Position is damage.', 'Both of you beam-to-beam AND both inside your own range? That\'s not an attack any more. That\'s a RIFF-OFF.'], anchor: 'stat-knobs' },
         { body: ['The fine print your rival hopes you skip:',
-                 'Your stacks are AMMUNITION. A landed Thrash burns 2 notes off your Drive Stack; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
+                 'Your stacks are AMMUNITION. A Thrash burns 2 notes off your Drive Stack win or lose (you need 2 to throw one) and your rival burns 1; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
                  `Land it in the wedge BEHIND them and they shed ${REAR_FRAY_BONUS} more. Facing decides what you can hit AND what you can brace against — it cuts both ways, so mind which way YOUR back is pointing.`,
                  'Thrashing also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
@@ -6878,6 +6878,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`⚔️ Not enough Action Points — Thrash costs 1 AP. Move steps left: ${live.turn.moveStepsLeft}`);
       return;
     }
+    // 🤘 A Thrash costs SWING_DRIVE_SPEND Drive notes win, lose or tie (Alex,
+    // 2026-10-03), so it needs that many in the stack. `battleConsequences`
+    // charges both sides; this is only the gate.
+    if ((live.noteStates[acting.id]?.driveStack?.length ?? 0) < SWING_DRIVE_SPEND) {
+      addLog(`⚔️ Not enough Drive — a Thrash burns ${SWING_DRIVE_SPEND} Drive notes, win or lose.`);
+      return;
+    }
 
     // 👤 Ronin attacking dismisses shadow
     if (characterId(acting.id) === 'cosmic_ronin') dismissShadowIllusion('the Ronin attacked', acting.id);
@@ -7981,7 +7988,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const si = noteStates[ownerId]?.shadowIllusion;
     if (!si || !attacker) return false;
     const heavy  = kind === 'smash' || kind === 'blaster';
-    const apCost = kind === 'swing' ? 1 : 2;
+    const apCost = kind === 'swing' ? 1 : kind === 'sonic' ? SONIC_AP_COST : 2;
+    // 🤘🔊 A whiff on the double pays the attack's FULL price, Drive notes
+    // included — or the missing bill would be the tell (Alex, 2026-10-03).
+    const driveCost = kind === 'swing' ? SWING_DRIVE_SPEND : kind === 'sonic' ? SONIC_DRIVE_SPEND : 0;
     if (actionTokenUsed) { addLog('⚔️ Already used your Action Token this turn!'); return false; }
     if (moveStepsLeft < apCost) {
       addLog(`⚔️ Not enough Action Points — that costs ${apCost} AP.`);
@@ -8005,6 +8015,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       setNoteField(attacker.id, { usedStockIdx: usedAdd(used, unusedIdxs), smashExposed: true });
     } else {
       dispatch(beatsSpent(apCost, true));
+      const stack = engineRef.current.noteStates[attacker.id]?.driveStack ?? [];
+      const spent = driveCost ? stack.slice(-driveCost) : [];
+      if (spent.length) {
+        setNoteField(attacker.id, { driveStack: stack.slice(0, stack.length - spent.length) });
+        showSpentNotes(attacker.id, spent, 'drive');
+      }
     }
     setAction(null);
 
@@ -10456,7 +10472,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         }
 
         // 3) ⚔️ Regular Swing.
-        const coneNow = getRivalsInCone(self);
+        const coneNow = (ns.driveStack?.length ?? 0) >= SWING_DRIVE_SPEND ? getRivalsInCone(self) : [];
         if (coneNow.length && steps >= 1) {
           const t = botPickTarget(coneNow, self);
           botStepRef.current = 'ending';
@@ -12927,7 +12943,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // tell — so it's tallied exactly like a real rival.
               const shadowCounts = shadowInRange('cone') ? 1 : 0;
               const targetCount = rivals.length + shadowCounts;
-              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const lowDrive = (actingNoteState?.driveStack?.length ?? 0) < SWING_DRIVE_SPEND;
+              const grayed = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1 || lowDrive;
               const canSwing = !grayed && targetCount > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}}
@@ -12940,9 +12957,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                           opacity: canSwing ? 1 : 0.4, position:'relative'}}
                     disabled={!canSwing}
                     title={grayed
-                      ? "The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, and at least 1 AP."
+                      ? (lowDrive && hasConfirmed && !actionTokenUsed && moveStepsLeft >= 1
+                        ? `The jab (1 AP) — grayed out: a Thrash burns ${SWING_DRIVE_SPEND} Drive notes win or lose, and your Drive stack has fewer.`
+                        : `The jab (1 AP) — grayed out: needs a confirmed turn, your Action Token, at least 1 AP and ${SWING_DRIVE_SPEND} Drive notes.`)
                       : canSwing
-                      ? "Drive vs Drive (1 AP). The loser takes the total difference as Vibe damage and is pushed one hex. Ties break evenly."
+                      ? `Drive vs Drive (1 AP). You burn ${SWING_DRIVE_SPEND} Drive notes and they burn 1, win, lose or tie. The loser takes the total difference as Vibe damage and is pushed one hex. A tie throws you both back a hex.`
                       : "The jab (1 AP) — no rival in your cone. Hover to see the Thrash range."}
                     onClick={() => {
                       if (action === 'swing') { setAction(null); }
@@ -12955,7 +12974,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         if (swingWhy) addLog(`🎲 ${swingWhy}.`);
                       }
                     }}>
-                    ⚔️ Thrash{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : ''}
+                    ⚔️ Thrash{targetCount > 0 ? ` (${targetCount})` : ''} {!canSwing && moveStepsLeft < 1 ? '(1AP)' : !canSwing && lowDrive ? `(${SWING_DRIVE_SPEND} Drive)` : ''}
                   </RailBtn>
                 </div>
               );
@@ -13137,7 +13156,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             {(actingNoteState?.unlockedSkills ?? []).includes('tentacle') && (() => {
               const inReach = spirits.filter(sp =>
                 !sp.knockedOut && sp.id !== acting?.id && tentacleAim.has(sp.num));
-              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1;
+              const lowDrive = (actingNoteState?.driveStack?.length ?? 0) < SWING_DRIVE_SPEND;
+              const grayed  = !hasConfirmed || actionTokenUsed || moveStepsLeft < 1 || lowDrive;
               const canFire = !grayed && inReach.length > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}} {...reachHover('tentacle')}>
@@ -13145,7 +13165,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   style={{borderColor:'#5cff6a', color:'#8dffa0', opacity: canFire ? 1 : 0.45}}
                   disabled={!canFire}
                   title={grayed
-                    ? '🐙 Tentacle — needs a confirmed turn, your Action Token, and 1 AP.'
+                    ? `🐙 Tentacle — a Thrash from the slime: needs a confirmed turn, your Action Token, 1 AP and ${SWING_DRIVE_SPEND} Drive notes.`
                     : tentacleAim.size === 0
                     ? '🐙 Tentacle — no trail to reach through. Walk somewhere first; the road IS the weapon.'
                     : inReach.length === 0
