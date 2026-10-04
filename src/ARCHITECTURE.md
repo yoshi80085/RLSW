@@ -1,5 +1,7 @@
 # RLSW Simulator — Architecture
 
+The Bardbarian opening is currently a standalone study in `../previews/bardbarian-intro/`, launched with `npm run dev:intro`. Its timeline, apparition, audio, scene and controls are preview-owned; it imports the real arena, standees, crowd and picker stings. The saved `alex-dial-in.json` settings are imported as its defaults. Claude continuation starts at `../CLAUDE_BARDBARIAN_INTRO_HANDOFF.md`; a portable source/assets ZIP lives under `../handoffs/`. No production Game or reducer imports it. `npm run test:intro` covers entrance timing and rehearsal fan/target states; the accepted off-board start rule is still awaiting its production port. See the study's README for that boundary.
+
 > 🗺️ **THIS IS THE MAP OF THE CODEBASE, AND IT IS CHECKED.** Rewritten from
 > measurement on 2026-08-21, replacing a version that had drifted so far it called
 > `engine/` a "~300 line Phase 1 scaffold" while `engine/` had become 21,595 lines
@@ -263,6 +265,11 @@ true edge crossing without bending the shove toward an existing neighbor.
 | File | Exports / purpose |
 |------|-------------------|
 | `sonicZigzagVisuals.js` | `createSonicZigzagVisuals`, `SONIC_TUNING`, `RING_TUNING`, `RING_CAMERA_ZOOM`, `sonicFlightCurve`, `sonicFlightInverse`, `sonicShotIntensity` — the shipped ring beam, per-die power, compression and Sustain surface ripple. Ring tuning overlays the comparison treatments. The path and barrier share the clamped stand-off distance. |
+| `sonicGlitter.js` | `SONIC_GLITTER`, `SONIC_WAVE`, `createSpiralGlitter`, `readRingStations`, `createHelixStations`, `writeHelixStations` — Alex's exact 2026-10-03 spiral preset; shared particle helix inside Sonic rings and through impact, within Riff Off streams/core, and alone in Thrash's amp-to-Spirit feeds. Absolute clocks, pooled ring samples, bounded spread and deterministic sparkle. |
+| `sonicGlitterCheck.mjs` | Production soundform checks: approved defaults, shield/Spirit impact continuity, live hit-stop synchronization, Riff direction/spacing and ring-free Thrash targeting. Included in `test:sonicfx`. |
+| `sustainShield.js` | `createSustainShield`, `DEFAULTS`, `surface`, `contour` — Alex's 2026-10-04 oval-hex Sustain dial-in, breathing rings and face helix. Consumes an explicit health/build/hit state from the live clash; the preview re-exports it. |
+| `sustainDamage.js` | `createDamageEffects`, `damageVisibility`, `DAMAGE_DEFAULTS`, `normalizeDamage` — deterministic glitter shed on hits, wounds, and curved ring fragments on break. No combat rules or timers. |
+| `sustainShieldCheck.mjs` | Included in `test:sonicfx`: exact approved values, real unequal HP loss, beam/face alignment in multiple lanes, amp build, break/Spirit-hit separation, hit-stop, seeking, reduced motion and cleanup. |
 | `sonicVolleyVisuals.js` | `buildSonicPath`, `sonicVolleyDuration`, `createSonicVolleyVisuals` — retained path/timing dependency and original waveform treatment. |
 | `sonicFluid.js` | Fluid field for the retained waveform treatment. |
 | `sonicDiceVisuals.js` | `createSonicDiceVisuals`, `sonicSceneLabel`, `sonicDiceHeight` — readable numbered dice, explicit HIT/HELD comparisons, pre-launch fade. |

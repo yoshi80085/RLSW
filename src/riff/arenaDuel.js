@@ -5,7 +5,7 @@ import {voiceRiff,degreePitch} from './guitarMap.js';
 import {gradeRiffOffset} from './fallingNotes.js';
 
 export const RIFF_ARENA=Object.freeze({bpm:138,length:4,lead:1600,handoff:100,acceleration:8,
-  gapDecay:2.5,gapFloor:4,orb:1,spin:1,growth:.17,flow:6,glitter:.5});
+  gapDecay:2.5,gapFloor:4,orb:1,spin:1,growth:.17,flow:6,glitter:.8});
 export const arenaGap=round=>Math.max(RIFF_ARENA.gapFloor,20-(round-1)*RIFF_ARENA.gapDecay);
 export const arenaHandoff=round=>RIFF_ARENA.handoff*.88**(round-1);
 

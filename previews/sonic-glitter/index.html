@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#091017">
+  <title>Sonic · Spiral glitter study</title>
+  <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="sonic-glitter-lab">
+    <header class="masthead">
+      <div><p class="eyebrow">RLSW / EFFECT STUDIES</p><h1>Sonic <span>/</span> Inner spiral</h1></div>
+      <span class="preview-badge">LIVE PREVIEW</span>
+    </header>
+    <main class="workbench">
+      <section class="viewer" aria-label="Interactive Sonic waveform preview">
+        <div class="view-toolbar">
+          <div class="segments" aria-label="Visible layers">
+            <button type="button" data-layer="combined" aria-pressed="true">Combined</button>
+            <button type="button" data-layer="rings" aria-pressed="false">Rings only</button>
+            <button type="button" data-layer="glitter" aria-pressed="false">Glitter only</button>
+          </div>
+          <label class="camera-label"><span class="sr-only">Camera angle</span><select id="camera"><option value="threequarter">Three-quarter view</option><option value="side">Side view</option><option value="front">Down the beam</option></select></label>
+        </div>
+        <div id="scene" role="img" aria-label="A Sonic beam of cyan rings containing rotating, shimmering spiral strands. Drag to orbit and scroll to zoom."></div>
+        <div class="scene-caption"><span id="view-caption">HELD WAVE / LIVE GLITTER</span><span>Drag to orbit · Scroll to zoom</span></div>
+        <div class="transport">
+          <div class="transport-row">
+            <div class="segments"><button type="button" data-mode="inspect" aria-pressed="true">Inspect wave</button><button type="button" data-mode="attack" aria-pressed="false">Attack loop</button></div>
+            <div class="play-controls"><button type="button" id="play" aria-label="Pause animation">Pause</button><label><span class="sr-only">Playback speed</span><select id="speed"><option value="0.15">0.15×</option><option value="0.35" selected>0.35×</option><option value="0.65">0.65×</option><option value="1">1×</option></select></label></div>
+          </div>
+          <label class="timeline-label" for="timeline"><span>Attack frame</span><output id="time-value">0.95 s</output></label>
+          <input id="timeline" type="range" min="0" max="2.27" step="0.005" value="0.95" aria-label="Attack frame">
+        </div>
+        <p class="study-note">A glitter helix inside the existing ring wave. Inspect its shape, then watch it travel and compress into impact.</p>
+      </section>
+      <aside class="tuning" aria-label="Waveform controls">
+        <div class="panel-heading"><div><p class="eyebrow">THE EXTRA</p><h2>Spiraling glitter</h2></div><button type="button" id="reset" class="quiet">Reset</button></div>
+        <div class="preset-row" aria-label="Glitter presets"><button type="button" data-preset="Approved" aria-pressed="true">Approved</button><button type="button" data-preset="Double helix" aria-pressed="false">Double helix</button><button type="button" data-preset="Stardust" aria-pressed="false">Stardust</button></div>
+        <section class="control-section"><h3>Shape</h3><div id="shape-controls"></div></section>
+        <section class="control-section"><h3>Glitter</h3><div id="glitter-controls"></div></section>
+        <details><summary>Motion &amp; light</summary><div id="motion-controls"></div></details>
+        <details><summary>Underlying wave</summary><div id="ring-controls"></div></details>
+        <div class="panel-footer"><button type="button" id="copy">Copy settings</button><span id="settings-status" role="status" aria-live="polite">Approved</span></div>
+        <textarea id="copy-fallback" aria-label="Settings to copy" rows="8" hidden readonly></textarea>
+      </aside>
+    </main>
+    <footer class="page-footer"><span>SONIC / SPIRAL GLITTER STUDY</span><span>Approved look · Shared with the game</span></footer>
+    <p id="error" role="alert" hidden></p>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Approved soundforms · Sonic / Riff Off / Thrash</title>
+<link rel="stylesheet" href="./style.css">
+<style>
+  #sonic-glitter-lab{max-width:1280px}.soundform-view{width:100%}#scene{height:clamp(340px,56vw,650px)}
+  .effect-description{color:#b1c8d3;font-size:13px;line-height:1.6;margin:0 0 18px}.view-toolbar a{color:#9ddbd2;font-size:12px}
+</style></head><body><div id="sonic-glitter-lab">
+<header class="masthead"><div><p class="eyebrow">RLSW / APPROVED SOUND FORMS</p><h1>Sonic · Riff Off · Thrash</h1></div><span class="preview-badge">GAME EFFECTS</span></header>
+<p class="effect-description" id="description">Your ring wave and glitter spiral, through compression, impact and shield break.</p>
+<main class="viewer soundform-view">
+  <div class="view-toolbar"><div class="segments" aria-label="Attack type"><button data-effect="sonic" aria-pressed="true">Sonic</button><button data-effect="riff" aria-pressed="false">Riff Off</button><button data-effect="thrash" aria-pressed="false">Thrash</button></div><a href="./">Adjust Sonic settings</a></div>
+  <div id="scene" role="img" aria-label="The approved Sonic, Riff Off and Thrash effects rendered in 3D. Drag to orbit, scroll to zoom."></div>
+  <div class="scene-caption"><span id="phase" role="status">Sonic attack</span><span>Drag to orbit · Scroll to zoom</span></div>
+  <div class="transport"><div class="transport-row"><button id="play">Pause</button><label>Playback speed <select id="speed"><option value=".35">0.35×</option><option value=".65">0.65×</option><option value="1" selected>1×</option></select></label></div><label class="timeline-label" for="timeline"><span>Sequence frame</span><output id="time-value"></output></label><input id="timeline" type="range" min="0" max="10" step=".01" aria-label="Sequence frame"></div>
+</main><footer class="page-footer"><span>APPROVED 2026-10-03</span><span>Shared production visuals and timing</span></footer>
+</div><script type="module" src="./attacks.js"></script></body></html>

@@ -17,6 +17,16 @@
 > 📌 Everything below is *how to work here* — house style, testing, the preview
 > rule. Those files are *what is true*. You need both.
 
+## Bardbarian intro — continuation entry point
+
+For the Rock God opening scene, read
+[CLAUDE_BARDBARIAN_INTRO_HANDOFF.md](CLAUDE_BARDBARIAN_INTRO_HANDOFF.md).
+Editable source and artwork are in `previews/bardbarian-intro/`; Alex's exact
+2026-10-04 settings are `alex-dial-in.json` there and drive the preview defaults.
+Run `npm run dev:intro`. A portable source-and-assets snapshot is available at
+`handoffs/bardbarian-intro-2026-10-04.zip`. The handoff records the accepted
+first-turn entrance rule and what remains to integrate into normal matches.
+
 ## 🗺️ THE SYSTEMS MAP — Alex's picture of the game, and it is a DELIVERABLE
 
 **`https://claude.ai/code/artifact/c43fa72a-e92b-4219-9619-41e0933fb494`** —

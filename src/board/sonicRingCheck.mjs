@@ -47,7 +47,8 @@ for (const corners of [1, 3, 6, 9, 14]) {
 {
   const R = { ...SONIC_TUNING, ...RING_TUNING, smooth: true };
   assert.equal(RING_TUNING.slowmo, 52, 'the approved slow-motion value');
-  assert.equal(RING_TUNING.beamRadius, 0.64, 'the approved beam calibre');
+  assert.equal(RING_TUNING.beamRadius, 0.66, 'the approved October spiral beam calibre');
+  assert.equal(RING_TUNING.ringGap, 0.59, 'the approved October spiral ring spacing');
   assert.equal(RING_TUNING.burst, 3.1, 'the approved detonation size');
   for (const corners of [3, 6, 14]) {
     const s = Array.from({ length: 600 }, (_, i) => sonicFlightCurve(i / 599, corners, R));

@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#091017">
+  <title>Sustain · Living shield study</title>
+  <link rel="stylesheet" href="../sonic-glitter/style.css"><link rel="stylesheet" href="./style.css">
+</head>
+<body>
+  <div id="sustain-lab">
+    <header class="masthead">
+      <div><p class="eyebrow">RLSW / EFFECT STUDIES / 02</p><h1>Sustain <span>/</span> Living shield</h1></div>
+      <a class="back-link" href="../sonic-glitter/">Sonic soundform ↗</a>
+    </header>
+    <main class="workbench">
+      <section class="viewer" aria-label="Interactive Sustain shield preview">
+        <div class="view-toolbar">
+          <div class="segments" aria-label="Visible layers">
+            <button data-layer="combined" aria-pressed="true">Combined</button>
+            <button data-layer="rings" aria-pressed="false">Rings</button>
+            <button data-layer="glitter" aria-pressed="false">Glitter</button>
+          </div>
+          <label><span class="sr-only">Camera angle</span><select id="camera"><option value="front">Front · silhouette</option><option value="threequarter" selected>Three-quarter · depth</option><option value="edge">Edge · curvature</option></select></label>
+        </div>
+        <div class="scene-wrap">
+          <div id="scene" role="img" aria-label="A rounded oval hexagonal Sustain shield with nested breathing rings and spiraling glitter. Drag to orbit; scroll to zoom."></div>
+          <div class="comparison-labels" hidden><span>Previous shield · intact</span><span>Living oval hex</span></div>
+        </div>
+        <div class="scene-caption"><span id="view-caption">Living shield</span><span>Drag to orbit · Scroll to zoom</span></div>
+        <div class="transport">
+          <div class="integrity-heading"><span>Shield integrity <output id="integrity">100%</output></span><span id="hit-count">0 / 4 hits</span></div>
+          <div id="integrity-bar" role="progressbar" aria-label="Shield integrity" aria-valuemin="0" aria-valuemax="100" aria-valuenow="100"><span id="integrity-fill"></span></div>
+          <div class="segments stage-jumps" aria-label="Inspect damage stages"><button data-stage="intact">Intact</button><button data-stage="first">First hit</button><button data-stage="critical">Critical</button><button data-stage="broken">Break</button></div>
+          <div class="transport-row"><div class="segments"><button data-mode="living" aria-pressed="false">Manual hits</button><button data-mode="cycle" aria-pressed="true">Damage sequence</button></div><div class="play-controls"><button id="play">Pause</button><button id="hit" class="quiet" disabled>Hit shield</button><button id="restore" class="quiet">Replay</button></div></div>
+          <div class="option-row"><label><input id="compare" type="checkbox"> Compare previous</label><label><input id="spirit" type="checkbox" checked> Spirit scale guide</label><label>Speed <select id="speed"><option value=".35">0.35×</option><option value=".65">0.65×</option><option value="1" selected>1×</option></select></label></div>
+          <div id="timeline-wrap"><label class="timeline-label" for="timeline"><span>Build → hits → weaken → break</span><output id="time-value">3.00 s</output></label><input id="timeline" type="range" min="0" max="14.79" step=".01" value="3" aria-label="Sequence frame"></div>
+        </div>
+        <p class="study-note">Your chosen soundform. Hits shed glitter, repeated impacts fray the rings, and the final hit releases the remaining energy. Inspect a stage or play the full sequence.</p>
+      </section>
+      <aside class="tuning" aria-label="Shield controls">
+        <div class="panel-heading"><div><p class="eyebrow">SUSTAIN / DAMAGE STUDY</p><h2>Shape &amp; energy</h2></div><button id="reset" class="quiet">Reset</button></div>
+        <div class="preset-row" aria-label="Shape presets"><button data-preset="Your shape" aria-pressed="true">Your shape</button><button data-preset="Soft oval" aria-pressed="false">Soft oval</button><button data-preset="Cut crystal" aria-pressed="false">Cut crystal</button></div>
+        <section class="control-section"><h3>Hits &amp; break</h3><div id="damage-controls"></div><p class="control-help">Each hit removes an equal share of the shield in this preview. Damage timing is adjustable; your saved shape remains the starting point.</p></section>
+        <section class="control-section"><h3>Silhouette</h3><div id="shape-controls"></div><p class="control-help">Hex character: oval ↔ six-sided. Corner softness rounds the six corners.</p></section>
+        <section class="control-section"><h3>Living rings</h3><div id="ring-controls"></div></section>
+        <details open><summary>Spiral glitter</summary><div id="glitter-controls"></div></details>
+        <details><summary>Motion &amp; light</summary><div id="motion-controls"></div></details>
+        <div class="panel-footer"><button id="copy">Copy settings</button><span id="settings-status" role="status" aria-live="polite">Your shape</span></div>
+        <textarea id="copy-fallback" aria-label="Settings to copy" rows="10" hidden readonly></textarea>
+      </aside>
+    </main>
+    <footer class="page-footer"><span>SUSTAIN / OVAL HEX STUDY</span><span>Shared with the game · Adjust and copy your settings</span></footer>
+    <p id="error" role="alert" hidden></p>
+  </div>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>

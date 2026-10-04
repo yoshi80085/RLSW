@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { createArenaDiceSequence } from './arenaDiceSequence.js';
 import { sonicSceneLabel } from './sonicDiceVisuals.js';
 import { SWING_TIMING, SWING_DICE } from './swingTiming.js';
+import { SONIC_GLITTER, SONIC_WAVE, createSpiralGlitter, createHelixStations, writeHelixStations } from './sonicGlitter.js';
 
 export const knockbackWobble = (vibe,maxVibe) => .035+.3*(1-THREE.MathUtils.clamp((vibe??1)/Math.max(1,maxVibe??1),0,1));
 
@@ -92,10 +93,14 @@ export function createSwingClashVisuals({battle,attacker,defender,pointFor,ampOr
     const idle=createClashFigure(s.color,'idle'),ready=createClashFigure(s.color,'ready'),strike=createClashFigure(s.color,'strike');
     carrier.add(idle,ready,strike);carrier.position.copy(i?b:a);carrier.rotation.y=Math.atan2(lane.x,lane.z)+(i?Math.PI:0);
     group.add(carrier);
-    const beam=new THREE.Mesh(new THREE.CylinderGeometry(SWING_BEAM.radius,SWING_BEAM.radius,1,8),
-      new THREE.MeshBasicMaterial({color:s.color,transparent:true,opacity:.7,toneMapped:false}));
+    // Thrash sends only the approved glitter helix into the Spirit's raised
+    // instrument. No Sonic rings and no opaque cylinder underneath it.
+    const spiral=createSpiralGlitter(null,{tint:new THREE.Color(s.color).lerp(new THREE.Color('white'),.5)});
+    const beam=spiral.group;beam.name='Thrash glitter helix';
+    const stations=writeHelixStations(createHelixStations(),new THREE.Vector3(0,-.5,0),new THREE.Vector3(0,.5,0),
+      SONIC_WAVE.beamRadius*.5*(B.radius/SWING_BEAM.radius));
     group.add(beam);
-    return {carrier,idle,ready,strike,beam,power:power[i],
+    return {carrier,idle,ready,strike,beam,spiral,stations,power:power[i],
       total:i?battle.defTotal:battle.atkTotal,
       raiseAt:D.raiseAt[i],ampAt:D.ampAt[i],
       start:(i?b:a).clone(),end:mid.clone().addScaledVector(lane,i?1.12:-1.12),origin:ampOrigins[i]};
@@ -140,8 +145,9 @@ export function createSwingClashVisuals({battle,attacker,defender,pointFor,ampOr
         f.beam.scale.set(calibre,direction.length(),calibre);
         f.beam.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),direction.normalize());
         const lit=B.minOpacity+(B.maxOpacity-B.minOpacity)*f.power;
-        f.beam.material.opacity=reduced?lit:lit+B.flicker*(1-f.power)*Math.sin(t*18);
-      }
+        f.spiral.update(t,SONIC_GLITTER,{stations:f.stations,reduced,
+          opacity:reduced?lit:lit+B.flicker*(1-f.power)*Math.sin(t*18)});
+      }else f.spiral.update(t,SONIC_GLITTER,{enabled:false});
     }
     group.updateWorldMatrix(true,true);
     // ── Where the camera looks. ⭐ It follows WHOSE TURN IT IS TO ACT, which
@@ -167,5 +173,5 @@ export function createSwingClashVisuals({battle,attacker,defender,pointFor,ampOr
     return {kind:'clash',points:[a,b,a.clone().setY(3.5),b.clone().setY(3.5)]};
   }
   const diceBounds=[[-6,0,2],[8,4,11]].map(v=>new THREE.Vector3(...v).multiplyScalar(.65).add(dice.group.position));
-  return {group,diceBounds,dice,figures,timing:{TIMING:T,DICE:D},tuning:B,update,dispose(){dice.dispose();caption.texture?.dispose();group.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});group.clear();}};
+  return {group,diceBounds,dice,figures,timing:{TIMING:T,DICE:D},tuning:B,update,dispose(){figures.forEach(f=>f.spiral.dispose());dice.dispose();caption.texture?.dispose();group.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});group.clear();}};
 }

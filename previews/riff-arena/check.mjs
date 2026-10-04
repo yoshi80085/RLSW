@@ -111,8 +111,8 @@ waves.update({...frame,time:100,energy:[4,4]});waves.update({...frame,time:900,e
 check('both sides use the real Sonic ring geometry',()=>{
   for(const w of waves.waves){assert.equal(w.field.name,'Harmonic wave rings');assert.ok(w.field.visible);assert.ok(w.field.geometry.attributes.position.array.some(n=>Math.abs(n)>.1));}
 });
-check('glitter lies on finite ring surfaces and stays subtle',()=>{
-  for(const w of waves.waves){assert.equal(w.glitter.geometry.drawRange.count,36);assert.ok(w.glitter.geometry.attributes.position.array.every(Number.isFinite));assert.equal(w.glitter.material.uniforms.amount.value,.3);}
+check('approved helix glitter stays finite and respects the intensity control',()=>{
+  for(const w of waves.waves){assert.equal(w.glitter.geometry.drawRange.count,2000);assert.ok(w.glitter.geometry.attributes.position.array.every(Number.isFinite));assert.equal(w.glitter.material.uniforms.amount.value,.3);}
 });
 check('rings advance toward the ball at fixed spacing, never stretching a group',()=>{
   const before=waves.waves[0].stations.map(s=>({...s}));
@@ -120,7 +120,7 @@ check('rings advance toward the ball at fixed spacing, never stretching a group'
   const after=waves.waves[0].stations;
   for(const a of before){const b=after.find(s=>s.slot===a.slot);if(b)assert.ok(Math.abs(b.distance-a.distance-.12)<1e-7);}
   const sorted=after.map(s=>s.distance).sort((a,b)=>a-b);
-  for(let i=1;i<sorted.length;i++)assert.ok(Math.abs(sorted[i]-sorted[i-1]-.6)<1e-7);
+  for(let i=1;i<sorted.length;i++)assert.ok(Math.abs(sorted[i]-sorted[i-1]-.59)<1e-7);
   assert.deepEqual(waves.waves[0].visual.group.scale.toArray(),[1,1,1]);
 });
 check('central ball grows with the duel and rotates its rings independently',()=>{

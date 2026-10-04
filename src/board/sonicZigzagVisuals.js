@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { buildSonicPath, sonicVolleyDuration } from './sonicVolleyVisuals.js';
+import { SONIC_GLITTER, SONIC_WAVE, createSpiralGlitter, createHelixStations, writeHelixStations } from './sonicGlitter.js';
 
 // ── THE SONIC PROJECTILE ─────────────────────────────────────────────────────
 // Three treatments share this module, chosen with `strokeStyle`:
@@ -55,7 +56,6 @@ const SAMPLES = 72;          // stroke resolution along the path
 // At a short leg a thick stroke fills its own corners in and the whole thing
 // turns into a fat squiggle, so these are deliberately open.
 const TRAIL_UNITS = 5.5;     // visible length of the stroke
-const ZAG_LEG = 2.6;         // world distance between consecutive corners
 const SWING_MIN = 0.12;      // half-amplitude of a feeble shot; the top end is tunable
 const SHARDS_PER_SHOT = 10;
 const RIPPLES_PER_SHOT = 8, RIPPLE_SEGMENTS = 14, RIPPLE_LIFE = 0.62;
@@ -100,6 +100,7 @@ export const SONIC_TUNING = {
 };
 /**
  * ⭐ ALEX'S RING-BEAM DIAL-IN — screenshot of the preview panel, 2026-09-13.
+ * Radius and spacing updated by his approved spiral preset, 2026-10-03.
  *
  * Applied ON TOP of SONIC_TUNING whenever `strokeStyle: 'rings'`, and still
  * overridable by a caller's own `tuning`. Kept as its own layer rather than
@@ -122,9 +123,9 @@ export const RING_TUNING = {
   width: 0.8,       // 1 → 0.8. Thinner bands
   burst: 3.1,       // 1 → 3.1. The detonation is the payoff beat
   thread: 1.35,     // 1 → 1.35. The axial filament carries more of the brightness
-  ringGap: 0.42,    // 0.3 → 0.42. Rings read individually rather than fusing into a tube
+  ringGap: SONIC_WAVE.ringGap, // Alex's spiral dial-in, 2026-10-03: 0.59
   ringTail: 22,     // 18 → 22. A longer column
-  beamRadius: 0.64, // 0.8 → 0.64. Narrower calibre
+  beamRadius: SONIC_WAVE.beamRadius, // Alex's spiral dial-in, 2026-10-03: 0.66
 };
 // 📌 Camera, not geometry, so it does not live in the tuning object: he also took
 // the contact push-in from 0.82 to 0.95. That belongs to `arenaRenderer.js`'s
@@ -375,7 +376,8 @@ export function createSonicZigzagVisuals({
   ampOrigins, attackerPosition, defenderPosition, dice = [], chordPitches = [0, 4, 7],
   color = '#62dbff', shieldColor = '#b0a0ff', shieldValue = 0, launchDelay = 0,
   clearance = 1.05, shieldRadius = 0.78, shieldSize = 2.6, intensityMode = 'margin',
-  strokeStyle = 'ribbon', tuning = {},
+  strokeStyle = 'ribbon', tuning = {}, glitter = true, glitterCapacity = SONIC_GLITTER.density,
+  surfaceRipple = true,
 }) {
   const beam = strokeStyle === 'rings';
   // Ring mode carries its own approved numbers, so the game gets Alex's look
@@ -563,6 +565,10 @@ export function createSonicZigzagVisuals({
     flash.name = 'Sonic impact flash'; flash.renderOrder = 145; flash.visible = false; group.add(flash);
     const terminus = path.getPoint(1);
     burst.position.copy(terminus); flash.position.copy(terminus);
+    const spiral = rings && glitter ? createSpiralGlitter(rings, { capacity: glitterCapacity }) : null;
+    // Independent of the flying shot's visibility: glitter continues through
+    // compression and release on the SAME clock as the live impact / hit-stop.
+    if (spiral) group.add(spiral.group);
 
     const splash = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.3, 6, 1), glow(die.passed ? hot : shieldColor, 0.9));
     splash.name = 'Sustain splash'; splash.renderOrder = 139; splash.visible = false;
@@ -592,6 +598,7 @@ export function createSonicZigzagVisuals({
     records.push({
       path, shot, outline, body, core, sparks, splash, ripples, burst, flash, interval, power, sides,
       chevrons, chevronCore, threadBands, rings, ringCore, compression, barrierRipple,
+      spiral, terminus, contactStations: spiral ? createHelixStations(24) : null,
       chevronCount: clamp(Math.ceil((path.length || 1) / T.chevronGap), 4, MAX_CHEVRONS),
       ringCount: clamp(Math.ceil((path.length || 1) / Math.max(0.18, T.ringGap)) + 1, 4, MAX_RINGS),
       passed: !!die.passed, value: die.value, start: delay + i * STAGGER_SECONDS,
@@ -1008,7 +1015,8 @@ export function createSonicZigzagVisuals({
     r.ringCore.material.opacity = 0.46 * alive * (0.3 + r.power * 0.7);
   }
 
-  function update(elapsedSeconds, { reduced = false, camera = null } = {}) {
+  const glitterFrom = new THREE.Vector3();
+  function update(elapsedSeconds, { reduced = false, camera = null, glitterTime = null, glitterSettings = SONIC_GLITTER } = {}) {
     if (disposed) return;
     const time = Number.isFinite(elapsedSeconds) ? elapsedSeconds : 0;
     group.visible = time < duration && records.length > 0;
@@ -1020,7 +1028,7 @@ export function createSonicZigzagVisuals({
         const contactAge=age-FLIGHT_SECONDS;
         const life=clamp(contactAge/.38,0,1);
         r.compression.visible=contactAge>=0&&contactAge<.22;
-        r.barrierRipple.visible=contactAge>=0&&contactAge<.46;
+        r.barrierRipple.visible=surfaceRipple&&contactAge>=0&&contactAge<.46;
         r.compression.children.forEach((hoop,i)=>{
           hoop.position.z=reduced?.015:.025+i*.14*(1-clamp(contactAge/.14,0,1));
           hoop.scale.setScalar(T.beamRadius*(.55+r.power*.6)*(1+i*.14+life*.9));
@@ -1047,6 +1055,20 @@ export function createSonicZigzagVisuals({
         if (r.rings) r.rings.visible = r.ringCore.visible = false;
         if (r.chevrons) r.chevrons.visible = r.chevronCore.visible = false;
         if (r.threadBands) for (const band of r.threadBands) band.visible = false;
+        if (r.spiral) {
+          const impactAge = age - FLIGHT_SECONDS;
+          const active = impactAge >= 0 && impactAge < IMPACT_SECONDS;
+          if (active) {
+            const life = clamp(impactAge / IMPACT_SECONDS, 0, 1);
+            const collapse = reduced ? 1 : clamp(impactAge / .14, 0, 1);
+            const release = reduced ? 0 : easeOutCubic(clamp((impactAge - .14) / .38, 0, 1));
+            glitterFrom.copy(r.terminus).addScaledVector(laneForward, -(.015 + .55 * (1 - collapse)));
+            writeHelixStations(r.contactStations, glitterFrom, r.terminus,
+              T.beamRadius * (.55 + r.power * .6) * (.65 + release * 2.1), .25);
+            r.spiral.update(glitterTime ?? time, glitterSettings, { reduced, stations: r.contactStations,
+              opacity: (.4 + r.power * .6) * (1 - life) ** 1.3 });
+          } else r.spiral.update(time, glitterSettings, { enabled: false });
+        }
         // The splash outlives the stroke — it is the moment of contact, and the
         // stroke has already been consumed by the time it blooms.
         const splashAge = age - r.shieldTime, life = clamp(splashAge / 0.46, 0, 1);
@@ -1094,7 +1116,14 @@ export function createSonicZigzagVisuals({
         resonance = Math.max(resonance, (1 - contactLife) * (r.passed ? 0.3 : 1) * (0.4 + r.power));
       }
 
-      if (r.rings) { paintRings(r, head, swing, alive, time, reduced, camera, T); continue; }
+      if (r.rings) {
+        paintRings(r, head, swing, alive, time, reduced, camera, T);
+        r.spiral?.update(glitterTime ?? time, glitterSettings, { reduced, opacity: entry * (.4 + r.power * .6) });
+        r.rings.material.opacity *= glitterSettings.ringOpacity ?? 1;
+        r.ringCore.material.opacity *= glitterSettings.ringOpacity ?? 1;
+        for (const band of r.threadBands) band.material.opacity *= glitterSettings.coreOpacity ?? 1;
+        continue;
+      }
       if (r.chevrons) { paintChevrons(r, head, tail, swing, alive, time, reduced, camera, T); continue; }
 
       // ── pass 1: the centreline ─────────────────────────────────────────────
@@ -1238,6 +1267,7 @@ export function createSonicZigzagVisuals({
 
   function dispose() {
     if (disposed) return; disposed = true;
+    for (const r of records) r.spiral?.dispose();
     group.removeFromParent();
     const resources = new Set();
     group.traverse(o => {

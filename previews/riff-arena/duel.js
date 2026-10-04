@@ -8,7 +8,7 @@ import { riffStats, applyRiffResolved, RIFF_CLOSE_QUALITY_GAP } from '../../src/
 
 export const DEFAULTS = Object.freeze({ bpm:138, length:4, lead:1600, handoff:100,
   acceleration:8, gapDecay:2.5, gapFloor:4, rounds:'continuous', orb:1, spin:1, growth:.17, flow:6,
-  glitter:.3, laneWidth:270, boardGlow:0.18, volume:0.3,
+  glitter:.8, laneWidth:270, boardGlow:0.18, volume:0.3,
   mode:'demo', scenario:'escalate', attacker:'cosmic_ronin', defender:'Metalness_Monster',
   melodyA:'A C E G', melodyB:'D F A C' });
 

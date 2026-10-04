@@ -26,69 +26,52 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 53-pyro. 🎆 Pyro is Astra's mortars — they fire every turn, a shove stops on one — 2026-10-02
+## 59-intro. Bardbarian opens the arena — 2026-10-04
 
-Alex, on porting the pyro-shove preview: *"I want a Spirit that if it gets shoved
-into or in the way of a blaster/mortar to stop on the mortar — get blasted up and
-fall back on the mortar that then disassembles down into the arena again."* Then the
-rules: *"they fire under 2 conditions — 1. end of a player's turn (not a full round)
-… coming back before the start of the next player's turn, or 2. if a player gets
-pushed into it … it stops on the mortar and takes damage … 1st round about 5
-mortars, 2nd 10 or so, 3rd 13 or so"*, and *"real Vibe damage — like 3 or so"*.
-Mortars only — no blasters, no curtain.
+Alex requested a larger-than-life outline of the Rock God in the nebula, arms
+extended as he introduces the Spirits. Each crashes down between the fans and
+its old starting hex. New rule: wait here with no fans; on the first turn play
+the same picker riff, step onto the old home hex, and gain two fans. This closes
+the four-player opportunity to attack a Spirit before it has taken a turn.
 
-- 🎲 **The rules — pyro v2** (`data/stageEffects.js`, `engine/systems/stageFx.js`):
-  `PYRO_TURN_ENDED` (every armed mortar fires; `caught` = whoever stands on one),
-  `PYRO_TURN_STARTED` (re-arm on fresh hexes, sized `PYRO_ROUND_HEXES` 5/10/13 by
-  show round), `PYRO_CHARGE_STRUCK` (a forced move entered one: it is spent, the
-  state remembers who in `pyro.struck`). The round tick is only the show clock.
-  `PYRO_DAMAGE` 1 → **3**. ⚠️ **Versioned**: only an activation carrying
-  `pyroVersion: 2` runs them — the client opts in; a replay log recorded before
-  keeps the old round-clock cadence, bit for bit (`test:stagefx` unchanged, 90).
-- 💥 **The stop** — `battleFlow.js` `knockback` ends the slide ON an armed mortar
-  (read inline: `stageFx.js` already imports `battleFlow`) and hands the client's
-  `hexHazards` hook `pyroStruck`; the client's own pushes (`battleKnockback`, the
-  one-hex push, the TV scatter) ask `strikePyroCharge` first. Walking / sliding /
-  Shukuchi do not set one off — you are simply standing on it at your turn's end.
-  The END TURN volley runs before the round block, the re-arm after it, so a show's
-  last volley closes it and no armed mortar is left to fizzle.
-- 🎬 **The look** — one tracked copy of each preview module, which the `.scratch`
-  pages now import: `board/pyroMortars.js` (Astra's mortar, blasters/curtain as
-  options; parity-checked against her original over 4,218 frames, Δ = 0),
-  `board/pyroShove.js` (the reaction + Alex's 10-lever dial-in + a show clock that
-  turns hit-stop and slow motion into a real↔show mapping + the deploy / volley /
-  retract cue builders), `board/pyroBlast.js` (the hit's fire), `audio/pyroSfx.js`
-  (my voices byte-for-byte, on the SFX fader). `board/pyroStage.js` puts it on the
-  board: each wave a set (the wave number is its identity), the reaction started by
-  `standeeSteps`' new `onLand` hook so the approach stays the game's skate, the
-  struck mortar redrawn on the reaction's own clock so it freezes with the piece;
-  the renderer adds the lens shake and zoom punch around its draw and puts the
-  camera back.
-- 🐛 **Fixed on the way** — the struck mortar's crown was heard 1.15 s after the
-  bang (the page's own shell) while Astra's burst is SEEN at 1.5 s; a frame landing
-  before the stage's first tick would have deployed a wave at second 0 and dropped
-  its machinery; the piece kept the daze's last micro-tilt after the hand-back.
-- 🧪 **Evidence** — `test:pyrorules` **92** (mutation-checked: disable the stop,
-  it goes red), `test:pyroshove` **116,482** (the page's 98,738-assertion check ported;
-  it is ~102k now because airMs 950 → 1100 lengthens every sampled timeline),
-  `test:pyrostage` **62** (the real GLB arena; mutation-checked on the pose),
-  `test:pyrojourney` **8** (the real `Game` by its own controls: a new set every
-  END TURN, 5 → 10 → 13, the show ending; mutation-checked on the volley).
-  Every suite, isolated baseline worktree (56b7656) vs this tree: **87 suites on both, plus the 4 new ones: 21 red before and 21 red after — the same 21, each with the same first failure** (the known combat-fixture, Db-cut and missing-`.scratch`-file reds), and every passing suite reports the same count on both.
-  Bundle (case-tolerant twin, see below): **0 warnings**, before and after.
-- ⚠️ **This machine is case-sensitive** — the client's three case-mismatched PNG
-  imports (`STATE_OF_PLAY` 🚩, Alex's call) stop `check:bundle` and every suite that
-  bundles the client. The evidence above used temporary untracked symlinks for those
-  three files in both trees; nothing about them is committed.
-- ⏳ **Not seen on real hardware.** The cloud browser is software-rendered: nobody
-  has seen this on a real GPU or heard it on speakers.
+Built the interactive preview first, following CLAUDE.md. The real arena,
+standees, crowd and picker riffs run together at `previews/bardbarian-intro/`.
+The god uses an original imagegen asset filtered to spectral contours; storms,
+lightning, impact rings, fragments, rebound and camera are animated in Three.js.
+Two/three/four seats, reduced motion, saved controls, selectable Copy dial-in,
+replay, seek and first-turn rehearsal are available. Four seats use a duplicate
+Ronin with its proper corner identity, never the locked Glamarchy.
 
-**Next — Alex's calls:** (1) the end state (`dazed`), hit-stop on every mortar hit,
-and the shell + burst in a hit — shipped at their defaults; (2) the **Burn** was
-kept as it was — he set only the damage; (3) should a vortex DRAG stop on a mortar
-(it does not — a pull, not a push); (4) the page's "sympathy" volley is now
-page-only (in the game the others fire at END TURN, by the rule); (5) a real-GPU
-look and a listen.
+Alex subsequently supplied the complete dial-in and requested a Claude handoff.
+His exact export is now `previews/bardbarian-intro/alex-dial-in.json`; its settings
+are imported as the preview defaults, preserving the original comparison in
+the same file. Scale 1.17, presence .24, detail .74, storm .9, fall height 24,
+impact 1.35, shake .65, bloom .55; every unchanged setting is preserved too.
+`CLAUDE_BARDBARIAN_INTRO_HANDOFF.md`, linked from CLAUDE.md, maps editing paths,
+launch commands, assets, checks and the remaining port. The portable source and
+assets snapshot is `handoffs/bardbarian-intro-2026-10-04.zip`. It is a local
+handoff, not an upload or a remote Git update.
+
+**Status: selected settings saved; preview only.** No normal-match rule or visual port yet. The accepted
+waiting-space rule is in STATE_OF_PLAY; the preview README lists port coverage:
+authoritative entrance state, all targeting and bot paths, exactly-once fans,
+normal-match UI journey, intro skipping, saved games/network and Testing Grounds.
+A later entrant's home hex must also be available; the production policy must
+be explicit. Do not mistake a preview's targetable flag for engine immunity.
+
+Checks: 98 intro assertions, lint clean, preview and app bundles clean with zero
+warnings. Browser playback reaches each first turn in order: only entrants get
+two fans; 2/3/4 players, reduced motion, seek/replay, persistence/export verified,
+no browser errors. Fixed an effects teardown that detached its reusable root.
+Full suite passes intro (98), vocabulary (640), cards (441), then fails the
+untouched card journey's `enabled` assertion. Audio cues exercised, speaker mix
+not judged. Architecture validation also reports 14 existing missing module rows
+(laser/smoke, bats and crumbling); all listed paths/exports resolve. The external
+Claude Systems Map has no callable Artifact publishing
+tool in this environment; the repository handoff records the pending port.
+
+Next: Claude can continue from the saved dial-in and editable handoff. Integrate
+the presentation and accepted rule into normal matches when that work resumes.
 
 ---
 
@@ -236,12 +219,14 @@ Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
+| `59-intro` | 2026-10-04 | Bardbarian introduction preview, saved Alex dial-in and portable Claude handoff. Accepted off-board first-turn rule; gameplay port still pending. |
+| `54-sustain` | 2026-10-04 | Living Sustain shield production port. Archived in `../docs/archive/SEQUENCING-2026-10-04-before-bardbarian.md`. |
 | `58-thrashbill` | 2026-10-03 | Thrash bill: attacker 2 Drive notes, defender 1, win/lose/tie; a Thrash (and the Tentacle) needs 2 Drive notes; a tie throws both back a hex, no Vibe. Shadow whiffs pay the Drive price; the Sonic whiff's AP fixed to 1. Thrash constants moved to `gameConstants` so `battleFlow` stays art-free (`test:sandbox`). `test:legal`, `test:swing`. |
 | `57-thrash` | 2026-10-03 | Swing renamed **Thrash** in every player-facing string (rail, overlay, 3D captions, prompts, tutorial, ability/card text, logs). Internal identifiers stay `swing` — replays and network actions carry the kind. Journey checks click `Thrash`. |
 | `56-sonic1note` | 2026-10-03 | Sonic spends 1 Drive note off the top again (the 09-11 whole-charge rule reversed — an empty rig was a free kill for the next Thrash). `SONIC_DRIVE_SPEND` wired into the client and `transition.js`. `test:legal`. |
 | `55-sonicreach` | 2026-10-03 | Sonic reaches 2–3 hexes, never adjacent: `SONIC_MIN_RANGE`, `sonicBeam` skips hex 1; client `getSonicBeam` delegates to it; Blaster of Ra keeps the full line (`getBlasterBeam`). A same-day Swing version of this rule was reverted — Alex meant the Sonic. `test:legal`, `test:sonicjourney`, `test:riffarenajourney`. |
 | `54-sonic1ap` | 2026-10-03 | Sonic Attack costs 1 AP (was 2): `SONIC_AP_COST` and every client gate/charge/label read it; riff-off follows. `test:legal`. |
-| `53-pyro` | 2026-10-02 | **LIVE — §A above.** Pyro v2: Astra's mortars fire at every END TURN (5/10/13 by show round), a shove stops on one, 3 Vibe; the pyro-shove preview ported into `board/pyroMortars.js` / `pyroShove.js` / `pyroBlast.js` / `pyroStage.js` and `audio/pyroSfx.js`. `test:pyrorules`, `test:pyroshove`, `test:pyrostage`. |
+| `53-pyro` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-2026-10-04-before-bardbarian.md`. Pyro v2: Astra's mortars fire at every END TURN (5/10/13 by show round), a shove stops on one, 3 Vibe; the pyro-shove preview ported into `board/pyroMortars.js` / `pyroShove.js` / `pyroBlast.js` / `pyroStage.js` and `audio/pyroSfx.js`. `test:pyrorules`, `test:pyroshove`, `test:pyrostage`. |
 | `52-dbcut` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Db cut entirely: abilities gated by kit + 2-round cooldown only, melody pays fans only, upgrade shop and old event cards / Major-Minor bonus removed. `test:loadouts`, `test:skilltree`, `test:playfinder`. |
 | `51-iwatoport` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Iwato curse goes into the game: take up, three strings from the next turn (up to 3 a turn, from the hand), the cast, the cursed palette everywhere, exorcism in the commit, the arena stage, the infected wheel, the sound, and the loadout pop-out. `test:shamisen`, `test:shamisenjourney`. |
 | `50-iwatocurse` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Cursed Shamisen redesigned as the Iwato curse (strings, cast, a cursed Scale Wheel, exorcism); its five animated moments built for the dial-in. `test:cursedshamisen`. |

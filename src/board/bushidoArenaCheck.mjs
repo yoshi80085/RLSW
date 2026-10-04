@@ -99,7 +99,7 @@ function bout({ pool, vals, dropped = [], droppedPool = [], sustain, sustainPool
     const p = ronin();
     const strikeGroup = scene.getObjectByName('Psycho Bushido');
     const shieldGroup = scene.getObjectByName('Sonic shield');
-    let field = 0; scene.traverse(n => { if (n.name === 'Sonic shield field' && n.material && n.parent?.visible) field = n.material.opacity; });
+    let field = 0; scene.traverse(n => { if (n.name === 'Sonic shield field' && n.material && n.parent?.visible) field = n.material.uniforms?.opacity?.value ?? n.material.opacity; });
     samples.push({ seq:(vnow - seqStart) / 1000, pos:p.position.clone(), scale:p.scale.clone(), field,
       strikeKids:strikeGroup?.children.filter(c => c.visible).length ?? -1,
       shield:shieldGroup?.visible ?? false, stepping:visuals.diagnostics?.()?.standeeSteps ?? null });

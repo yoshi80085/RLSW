@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import {createSonicZigzagVisuals,FLIGHT_SECONDS} from './sonicZigzagVisuals.js';
+import {SONIC_GLITTER,SONIC_WAVE,createSpiralGlitter,createHelixStations} from './sonicGlitter.js';
 
 const V=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
-const TAU=Math.PI*2,SPACING=.6;
+const TAU=Math.PI*2,SPACING=SONIC_WAVE.ringGap;
 
 // Read authored speaker surfaces AFTER arena transforms, including its Z flip.
 export function arenaAmpOrigins(model){
@@ -17,26 +18,13 @@ export function arenaAmpOrigins(model){
   });
 }
 
-function glints(color,count=36){
-  const geometry=new THREE.BufferGeometry();
-  geometry.setAttribute('position',new THREE.Float32BufferAttribute(new Float32Array(count*3),3));
-  geometry.setAttribute('glint',new THREE.Float32BufferAttribute(new Float32Array(count),1));
-  const material=new THREE.ShaderMaterial({transparent:true,depthWrite:false,depthTest:false,
-    blending:THREE.AdditiveBlending,uniforms:{tint:{value:new THREE.Color(color)},amount:{value:.3}},
-    vertexShader:`attribute float glint;varying float light;void main(){light=glint;gl_PointSize=1.5+glint*3.;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader:`uniform vec3 tint;uniform float amount;varying float light;void main(){vec2 p=abs(gl_PointCoord-.5)*2.;float dotGlow=max(0.,1.-length(p));float crossGlow=pow(max(0.,1.-min(p.x,p.y)*6.),5.)*max(0.,1.-max(p.x,p.y));float a=(dotGlow*dotGlow*.3+crossGlow*.7)*light*amount;gl_FragColor=vec4(mix(tint,vec3(1.),.45),a);}`,
-  });
-  const points=new THREE.Points(geometry,material);points.frustumCulled=false;points.renderOrder=149;
-  return points;
-}
-
 export function createDuelWaveforms(parent,colors){
   let origins=null,first=null,placed=false;
   const waves=colors.map((color,side)=>{
     const visual=createSonicZigzagVisuals({ampOrigins:[V(side?10:-10,1,0)],
       attackerPosition:V(side?5:-5,1.85,0),defenderPosition:V(0,1.85,0),
       color,shieldColor:color,shieldValue:0,shieldRadius:.035,
-      dice:[{value:5,sides:6,passed:false}],chordPitches:[6],intensityMode:'face',strokeStyle:'rings'});
+      dice:[{value:5,sides:6,passed:false}],chordPitches:[6],intensityMode:'face',strokeStyle:'rings',glitter:false});
     visual.update(FLIGHT_SECONDS-.08,{reduced:true});
     const fields=[];visual.group.traverse(o=>{if(o.name==='Harmonic wave rings')fields.push(o);});
     // Reuse Sonic's two-band meshes/materials, but not its finite shot's
@@ -47,8 +35,10 @@ export function createDuelWaveforms(parent,colors){
     const field=fields[0],index=field.geometry.index.array;
     let segments=1;while(segments*6<index.length&&index[segments*6]===segments*2)segments++;
     const stride=(segments+1)*2,capacity=field.geometry.attributes.position.count/stride;
-    const glitter=glints(color);glitter.name='Subtle glitter woven around Sonic rings';visual.group.add(glitter);
-    return {visual,field,fields,segments,stride,capacity,glitter,first:null,stations:[]};
+    const spiral=createSpiralGlitter(null,{tint:new THREE.Color(color).lerp(new THREE.Color('white'),.5)});
+    spiral.group.name='Riff inner spiral glitter';visual.group.add(spiral.group);
+    const glitter=spiral.points;
+    return {visual,field,fields,segments,stride,capacity,glitter,spiral,first:null,stations:[]};
   });
 
   const ball=new THREE.Group();ball.name='Converging Soundform ball';parent.add(ball);
@@ -68,14 +58,21 @@ export function createDuelWaveforms(parent,colors){
     vertexShader:`varying vec3 n;varying vec3 eye;varying float side;void main(){vec4 p=modelViewMatrix*vec4(position,1.);n=normalize(normalMatrix*normal);eye=normalize(-p.xyz);side=position.x;gl_Position=projectionMatrix*p;}`,
     fragmentShader:`varying vec3 n;varying vec3 eye;varying float side;uniform vec3 cyan;uniform vec3 amber;void main(){float rim=pow(1.-abs(dot(normalize(n),normalize(eye))),2.);gl_FragColor=vec4(mix(cyan,amber,smoothstep(-.6,.6,side)),.012+.08*rim);}`,
   }));ball.add(haze);
-  const corona=glints('#e6faff',64);ball.add(corona);
+  const coreSpiral=createSpiralGlitter();ball.add(coreSpiral.group);
+  coreSpiral.group.name='Riff core spiral glitter';
+  const coreStations=createHelixStations(48);
+  coreStations.forEach((s,i)=>{
+    const y=-.95+1.9*i/(coreStations.length-1);
+    s.center.set(0,y,0);s.across.set(1,0,0);s.up.set(0,0,1);
+    s.radius=Math.sqrt(Math.max(0,.96*.96-y*y));
+  });
   const direction=V(),up=V(),across=V(),point=V(),destination=V(0,1.85,0),worldUp=V(0,1,0);
 
   return {
     waves,ball,hoops,
     setOrigins(points){origins=points.map(p=>p.clone());},
-    reset(){first=null;placed=false;ball.visible=false;for(const w of waves){w.first=null;w.stations=[];w.visual.group.visible=false;}},
-    update({time,energy,shift=0,scale=1,spin=1,growth=.17,flow=6,glitter=.3,impact=null,reduced=false,center=null,targets=null,maximumRadius=3,dt=null}){
+    reset(){first=null;placed=false;ball.visible=false;coreSpiral.update(0,SONIC_GLITTER,{enabled:false});for(const w of waves){w.first=null;w.stations=[];w.visual.group.visible=false;w.spiral.update(0,SONIC_GLITTER,{enabled:false});}},
+    update({time,energy,shift=0,scale=1,spin=1,growth=.17,flow=6,glitter=SONIC_GLITTER.brightness,impact=null,reduced=false,center=null,targets=null,maximumRadius=3,dt=null}){
       const t=time/1000,total=energy[0]+energy[1];
       if(total>0&&first===null)first=t;
       const age=first===null?0:Math.max(0,t-first),motion=reduced?0:t;
@@ -100,16 +97,12 @@ export function createDuelWaveforms(parent,colors){
         p.rotation.set(i*.71+motion*rate*sign,i*1.17+motion*rate*.63,i*.43+motion*rate*.37*sign);
         p.scale.setScalar(.77+(i%4)*.075);
       });
-      const cp=corona.geometry.attributes.position,cg=corona.geometry.attributes.glint;
-      for(let i=0;i<cp.count;i++){
-        const a=i*2.39996+motion*(.14+(i%3)*.04)*spin,y=1-2*(i+.5)/cp.count,r=Math.sqrt(1-y*y)*1.08;
-        cp.setXYZ(i,Math.cos(a)*r,y*1.08,Math.sin(a)*r);cg.setX(i,reduced?.25:.1+.65*Math.max(0,Math.sin(motion*2+i))**8);
-      }
-      cp.needsUpdate=true;cg.needsUpdate=true;corona.material.uniforms.amount.value=glitter;corona.visible=glitter>0;
+      coreSpiral.update(motion,{...SONIC_GLITTER,brightness:glitter},
+        {stations:coreStations,reduced,enabled:ball.visible&&glitter>0});
 
       waves.forEach((w,side)=>{
         w.visual.group.visible=!!origins&&energy[side]>0&&(!impact||impactAge<.82);
-        if(!w.visual.group.visible)return;
+        if(!w.visual.group.visible){w.spiral.update(t,SONIC_GLITTER,{enabled:false});return;}
         if(w.first===null)w.first=t;
         const origin=origins[side];direction.copy(destination).sub(origin);
         const distance=direction.length();direction.normalize();
@@ -122,9 +115,9 @@ export function createDuelWaveforms(parent,colors){
           const raw=travel-k*SPACING;
           if(raw<0)continue;
           const d=raw%(w.capacity*SPACING);if(d>end)continue;
-          const u=d/end,r=(.35+.1*u)*(1-.6*Math.max(0,(u-.83)/.17));
+          const u=d/end,r=SONIC_WAVE.beamRadius*(.72+.17*u)*(1-.6*Math.max(0,(u-.83)/.17));
           point.copy(origin).addScaledVector(direction,d);
-          w.stations.push({slot:k,distance:d,radius:r,center:point.clone()});
+          w.stations.push({slot:k,distance:d,radius:r-.035,center:point.clone(),across,up});
           w.fields.forEach((f,band)=>{
             const positions=f.geometry.attributes.position,thickness=band?.010:.035;
             for(let s=0;s<=w.segments;s++){
@@ -140,18 +133,14 @@ export function createDuelWaveforms(parent,colors){
           });
         }
         for(const f of w.fields)f.geometry.attributes.position.needsUpdate=true;
-        const points=w.glitter.geometry.attributes.position,glints=w.glitter.geometry.attributes.glint;
-        for(let i=0;i<points.count&&w.stations.length;i++){
-          const station=w.stations[i%w.stations.length],angle=i*2.39996+motion*.8;
-          point.copy(station.center).addScaledVector(across,Math.cos(angle)*station.radius*1.16).addScaledVector(up,Math.sin(angle)*station.radius*1.16);
-          points.setXYZ(i,point.x,point.y,point.z);glints.setX(i,reduced?.22:.08+.7*Math.max(0,Math.sin(motion*2+i*2.4))**6);
-        }
-        points.needsUpdate=true;glints.needsUpdate=true;
-        w.glitter.geometry.setDrawRange(0,w.stations.length?36:0);
-        w.glitter.material.uniforms.amount.value=glitter;w.glitter.visible=glitter>0;
+        // Pool slots wrap as rings advance. Sort by physical distance so the
+        // helix always runs amp → core rather than doubling back at a wrap.
+        const stations=w.stations.slice().sort((a,b)=>a.distance-b.distance);
+        w.spiral.update(motion,{...SONIC_GLITTER,brightness:glitter},
+          {stations,reduced,enabled:glitter>0,opacity:1});
       });
     },
-    dispose(){waves.forEach(w=>{w.visual.dispose();w.visual.group.removeFromParent();});
+    dispose(){coreSpiral.dispose();waves.forEach(w=>{w.spiral.dispose();w.visual.dispose();w.visual.group.removeFromParent();});
       ball.traverse(o=>{o.geometry?.dispose();o.material?.dispose();});ball.removeFromParent();},
   };
 }
