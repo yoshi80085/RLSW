@@ -50,6 +50,9 @@ assert.throws(() => stackCapFor(['theory_dom7']), /ARRAY was passed/,
   'the old unlockedSkills signature throws rather than silently capping at 3');
 console.log("✓ stackCapFor: all", cases.length, "per-stack cases correct, and the old signature throws");
 
+// 📏 The projectile band's rebase (chords.js header).
+const rebase = v => Math.ceil((v - 1) / 2);
+
 // ── B0a: single-note seed ──
 for (const id of ["test_spirit", "cosmic_ronin"]) {
   const ns = makeInitialNoteState(id, () => 0.5);
@@ -58,9 +61,10 @@ for (const id of ["test_spirit", "cosmic_ronin"]) {
   assert.deepEqual(ns.chordStack, [ns.rootNote]);
   const seed = evaluateChord(ns.driveStack);
   assert.equal(seed.id, 'single', 'seed reads as a Single note');
-  assert.equal(seed.drive, 3); assert.equal(seed.sustain, 3);
+  // 📏 D1/S1 since the projectile rebase (2026-09-15: ceil((v − 1) / 2) of the old 3).
+  assert.equal(seed.drive, rebase(3)); assert.equal(seed.sustain, rebase(3));
 }
-console.log("✓ B0a: stacks seed [root] → Single note D3/S3 (was power chord D5/S5)");
+console.log("✓ B0a: stacks seed [root] → Single note D1/S1 (rebased from D3/S3; was power chord D5/S5)");
 
 // ── Task A: note-count curve ──
 // One point of base per note, from 2 notes = 5. The 6-note entry arrived with the
@@ -70,11 +74,16 @@ for (const t of CHORD_TEMPLATES) {
   const n = t.ivals.length, b = base[n];
   assert.ok(b !== undefined,
     `${t.id}: ${n} notes has no base in the Task A curve — extend it rather than exempting the chord`);
-  const pair = [t.drive, t.sustain].sort((a,z)=>a-z);
-  assert.deepEqual(pair, t.drive === t.sustain ? [b,b] : [b-1,b+1],
-    `${t.id}: ${n} notes → base ${b}, got D${t.drive}/S${t.sustain}`);
+  // 📏 THROUGH THE REBASE. The table was rebased to the projectile band on
+  // 2026-09-15 (`chords.js` header: ceil((value − 1) / 2), 1–5), and this check
+  // kept asserting the raw curve — red ever since. The curve is still the
+  // source of every number, so it is asserted through the rebase rather than
+  // dropped: a template that drifts off EITHER one fails here.
+  const lean = t.drive === t.sustain ? 0 : (t.drive > t.sustain ? 1 : -1);
+  assert.deepEqual([t.drive, t.sustain], [rebase(b + lean), rebase(b - lean)],
+    `${t.id}: ${n} notes → base ${b}±1 rebased, got D${t.drive}/S${t.sustain}`);
 }
-console.log("✓ Task A: all", CHORD_TEMPLATES.length, "templates sit on base±1 for their note count");
+console.log("✓ Task A: all", CHORD_TEMPLATES.length, "templates sit on base±1 for their note count, rebased to the 1–5 band");
 
 // Rank must be monotone in note count — "more notes = stronger chord" is the rule
 // Task A exists to enforce, and rank is what Harmonic Lock and B4's routing read.
@@ -94,15 +103,20 @@ console.log("✓ Task A: rank never falls as notes rise, and the biggest chord f
 
 // Major triad no longer punished
 const maj = evaluateChord(['C','E','G']);
-assert.equal(maj.id, 'maj'); assert.equal(maj.drive, 5);
+assert.equal(maj.id, 'maj'); assert.equal(maj.drive, rebase(5));
 console.log(`✓ Major triad now D${maj.drive}/S${maj.sustain} (was D4/S7) — no longer punished in the Drive Stack`);
 const cl = evaluateChord(['C','C#','D']);
-assert.equal(cl.id, 'cluster'); assert.equal(cl.drive, 3); assert.equal(cl.sustain, 2);
+assert.equal(cl.id, 'cluster'); assert.equal(cl.drive, rebase(3)); assert.equal(cl.sustain, rebase(2));
 console.log(`✓ Tone cluster now D${cl.drive}/S${cl.sustain} (was D7/S1) — no longer a free drive engine`);
 
 // Monotonic power by note count
 const dom9 = evaluateChord(['C','E','G','A#','D']), dom7 = evaluateChord(['C','E','G','A#']), pow = evaluateChord(['C','G']);
-assert.ok(dom9.drive+dom9.sustain > dom7.drive+dom7.sustain);
+// 📌 ≥, NOT >, FOR 5 vs 4 NOTES — and that is a finding, not a fudge. The
+// 2026-09-15 rebase (ceil((v − 1) / 2)) maps dom9's old 9/7 and dom7's old 8/6
+// to the same 4/3, so a fifth note no longer buys power in this table. Recorded
+// rather than tuned (§B10): `chords.js` serves only the MELODY since the chord
+// vocabularies (2026-09-27); the stacks' dice read `music/vocabularies.js`.
+assert.ok(dom9.drive+dom9.sustain >= dom7.drive+dom7.sustain);
 assert.ok(dom7.drive+dom7.sustain > maj.drive+maj.sustain);
 assert.ok(maj.drive+maj.sustain > pow.drive+pow.sustain);
 console.log(`✓ total power is monotonic in note count: power ${pow.drive+pow.sustain} < triad ${maj.drive+maj.sustain} < dom7 ${dom7.drive+dom7.sustain} < dom9 ${dom9.drive+dom9.sustain}`);
@@ -686,17 +700,15 @@ console.log("✓ B0a: stack seed and Spirit palette are independent");
 // BUILT. Pinned as an alarm rather than deleted quietly, because "Db piles up
 // against a tree that cannot absorb it" is a balance state that reads as fine in
 // every individual test.
+// 🪦 2026-10-04: AND THE ALARM IS MOOT TOO. Db was cut whole on 2026-10-02 —
+// "no more shops, no more Db, the cooldowns and 'sacrifices' are the gate" — so
+// there is no sink to be missing. What is guarded now is the cut itself: no
+// ability may come back carrying a Db price nobody can pay.
 {
-  const priced = Object.values(SKILL_BY_ID).reduce((a, sk) => a + (sk.dbCost ?? 0), 0);
-  assert.ok(priced > 0, 'the surviving exclusive routes are still priced in Db');
-  // 🎯 What a Spirit with NO exclusive route can spend Db on, in total.
-  const forGlam = Object.values(SKILL_BY_ID)
-    .filter(sk => skillEligibility(sk, [], { ownerRoute: sk.spiritOnly ?? null, selfId: 'Glamarchy' }).ok)
-    .reduce((a, sk) => a + (sk.dbCost ?? 0), 0);
-  assert.equal(forGlam, 0,
-    '⛔ 🎀 Glamarchy has 0 Db of sink available — the shared ladder is gone and §5 has not replaced it');
+  const priced = Object.values(SKILL_BY_ID).filter(sk => (sk.dbCost ?? 0) > 0).map(sk => sk.id);
+  assert.deepEqual(priced, [], '🪦 no ability carries a Db price — there is no Db (cut 2026-10-02)');
 }
-console.log("✓ ⛔ 52 Db of shared sink left with the branch — §5's upgrade streams are the unbuilt replacement");
+console.log("✓ 🪦 Db is cut: no ability is priced in it");
 
 // ─── 🪦 THE INITIAL-SKILL GRANT INVARIANT — THE GRANT IS GONE, THE LESSON ISN'T ──
 //
