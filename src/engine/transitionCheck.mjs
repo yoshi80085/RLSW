@@ -28,7 +28,7 @@ import {
   MODELLED_KINDS, UNMODELLED_KINDS, PARTIAL_KINDS,
 } from "./policies/transition.js";
 import { attackParams, spiritChord, CHARGE_DIE_CEILING } from "./systems/attackParams.js";
-import { ELEVEN_DRIVE } from "../data/gameConstants.js";
+import { ELEVEN_DRIVE, SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND } from "../data/gameConstants.js";
 import { evaluate } from "./policies/evaluate.js";
 import { SPIRIT_DEFS } from "../data/spirits.js";
 import { CORNERS } from "../data/corners.js";
@@ -42,6 +42,7 @@ import { sonicBeam } from "./policies/legalActions.js";
 import { makeBoardToken } from "../board/boardHelpers.js";
 import { usedList } from "./systems/economy.js";
 import { NOTE_POOL, pitchIndex } from "../music/notes.js";
+import { unlockTargets } from "../music/stackSlots.js";
 
 let checks = 0;
 const ok = (c, m) => { assert.ok(c, m); checks++; };
@@ -241,94 +242,91 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 6. attackParams — the stat derivation. HARMONY → COMBAT is the Earned lens in
-//    its purest form: the number that decides the fight is one you built.
+// 6. attackParams — HARMONY → COMBAT. The dice are the Drive stack, read by the
+//    Spirit's own vocabulary; the shield is the Sustain stack.
+//    ⚠️ REWRITTEN 2026-10-04. This section and §7 used to test a Thrash that
+//    rolled ONE die on top of a static-stat tower (`atkStat` + a capped bonus).
+//    Since the clash (2026-09-20) the Thrash returns early with the SAME rig
+//    the Sonic throws, so that tower is unreachable for every real caller, and
+//    a bare stack throws NOTHING rather than falling back to SPIRIT_DEFS.drive.
+//    The buffs now live in `drivePowerBreakdown` — one die each, capped at 2.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = armed(confirmed(baseState()));
+  const pool = (state, kind = 'sonic') => attackParams(state, RONIN, METAL, kind).dicePool;
 
-  // Fallback to the static stat before anything is voiced.
+  // No voiced Drive, no dice — never the old static-stat fallback.
   const bare = withNs(withNs(st, RONIN, { driveStack: [] }), METAL, { sustainStack: [] });
-  const p0 = attackParams(bare, RONIN, METAL, 'swing');
-  eq(p0._derived.atkChordDrive, SPIRIT_DEFS[RONIN].drive, 'no chord → the static Drive stat carries');
+  deep(pool(bare), [], 'no Drive stack → the Sonic throws nothing');
+  deep(pool(bare, 'swing'), [], '…and neither does the Thrash');
 
-  // A voiced chord overrides it.
+  // A voiced chord is the dice: one per point of the vocabulary's Drive reading.
   const voiced = withNs(st, RONIN, { driveStack: ['A', 'C', 'E'] });
-  const p1 = attackParams(voiced, RONIN, METAL, 'swing');
-  eq(p1._derived.atkChordDrive, spiritChord(RONIN, ['A', 'C', 'E']).drive, 'a voiced chord sets the Drive');
-  ok(p1._derived.atkChord, '...and it is named for the log');
+  const dial = spiritChord(RONIN, ['A', 'C', 'E']).drive;
+  ok(dial > 0, 'the fixture chord reads some Drive');
+  eq(pool(voiced).length, dial, 'a voiced chord buys one die per point of Drive');
+  deep(pool(voiced, 'swing'), pool(voiced), 'the Thrash throws the very rig the Sonic does');
+  const metalVoiced = withNs(voiced, METAL, { driveStack: ['A', 'C', 'E', 'G'] });
+  deep(attackParams(metalVoiced, RONIN, METAL, 'swing').defenderDicePool,
+       attackParams(metalVoiced, METAL, RONIN, 'swing').dicePool.filter(d => d !== 11),
+       '…and the defender answers on HIS rig');
+  ok(attackParams(metalVoiced, RONIN, METAL, 'swing').defenderDicePool.length > dial - 1,
+     '…which is his, not the attacker\'s');
 
-  // 💥 Smash exposure zeroes Sustain — §3.4's real payload — and is flagged for
-  // the caller to clear, because a pure function cannot clear it itself.
+  // 💥 Smash exposure zeroes the shield — and the caller is told to clear it.
   const exposedSt = withNs(voiced, METAL, { sustainStack: ['A', 'C', 'E'], smashExposed: true });
-  const pE = attackParams(exposedSt, RONIN, METAL, 'swing');
-  eq(pE._derived.defChordSustain, 0, '💥 an Exposed rival defends on nothing at all');
+  const pE = attackParams(exposedSt, RONIN, METAL, 'sonic');
+  eq(pE.defStat, 0, '💥 an Exposed rival shields on nothing at all');
+  deep(pE.sustainPool, [], '…and throws no shield dice');
   eq(pE._derived.consumedSmashExposed, true, '...and the caller is told to clear the flag');
-  eq(attackParams(withNs(exposedSt, METAL, { smashExposed: false }), RONIN, METAL, 'swing')._derived.consumedSmashExposed,
+  eq(attackParams(withNs(exposedSt, METAL, { smashExposed: false }), RONIN, METAL, 'sonic')._derived.consumedSmashExposed,
      false, 'un-exposed, the flag is not claimed');
 
   // 🥊 swingExposed is the melee self-debuff the evaluator must charge.
-  const sw = attackParams(withNs(voiced, METAL, { sustainStack: ['A', 'C', 'E'], swingExposed: true }), RONIN, METAL, 'swing');
-  const noSw = attackParams(withNs(voiced, METAL, { sustainStack: ['A', 'C', 'E'] }), RONIN, METAL, 'swing');
+  const braced = withNs(voiced, METAL, { sustainStack: ['A', 'C', 'E', 'G'] });
+  const sw = attackParams(withNs(braced, METAL, { swingExposed: true }), RONIN, METAL, 'sonic');
+  const noSw = attackParams(braced, RONIN, METAL, 'sonic');
+  ok(noSw.defStat > 0, 'the braced fixture shields on something');
   eq(sw.defStat, noSw.defStat - 1, '🥊 swingExposed costs the defender exactly 1 Sustain');
 
-  // ⚖️ The bonus tower is capped. 🔊 Goes to 11 does NOT break it — it overwrites
-  // the total, which is the difference between a cap with an exemption (what
-  // 6️⃣ Number of the Beast was, before §1b cut it) and a cap that still means
-  // something. The tower stays capped whether or not the dial is set.
+  // ⚖️ The buff tower is capped at 2 dice; 🔊 Goes to 11 swaps in its own die.
   const towered = withNs(voiced, RONIN, { tempDrive: ATK_BONUS_CAP + 5, moshDrive: 3 });
-  const pT = attackParams(towered, RONIN, METAL, 'swing');
-  eq(pT.atkStat, p1._derived.atkChordDrive + ATK_BONUS_CAP, `⚖️ stacked bonuses cap at +${ATK_BONUS_CAP}`);
-  eq(pT._derived.atkBonusCapped, true, '...and the capping is reported');
-  const cranked = attackParams(withNs(towered, RONIN, { atEleven: true }), RONIN, METAL, 'swing');
-  eq(cranked.atkStat, ELEVEN_DRIVE,
-     '🔊 the dial SETS the total — it does not add to the capped tower, it replaces it');
-  eq(cranked._derived.atkBonusCapped, pT._derived.atkBonusCapped,
-     '⚠️ …and the cap itself is untouched by the dial being on');
+  eq(pool(towered).length, dial + 2, '⚖️ a Drive boost and a Mosh together add at most 2 dice');
+  ok(pool(withNs(voiced, RONIN, { atEleven: true })).includes(11), '🔊 at eleven, the Eleven die is in the pool');
 
-  // 🎸 A dropped instrument is a flat −1 on the base.
-  eq(attackParams(withNs(voiced, RONIN, { instrumentDropped: true }), RONIN, METAL, 'swing').atkStat,
-     p1.atkStat - 1, '🎸 a dropped instrument costs 1 Drive');
+  // 🎸 A dropped instrument is one die fewer.
+  eq(pool(withNs(voiced, RONIN, { instrumentDropped: true })).length, dial - 1, '🎸 a dropped instrument costs 1 die');
 
   eq(attackParams(st, RONIN, 'ghost', 'swing'), null, 'an absent defender yields null, not a throw');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 7. THE DICE — Swing is one die, Sonic is a pool, and ⚡ charges change both.
+// 7. THE BILL AND THE CHARGES — what the Thrash plans to spend, and ⚡ charges.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = withNs(armed(confirmed(baseState())), RONIN, { driveStack: ['A', 'C', 'E'] });
 
   const sw = attackParams(st, RONIN, METAL, 'swing');
-  eq(sw.atkDie, THRASH_DIE, 'the Swing rolls the base Thrash die');
-  eq(sw.defDie, THRASH_DIE, '...and the defender always answers a Swing on the same');
-  eq(sw.dicePool, null, 'the Swing is a single die, not a pool');
-
-  const ceil = attackParams(withNs(st, RONIN, { chargeCeilTurns: 2 }), RONIN, METAL, 'swing');
-  eq(ceil.atkDie, THRASH_CEIL_DIE, `⚡ a ceiling charge grows the Thrash die to d${THRASH_CEIL_DIE}`);
+  deep(sw.swingChordSpent, ['C', 'E'], `the Thrash plans to burn ${SWING_DRIVE_SPEND} notes off the TOP`);
+  deep(sw.swingChordLeft, ['A'], '…leaving the root standing');
 
   const floor = attackParams(withNs(st, RONIN, { chargeFloorTurns: 2 }), RONIN, METAL, 'swing');
-  eq(floor.atkFloor, CHARGE_FLOOR_BONUS, '⚡ a floor charge clamps the die');
+  eq(floor.atkFloor, CHARGE_FLOOR_BONUS, '⚡ a floor charge clamps the dice');
   // Strongest floor wins — they explicitly do not stack.
   eq(attackParams(withNs(st, RONIN, { chargeFloorTurns: 2, dieFloorBoost: CHARGE_FLOOR_BONUS + 3 }), RONIN, METAL, 'swing').atkFloor,
      CHARGE_FLOOR_BONUS + 3, '⚡ the STRONGEST floor wins — floors do not stack');
 
-  // Sonic: a pool, and the defender's die depends on THEIR rig, not the attacker's.
-  const so = attackParams(st, RONIN, METAL, 'sonic');
+  // Sonic: a pool against a shield of the DEFENDER's own Sustain dice.
+  const so = attackParams(withNs(st, METAL, { sustainStack: ['A', 'C', 'E'] }), RONIN, METAL, 'sonic');
   ok(Array.isArray(so.dicePool) && so.dicePool.length >= 1, 'the Sonic throws a pool');
-  eq(so.defDie, so._derived.defInRig ? SONIC_DEF_DIE : SONIC_DEF_DIE_OUT_OF_RIG,
-     'the defence die follows the DEFENDER\'s rig, not the attacker\'s');
+  eq(so.sustainPool.length, so.defStat, 'the shield is one die per point of the defender\'s Sustain');
+  eq(so.defDie, 6, 'shield dice are d6s');
 
+  const plain = attackParams(st, RONIN, METAL, 'sonic').dicePool;
   const soCeil = attackParams(withNs(st, RONIN, { chargeCeilTurns: 2 }), RONIN, METAL, 'sonic');
-  ok(soCeil.dicePool.every((s, i) => s >= soCeil._derived.poolBeforeCharge[i]),
-     '⚡ a ceiling charge grows EVERY die in the pool');
+  eq(soCeil.dicePool.length, plain.length, '⚡ a ceiling charge does not add dice');
+  ok(soCeil.dicePool.every((s, i) => s >= plain[i]), '⚡ …it grows them, never shrinks one');
   ok(soCeil.dicePool.every(s => s <= CHARGE_DIE_CEILING), `...and none exceeds d${CHARGE_DIE_CEILING}`);
-
-  // 🛡️ A stranded defender scrambles a bare d4 — §3.1's worst square, from the
-  // other side of the beam.
-  const stranded = withSpirit(st, METAL, { num: CORNERS.red.homeNum });
-  eq(attackParams(stranded, RONIN, METAL, 'sonic').defDie, SONIC_DEF_DIE_OUT_OF_RIG,
-     '🛡️ stranded outside their own rig, the rival defends on a bare d4');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -358,15 +356,18 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   }
   ok(ofKind(legalActions(r.state, RONIN), 'move').length > 0, '...but you can still walk away');
 
-  // 💥 And the exposure clear actually happened.
+  // 💥 A Thrash does NOT spend a Smash exposure. It is Drive against Drive, so
+  // the zeroed Sustain is never read — and only the blow that READS it may
+  // clear it (the client's Sonic and Psycho Bushido; `turnFlow` clears it at
+  // the rival's own turn start either way, so it is never on forever).
   const exposed = withNs(st, METAL, { smashExposed: true, sustainStack: ['A', 'C', 'E'] });
   const rE = applyBotAction(exposed, swing, { rng: rngOf(3) });
-  eq(rE.state.noteStates[METAL].smashExposed, false,
-     '💥 the exposure is consumed by the blow that read it — not left switched on forever');
+  eq(rE.state.noteStates[METAL].smashExposed, true,
+     '💥 the Thrash leaves the exposure for a blow that reads Sustain');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 8a. 🎸 WHAT THE ATTACK COSTS THE ATTACKER — and until 2026-08-17 it cost
+// 8a. 🎸 WHAT THE ATTACK COSTS — both sides since 2026-10-03; until 2026-08-17 it cost
 //     NOTHING. Every headless Swing was free: `attackParams` never supplied
 //     `swingChordLeft`/`swingChordSpent`, and `battleConsequences` destructures
 //     both with `= []`, so the burn was skipped in SILENCE — the generator could
@@ -388,7 +389,9 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   // never misses: the defender is braced with a full Sustain stack for the whiff
   // hunt. The ATTACKER's stack is identical in both, which is what the
   // assertions below read.
-  const braced = withNs(st, METAL, { sustainStack: ['A', 'C', 'E', 'G', 'B'] });
+  // ⚠️ Braced on DRIVE: a Thrash defender throws his Drive rig (the clash), so a
+  // Sustain brace — what this said before 2026-09-20 — never made it miss.
+  const braced = withNs(st, METAL, { driveStack: ['A', 'C', 'E', 'G', 'B', 'D'] });
   const findVerdict = (state, won) => {
     const act = ofKind(legalActions(state, RONIN), 'swing')[0];
     if (!act) return null;
@@ -399,15 +402,23 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     return null;
   };
   const hit  = findVerdict(st, true);
-  const miss = findVerdict(braced, false) ?? findVerdict(st, false);
+  const bracedMiss = findVerdict(braced, false);
+  const miss = bracedMiss ?? findVerdict(st, false);
   ok(hit && miss, 'the fixture produced both a landing and a whiffing Swing');
 
-  eq(hit.state.noteStates[RONIN].driveStack.length, stack.length - 2,
-     '🎸 a Swing that LANDS burns 2 Drive notes');
-  eq(miss.state.noteStates[RONIN].driveStack.length, stack.length,
-     '🎸 ...and a Swing that WHIFFS keeps the stack intact — whiffing no longer taxes you');
-  eq(hit.state.noteStates[RONIN].driveStack.join(''), stack.slice(2).join(''),
-     '🎸 ...and it burns from the FRONT, the same slice the client takes');
+  // 🤘 BOTH SIDES PAY, WIN, LOSE OR TIE (Alex, 2026-10-03). Until then only a
+  // landing Thrash cost the attacker anything, and this block asserted that.
+  for (const [label, r] of [['LANDS', hit], ['WHIFFS', miss]]) {
+    deep(r.state.noteStates[RONIN].driveStack, stack.slice(0, -SWING_DRIVE_SPEND),
+       `🎸 a Thrash that ${label} burns ${SWING_DRIVE_SPEND} Drive notes off the TOP`);
+  }
+  const missFrom = bracedMiss ? braced : st;
+  for (const [label, r, from] of [['loses', hit, st], ['wins', miss, missFrom]]) {
+    const before = from.noteStates[METAL].driveStack;
+    ok(before.length > 0, `…(the defender who ${label} has a note to pay with)`);
+    deep(r.state.noteStates[METAL].driveStack, before.slice(0, -THRASH_DEFENDER_SPEND),
+       `🎸 …and the defender who ${label} pays ${THRASH_DEFENDER_SPEND} off his own top`);
+  }
 
   // 🥊 The guard drops either way. It is the attacker's own debuff, and it is
   // what stops the evaluator pricing melee as free.
@@ -480,7 +491,10 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
   eq(clean.stoppedAt, null, 'a legal line runs clean');
   eq(clean.taken.length, 1, '...and reports what it took');
 
-  const blocked = applyBotLine(st, [moves[0], { kind: 'smash', targetId: METAL }], { rng: rngOf() });
+  // 📌 'blaster' — the one kind still declared unmodelled. This line used
+  // 'smash', which became an unknown (illegal) kind when the Smash was cut
+  // (2026-09-28); the reason it named changed and this assertion went red.
+  const blocked = applyBotLine(st, [moves[0], { kind: 'blaster', targetId: METAL }], { rng: rngOf() });
   eq(blocked.taken.length, 0, 'a refused line reports nothing taken — it is all-or-nothing');
   eq(blocked.stoppedAt.reason, 'unmodelled', '...and names the reason');
   eq(blocked.state, st, '...and rolls the WHOLE line back — a half-applied line is not a position');
@@ -650,13 +664,22 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     ok(root, 'fixture: the Ronin has a rooted Drive stack to hunt from');
     // Seat 4 is an earned opportunity, not an opening-turn freebie: fill the
     // baseline stack and fill row 1 of the crowd (6 fans — 🎤 2026-09-28).
+    // ⚠️ A SHAPE HIS VOCABULARY CAN GROW: root, ♭3, 5. The old [root, C, D] was
+    // fine while any three notes hunted the ♭7; against the Ronin's own
+    // spellings a chromatic cluster has no 4-note branch, so nothing is hunted.
+    const at = n => NOTE_POOL[(pitchIndex(root) + n) % 12];
     const eligibleNs = {
       ...ns0,
-      driveStack: [root, 'C', 'D'],
+      driveStack: [root, at(3), at(7)],
       diehards: 2, casuals: 4,
     };
-    // The ♭7 of his root — one of the three notes that opens seat 4.
-    const seventh = NOTE_POOL[(((pitchIndex(root) + 10) % 12) + 12) % 12];
+    // The note his own vocabulary hunts for seat 4, asked of `unlockTargets` —
+    // the one function the board and the HUD both read. ⚠️ It was a hard-coded
+    // ♭7 of the root until the chord vocabularies (2026-09-27) gave each Spirit
+    // its own next note; a literal here goes stale the next time that moves.
+    const hunt = unlockTargets(eligibleNs, RONIN).drive;
+    ok(hunt?.slot === 4 && hunt.pcs.size > 0, 'fixture: the Drive stack is hunting seat 4');
+    const seventh = NOTE_POOL[[...hunt.pcs][0]];
     const st = {
       ...st0,
       noteStates: { ...st0.noteStates, [RONIN]: eligibleNs },
@@ -716,15 +739,21 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
 // 21. 🎤 THE RIFF-OFF — the trigger that was the only missing piece.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  // Put the two of them beam-to-beam: adjacent, each facing the other.
+  // Put the two of them beam-to-beam: TWO hexes apart down one line, each
+  // facing the other. ⚠️ Not adjacent — the beam is hexes 2–3 only since
+  // 2026-10-03 (`SONIC_MIN_RANGE`), so neighbours are in nobody's beam.
   const st0 = confirmed(baseState());
   const ronin = st0.spirits.find(x => x.id === RONIN);
   const here = HEX_BY_NUM[ronin.num];
   const nb = axialNeighbors(here.q, here.r)
-    .map(({ q, r }) => HEX_BY_QR[`${q},${r}`]).find(Boolean);
+    .map(({ q, r }) => HEX_BY_QR[`${2 * q - here.q},${2 * r - here.r}`]).find(Boolean);
   let st = withSpirit(st0, METAL, { num: nb.num, facing: angleTo(nb, here) });
   st = withSpirit(st, RONIN, { facing: angleTo(here, nb) });
   st = { ...st, turn: { ...st.turn, moveStepsLeft: 4, actionTokenUsed: false } };
+  // 📌 2026-10-04: there is no radius any more (`rigRadius` is 0, a rig is live
+  // anywhere its amp is not blown) — the stacks below are still needed, but
+  // now because a Spirit with no voiced Drive throws no dice at all. The
+  // history of why they were added is kept as it was:
   // ⚠️ BOTH RIGS HAVE TO REACH, and this is the fixture detail that took a
   // debugging pass: they meet on hex 55, which is 5 from BOTH homes, so a rig at
   // the floor does not cover it — and being out-of-rig is the very condition
@@ -820,10 +849,11 @@ const ofKind = (acts, k) => acts.filter(a => a.kind === k);
     ok(ofKind(posingRival, 'sonic').some(a => a.targetId === METAL),
        '🎤 …the Sonic is offered instead, which is the whole rule');
 
-    // 🫁 STRANDED IS A THIN STACK NOW, not a missing purchase. Metalness keeps
-    //    his amp; what he loses is the Sustain to throw it 5 hexes from home,
-    //    which drops his radius to the floor+1 of 4 and leaves him a hex short.
-    const stranded = withNs(st, METAL, { sustainStack: ['C'] });
+    // 🔊 OUT OF RIG IS A BLOWN AMP NOW. There is no radius to be stranded
+    //    outside (`rigRadius` is 0 since 2026-09-27), so the thin-stack fixture
+    //    that stood here stopped stranding anyone. Goes to 11's blown amp is
+    //    the one thing left that takes a rig offline.
+    const stranded = withNs(st, METAL, { ampBlownTurns: 1 });
     const a2 = legalActions(stranded, RONIN);
     eq(ofKind(a2, 'riffOff').length, 0, '📡 a rival outside their own rig radius has nothing to answer with');
     ok(ofKind(a2, 'sonic').some(a => a.targetId === METAL), '📡 …so the beam just lands');

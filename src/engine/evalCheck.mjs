@@ -239,32 +239,32 @@ const term = (st, id, key, view) => evaluate(st, id, view).terms[key];
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 8. THE RIG RADIUS (§3.1's worst square) and 📻 THE BOOM BOX (§4.2).
-//    Stranded outside your own radius is a bare d4 and no riff-off at all.
+// 8. IN RIG = THE AMP IS NOT BLOWN — there is no radius any more.
+//    ⚠️ This section used to test §3.1's worst square: stranded outside your
+//    rig's radius, rescued only by the 📻 Boom Box. The chord vocabularies
+//    (2026-09-27) made `rigRadius` a constant 0 and `sonicRig().inRange` mean
+//    "the amp is not blown", so a far corner is no longer a stranded one, and
+//    asserting otherwise was asserting a board the game does not have. What
+//    still takes a Spirit out of rig is Goes to 11's blown amp — tested here.
+//    (`boomBoxLit` / `distFromHome` still exist and still answer; nothing in the
+//    rig reads them now. 📌 Dead weight in the evaluator, not a defect.)
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  // A hex far from the blue corner's Main Amp — the far corner's home.
   const far = CORNERS.red.homeNum;
   const home = baseState();
   const away = withSpirit(home, RONIN, { num: far });
 
-  eq(term(home, RONIN, 'inRig'), 1, 'sitting on the Main Amp is inside the radius');
+  eq(term(home, RONIN, 'inRig'), 1, 'sitting on the Main Amp is in rig');
   ok(distFromHome(away.spirits.find(s => s.id === RONIN), {}) > 0, 'the far corner really is far');
+  eq(term(away, RONIN, 'inRig'), 1, 'the far corner is in rig too — there is no radius to be stranded outside');
+  eq(term(withNs(away, RONIN, { ampBlownTurns: 1 }), RONIN, 'inRig'), 0,
+     'a blown amp (Goes to 11\'s price) is what takes a Spirit out of rig');
+  eq(term(withNs(home, RONIN, { ampBlownTurns: 1 }), RONIN, 'inRig'), 0,
+     '…at home as anywhere');
 
-  // 📻 Boom Box: Intergalactic 0 alone reads distance 0 while charged.
-  const zeroAway     = withSpirit(baseState(), ZERO, { num: CORNERS.red.homeNum });
-  const zeroCharged  = withNs(zeroAway, ZERO, { chargeFloorTurns: 2 });
-  const roninCharged = withNs(withSpirit(baseState(), RONIN, { num: far }), RONIN, { chargeFloorTurns: 2 });
-
+  // 📻 The Boom Box predicate itself still answers.
   ok(boomBoxLit(ZERO,  { chargeFloorTurns: 1 }), 'a charge lights the Boom Box');
   ok(!boomBoxLit(RONIN,{ chargeFloorTurns: 1 }), 'nobody else gets a Boom Box');
-  eq(distFromHome(zeroCharged.spirits.find(s => s.id === ZERO), zeroCharged.noteStates[ZERO]), 0,
-     '📻 charged, Intergalactic 0 is never stranded');
-  eq(term(zeroCharged, ZERO, 'inRig'), 1, 'the Boom Box keeps the rig live across the board');
-  eq(term(roninCharged, RONIN, 'inRig'), 0,
-     'a charge alone does not carry anyone else\'s rig — only the Boom Box does');
-  eq(term(away, RONIN, 'inRig'), 0,
-     'stranded at the far corner is §3.1\'s worst square: outside the radius');
 
   // The charge term itself fires for everyone — it is the WEIGHT that differs.
   eq(term(withNs(baseState(), METAL, { chargeCeilTurns: 1 }), METAL, 'charge'), 1,
