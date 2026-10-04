@@ -6,6 +6,8 @@
 //   melody step — letters and Shift+letters enter the track; Backspace pulls
 //                 the last one out; Ctrl chords and typing in a text field are
 //                 left alone.
+//   move & act  — Enter ends the turn; a held (auto-repeat) Enter and Enter in a
+//                 text field do not.
 // Run: npm run test:notekeysjourney
 import './clientRenderShim.mjs';
 import { JSDOM } from 'jsdom';
@@ -119,12 +121,24 @@ try {
   ev = await press(keyFor(next)[0], { ...keyFor(next)[1], target: input });
   ok(!ev.defaultPrevented && sheet().melodyLine.length === 1, 'typing in a text field is left alone');
 
-  input.remove();
   ev = await press('Enter');
   ok(ev.defaultPrevented && sheet().hasConfirmed, '⏎ Enter committed the Melody Track');
   ok(JSON.stringify(sheet().committedMelody ?? []) === JSON.stringify([m1]), `…and the committed track is the one typed (${m1})`);
 
-  console.log(`PASS: ${checks} checks — Tab stack switch, stack commit, missing letter, Enter → Melody, melody typing, Shift, Backspace, Ctrl + text-field guards, Enter → Commit`);
+  // ── move & act — ⏎ Enter is End Turn (2026-10-04) ──
+  ok(button('End ⏭'), 'the Move & Act rail is up with its End button');
+  const turnOf = observed.acting, turnNo = observed.turn.count;
+  // ⚠️ A HELD Enter must not run on from Commit into End Turn.
+  ev = await press('Enter', { repeat: true });
+  ok(!ev.defaultPrevented && observed.acting === turnOf && observed.turn.count === turnNo,
+    'an auto-repeated Enter does NOT end the turn');
+  ev = await press('Enter', { target: input });
+  ok(!ev.defaultPrevented && observed.turn.count === turnNo, 'Enter in a text field does not end the turn');
+  ev = await press('Enter');
+  ok(ev.defaultPrevented && observed.turn.count === turnNo + 1, '⏎ Enter ended the turn');
+  ok(observed.acting !== turnOf, `…and the stage passed from ${turnOf} to ${observed.acting}`);
+
+  console.log(`PASS: ${checks} checks — Tab stack switch, stack commit, missing letter, Enter → Melody, melody typing, Shift, Backspace, Ctrl + text-field guards, Enter → Commit, Enter → End Turn (not on repeat)`);
 } finally {
   await act(async () => root.unmount());
   dom.window.close();
