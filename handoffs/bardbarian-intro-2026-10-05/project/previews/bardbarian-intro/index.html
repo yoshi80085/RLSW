@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Bardbarian • The opening act</title><link rel="stylesheet" href="./style.css"></head>
+<body>
+  <main id="intro-lab">
+    <section class="stage" aria-label="Bardbarian arena introduction">
+      <div id="scene"></div><div class="vignette"></div>
+      <header><a href="../../">RIFF LORDS <span>SPIRIT WARS</span></a><span class="edition">THE OPENING ACT <b> / </b> SCENE STUDY 01</span><button id="tune" aria-expanded="true" aria-controls="controls">Hide controls</button></header>
+      <div id="loading" role="status">Summoning the arena…</div><p id="error" role="alert" hidden></p>
+      <div id="god-title"><span>THE ROCK GOD</span><h1>BARDBARIAN</h1><p>Let the Spirits take the stage.</p></div>
+      <div id="labels" aria-hidden="true"></div>
+      <div class="caption"><span id="chapter">01 / THE SUMMONING</span><h2 id="headline">A storm. A god. A stage.</h2><p id="description">The Bardbarian introduces the Spirits.</p></div>
+      <div class="transport">
+        <div class="buttons"><button id="play" class="primary" disabled>Play introduction</button><button id="replay" disabled>Replay</button><button id="skip" disabled>Skip to first turn</button><button id="sound" aria-pressed="false">Sound off</button><output id="time">0:00 / 0:00</output></div>
+        <label class="timeline-label"><span class="sr-only">Scene time</span><input id="timeline" type="range" min="0" max="40" step=".01" value="0" aria-label="Scene time"></label>
+        <div class="cue-nav"><button data-cue="god">The Rock God</button><button data-cue="landing">Crash landing</button><button data-cue="waiting">Waiting spaces</button><button data-cue="turn">First-turn entrance</button><button data-cue="final">Everyone on stage</button></div>
+      </div>
+    </section>
+    <aside id="controls" aria-label="Scene tuning">
+      <div class="panel-title"><span>DIRECTOR’S DESK</span><h2>Shape the entrance.</h2><p>Real arena. Real standees. Their own riffs.</p></div>
+      <label class="field">Players<select id="players" aria-label="Players"><option value="2">2 players · opposite corners</option><option value="3">3 players</option><option value="4" selected>4 players · full arena</option></select></label>
+      <label class="field">Camera<select id="camera" aria-label="Camera"><option value="cinematic">Cinematic · wide to board</option><option value="wide">Hold the wide shot</option><option value="board">Inspect landing spaces</option></select></label>
+      <div class="dials" id="dials"></div>
+      <label class="motion"><input id="reduced" type="checkbox"> Reduced motion</label>
+      <p class="hint">Reduced motion removes falls, shake, lightning flashes and camera travel.</p>
+      <div class="panel-section"><span>FIRST ROUND REHEARSAL</span><div id="seats"></div><button id="next" disabled>Next player’s first turn</button><p class="hint">First turns are demonstrated one after another. Normal play would happen between them.</p></div>
+      <div class="rule"><b>The new entrance rule</b><p>Wait off-board with no fans. On your first turn: play your riff, step onto your starting hex, then welcome your first two fans.</p><p class="hint">Waiting Spirits are outside combat. This preview does not change live matches.</p></div>
+      <div class="save-row"><button id="copy">Copy dial-in</button><button id="reset">Reset look</button></div>
+      <textarea id="export" aria-label="Dial-in settings" readonly hidden></textarea><p id="copy-status" role="status"></p>
+      <p class="hint">Settings save in this browser at this address. Copy your dial-in before moving to another address.</p>
+    </aside>
+  </main>
+  <script type="module" src="./main.js"></script>
+</body></html>

@@ -1,0 +1,366 @@
+{
+  "createdAt": "2026-10-04T23:53:47.444Z",
+  "baseCommit": "feb0f2f6486abf5f25233f968e32fa1035761615",
+  "kind": "isolated-editable-preview-with-local-dependencies-and-assets",
+  "selectedDialIn": "project/previews/bardbarian-intro/alex-dial-in.json",
+  "dependencies": {
+    "three": "0.180.0",
+    "vite": "8.0.10"
+  },
+  "files": [
+    {
+      "path": "CLAUDE_BARDBARIAN_INTRO_HANDOFF.md",
+      "source": "CLAUDE_BARDBARIAN_INTRO_HANDOFF.md",
+      "bytes": 8895,
+      "sha256": "c6a370631037b29b3ca8c7ad6d98b5783b97f180467cf9b0d4d77b1a0e63b246"
+    },
+    {
+      "path": "context/CLAUDE.md",
+      "source": "CLAUDE.md",
+      "bytes": 16569,
+      "sha256": "2515003a0d6b39a7d7745228e5edeb336f674e4b6fa762cde0206efca238ac47"
+    },
+    {
+      "path": "context/docs/archive/SEQUENCING-2026-10-04-before-bardbarian.md",
+      "source": "docs/archive/SEQUENCING-2026-10-04-before-bardbarian.md",
+      "bytes": 6327,
+      "sha256": "c044a8fbe6c9984bd705430c47acec94467dd5c1f93c47be5f1b64f3966bc639"
+    },
+    {
+      "path": "context/docs/archive/SEQUENCING-2026-10-04-test-triage.md",
+      "source": "docs/archive/SEQUENCING-2026-10-04-test-triage.md",
+      "bytes": 3667,
+      "sha256": "d247b1a128ae6b0590bbe2538c1bf3162d4878f64f206b001ec7a291a392c27d"
+    },
+    {
+      "path": "context/package.json",
+      "source": "package.json",
+      "bytes": 20060,
+      "sha256": "265e83154e478b1ae38bb7ae28513ca3706b1a4bed7dc8c876c442b9eb51c4d6"
+    },
+    {
+      "path": "context/src/ARCHITECTURE.md",
+      "source": "src/ARCHITECTURE.md",
+      "bytes": 182754,
+      "sha256": "5f9d7f4fa3bd3d42159083f21d5a42a872eb08c31b846560c2276d223e0a5e97"
+    },
+    {
+      "path": "context/src/SEQUENCING.md",
+      "source": "src/SEQUENCING.md",
+      "bytes": 33173,
+      "sha256": "19593e8a844cb925f045d9b95a7177ff31013f8f681d4e7887cdc1ed8d8f1bd3"
+    },
+    {
+      "path": "context/src/STATE_OF_PLAY.md",
+      "source": "src/STATE_OF_PLAY.md",
+      "bytes": 89637,
+      "sha256": "8db9d273369eedc3e425aeeb30d5864aefd2313c01cdafe04b8fcbd178a2d1ee"
+    },
+    {
+      "path": "project/CLAUDE.md",
+      "source": null,
+      "bytes": 588,
+      "sha256": "b7bf8fdbd785aadc86b42a1c8436846269435955275fdeefcdedb49b9a295315"
+    },
+    {
+      "path": "project/CLAUDE_BARDBARIAN_INTRO_HANDOFF.md",
+      "source": "CLAUDE_BARDBARIAN_INTRO_HANDOFF.md",
+      "bytes": 8895,
+      "sha256": "c6a370631037b29b3ca8c7ad6d98b5783b97f180467cf9b0d4d77b1a0e63b246"
+    },
+    {
+      "path": "project/package.json",
+      "source": null,
+      "bytes": 411,
+      "sha256": "fd0c6e07d4a5bb7cd2a9b3c6972fe392a60c91557df8335e462bee813f146de5"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/alex-dial-in.json",
+      "source": "previews/bardbarian-intro/alex-dial-in.json",
+      "bytes": 830,
+      "sha256": "db9285135b5912652d3fcbccd94cc7d98dc7a1dc21c64b4462af914f73d66704"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/ASSET.md",
+      "source": "previews/bardbarian-intro/ASSET.md",
+      "bytes": 1903,
+      "sha256": "e227b3c683715a0748de3157134d4ccaba3336702369571c8b073fd2aab5bc18"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/audio.js",
+      "source": "previews/bardbarian-intro/audio.js",
+      "bytes": 2628,
+      "sha256": "b2c8c30ccd3a49c59ed1f19c22114d9c61a9ed7368b847bbd817d5a39336067b"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/bardbarian-spectral.png",
+      "source": "previews/bardbarian-intro/bardbarian-spectral.png",
+      "bytes": 2799836,
+      "sha256": "d3ec4382dc3d16bd6a3a979ec2eb3229d50d69c44173862175da6717f208c69e"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/bardbarian.js",
+      "source": "previews/bardbarian-intro/bardbarian.js",
+      "bytes": 5238,
+      "sha256": "bc0b7b6d003851daacea2bac856727000c4d7e9c1fbad0750ea7507dedce386c"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/check.mjs",
+      "source": "previews/bardbarian-intro/check.mjs",
+      "bytes": 3264,
+      "sha256": "e30cfe017ae83e0e4f1dfe5dbcb3407d53bdce14aa4bb7ed8ff3fa81ac6ffc57"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/index.html",
+      "source": "previews/bardbarian-intro/index.html",
+      "bytes": 3827,
+      "sha256": "26a87adf53165157d5939e32b0d4b00ae7bafbd32f0d0f01118ed597cfb60c76"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/main.js",
+      "source": "previews/bardbarian-intro/main.js",
+      "bytes": 9924,
+      "sha256": "da12e8002e88728c604a621fe9fb3a4bd05680189dce64af12f126a54a4cf29f"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/preview.jpg",
+      "source": "previews/bardbarian-intro/preview.jpg",
+      "bytes": 102364,
+      "sha256": "bdd0ad5fbcba6acdad9d9f5334cc21e1c54aa706257e8f15e0442217081e3662"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/README.md",
+      "source": "previews/bardbarian-intro/README.md",
+      "bytes": 6273,
+      "sha256": "da7f0e8097ce60d6fefd6a56e6d7772829448233476a08ca06379cf387270ce6"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/scene.js",
+      "source": "previews/bardbarian-intro/scene.js",
+      "bytes": 12637,
+      "sha256": "56a64631a046c14e802464b0ef5738ee52a9db2a55341aa473447100e61d70db"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/style.css",
+      "source": "previews/bardbarian-intro/style.css",
+      "bytes": 6175,
+      "sha256": "7270cf07a313b701f913c0ebf6e057331bd921e745b8c454863fe1fa07d83197"
+    },
+    {
+      "path": "project/previews/bardbarian-intro/timeline.js",
+      "source": "previews/bardbarian-intro/timeline.js",
+      "bytes": 3142,
+      "sha256": "a799ce98c8003fe44ccdc9900d456d8f83d14ab48222bd22875e2fd9d40630d6"
+    },
+    {
+      "path": "project/public/cosmic-arena/cosmic-arena.glb",
+      "source": "public/cosmic-arena/cosmic-arena.glb",
+      "bytes": 4031416,
+      "sha256": "c3927b4dbbb0cfe3b74df85d5d4e3f11062fd983d7c22bf91b44e474824b6324"
+    },
+    {
+      "path": "project/src/audio/ampVoice.js",
+      "source": "src/audio/ampVoice.js",
+      "bytes": 26508,
+      "sha256": "12a43e380e128c59d3cbf9eabcc0d31594262e5bdbbd2d4e9b820b3c43922497"
+    },
+    {
+      "path": "project/src/audio/mixer.js",
+      "source": "src/audio/mixer.js",
+      "bytes": 5197,
+      "sha256": "db13a85bfd7b24eb1121038d0afad55a7a5e0905f33baee9b5378d786ebf4dd0"
+    },
+    {
+      "path": "project/src/audio/riffSfx.js",
+      "source": "src/audio/riffSfx.js",
+      "bytes": 10974,
+      "sha256": "bf01a71951992bfa8511a85e4d84e62a99ebceb904765f1cb27e867ccb90bc55"
+    },
+    {
+      "path": "project/src/audio/shamisen.js",
+      "source": "src/audio/shamisen.js",
+      "bytes": 9290,
+      "sha256": "fe86814738988c1c7340d37c4fdeb3edf12df3531c1a7f265aadf8a225aeb518"
+    },
+    {
+      "path": "project/src/audio/spiritSting.js",
+      "source": "src/audio/spiritSting.js",
+      "bytes": 14520,
+      "sha256": "42d27387ff954fe093bc1fe11859aab507f7fa82ed370f99cc0f3815cdf41644"
+    },
+    {
+      "path": "project/src/board/arenaCrowd.js",
+      "source": "src/board/arenaCrowd.js",
+      "bytes": 2678,
+      "sha256": "3c3abeff6198793719754d91a73b3a3fa36523a317092fdfca6ebdfda56ed19c"
+    },
+    {
+      "path": "project/src/board/arenaEnvironment.js",
+      "source": "src/board/arenaEnvironment.js",
+      "bytes": 15473,
+      "sha256": "2a6d9718e11296f3a2f81ec51c9b5175a7da259b9da0e7cb983e9866ec5d02eb"
+    },
+    {
+      "path": "project/src/board/boardHelpers.js",
+      "source": "src/board/boardHelpers.js",
+      "bytes": 6024,
+      "sha256": "8a75d0dda15df41515dceb876c404979f84a9f797ab742c3eda323f79f3fb149"
+    },
+    {
+      "path": "project/src/board/constants.js",
+      "source": "src/board/constants.js",
+      "bytes": 471,
+      "sha256": "f64429074e2d21ba73e6bf88e7bd7831e68c81468be39b1d2f58d8f398dacb67"
+    },
+    {
+      "path": "project/src/board/cosmicFans.js",
+      "source": "src/board/cosmicFans.js",
+      "bytes": 18528,
+      "sha256": "34810c6e82711188b7b4cf0ae3b2aed4819811fbc3331bd0bffd0b6b28087084"
+    },
+    {
+      "path": "project/src/board/glowSticks.js",
+      "source": "src/board/glowSticks.js",
+      "bytes": 12148,
+      "sha256": "28a2cbd80ce94e86596faea17a712d3b816ae73c6a7240865f19dea2e183e506"
+    },
+    {
+      "path": "project/src/board/hexGeometry.js",
+      "source": "src/board/hexGeometry.js",
+      "bytes": 5966,
+      "sha256": "b357c0e79a456fa67254e81e8e1be98fbaa3fd31c40aa5d4ea7ee05fe628914b"
+    },
+    {
+      "path": "project/src/board/hexMap.js",
+      "source": "src/board/hexMap.js",
+      "bytes": 1938,
+      "sha256": "3f99d71ca937a9e8c123f7440a93c811132fe98ccbcf46f22168927885d76949"
+    },
+    {
+      "path": "project/src/board/rivenWorld/debris.js",
+      "source": "src/board/rivenWorld/debris.js",
+      "bytes": 1930,
+      "sha256": "8cd8e922f8f86c69c9bf719720915669622df5fb45db3ff4a8f5ffea1c8de28b"
+    },
+    {
+      "path": "project/src/board/rivenWorld/formation.js",
+      "source": "src/board/rivenWorld/formation.js",
+      "bytes": 5279,
+      "sha256": "74525961ac73db5d90fbd9b92c72340032b95e906e841f0149c852bd9fd34443"
+    },
+    {
+      "path": "project/src/board/rivenWorld/index.js",
+      "source": "src/board/rivenWorld/index.js",
+      "bytes": 2810,
+      "sha256": "41dba5521f0fdda1e93f83e45756917e72f2a8ae80c8b1de93a1ad9690b96486"
+    },
+    {
+      "path": "project/src/board/rivenWorld/lightning.js",
+      "source": "src/board/rivenWorld/lightning.js",
+      "bytes": 7504,
+      "sha256": "25a4f6a8185c80bf63b77f86f3f55fa758266f6a75ede2d72fec651db08f56df"
+    },
+    {
+      "path": "project/src/board/rivenWorld/nebula.js",
+      "source": "src/board/rivenWorld/nebula.js",
+      "bytes": 5188,
+      "sha256": "75f66303c81fddc8ae7971fd9f0f45aac536bcddf534f794077e117eb2d5a932"
+    },
+    {
+      "path": "project/src/board/rivenWorld/rockLook.js",
+      "source": "src/board/rivenWorld/rockLook.js",
+      "bytes": 1202,
+      "sha256": "98d588766aa995c2635a7db6d3b045f197da0ba1b0978f65e39bcc273a065f5b"
+    },
+    {
+      "path": "project/src/board/standee.js",
+      "source": "src/board/standee.js",
+      "bytes": 19687,
+      "sha256": "e94f1a0e67bd702dc45642ddfbefbb814951b90d901eaa25ef937a7d8a45b2d7"
+    },
+    {
+      "path": "project/src/board/standeeOutlines.js",
+      "source": "src/board/standeeOutlines.js",
+      "bytes": 66827,
+      "sha256": "d949ab5c94f4159cdd87be9080181b9481cdf32800cb4e83bb3787df60e1b120"
+    },
+    {
+      "path": "project/src/data/corners.js",
+      "source": "src/data/corners.js",
+      "bytes": 1414,
+      "sha256": "9fe763d4577214b0224ecaf2ae70f9a5e282181d8669eb59533341d7f173fe9c"
+    },
+    {
+      "path": "project/src/data/gameConstants.js",
+      "source": "src/data/gameConstants.js",
+      "bytes": 65310,
+      "sha256": "dcc0f55f5cd5c7b38f1df2bcc3b65dcc41f69762262729f72e3f33d2df259ec2"
+    },
+    {
+      "path": "project/src/data/matchSetup.js",
+      "source": "src/data/matchSetup.js",
+      "bytes": 2615,
+      "sha256": "92f42873d189026208eea9f532d2480a7f6ae0d8eef5882777ecd4de360f9c87"
+    },
+    {
+      "path": "project/src/data/spiritIdentity.js",
+      "source": "src/data/spiritIdentity.js",
+      "bytes": 464,
+      "sha256": "dae03a2dabba02ce38c9ff7cd74cf471a2e66f76ada3b3ea213ede9069c803de"
+    },
+    {
+      "path": "project/src/data/spirits.js",
+      "source": "src/data/spirits.js",
+      "bytes": 3989,
+      "sha256": "0185fcdf757b39fe324c803f598befb27e06f932449047497e04b4128d6279a9"
+    },
+    {
+      "path": "project/src/music/melodyIdentity.js",
+      "source": "src/music/melodyIdentity.js",
+      "bytes": 2400,
+      "sha256": "d0f13fab9b4c76b3108893c187d84acaa725e2f55f4f3a6df9376932253c90bc"
+    },
+    {
+      "path": "project/src/music/notes.js",
+      "source": "src/music/notes.js",
+      "bytes": 10853,
+      "sha256": "d0d6449a47a796632f048de4556793552d7d0e11b47db2f193257d1ac5065d01"
+    },
+    {
+      "path": "project/src/standees/Cosmic_Ronin.png",
+      "source": "src/standees/Cosmic_Ronin.png",
+      "bytes": 2662513,
+      "sha256": "a26303846c403606cb8440bfb5b42ab88cc23de44b6b9b253be58b6afb7742a7"
+    },
+    {
+      "path": "project/src/standees/Glamarchy.png",
+      "source": "src/standees/Glamarchy.png",
+      "bytes": 444068,
+      "sha256": "2ff03228e5f9937a60f06b4267aebaf033446b959831ccbad5e3da4cc25f94e3"
+    },
+    {
+      "path": "project/src/standees/Intergalactic_0.png",
+      "source": "src/standees/Intergalactic_0.png",
+      "bytes": 668511,
+      "sha256": "e69786f45a6a9173a1c926b43f0f3a60b6e0e912fe8431f3ef886d26afddb8f5"
+    },
+    {
+      "path": "project/src/standees/Metalness_monster.png",
+      "source": "src/standees/Metalness_monster.png",
+      "bytes": 4916951,
+      "sha256": "417955a3c6d6d12aaeb3dd4a4a982b6051414a9c2df696816f0c6a09ea612d16"
+    },
+    {
+      "path": "project/vite.config.js",
+      "source": null,
+      "bytes": 35,
+      "sha256": "0220ef756c374def7c727cfa98d8c7bd52a72c96fedba9136a0b2335938cd7b3"
+    },
+    {
+      "path": "README.md",
+      "source": null,
+      "bytes": 1070,
+      "sha256": "e6a6d78d3eca501483559b2cd56f42289da3a2d781bb5ab60761cc62c0ae9bd5"
+    }
+  ]
+}

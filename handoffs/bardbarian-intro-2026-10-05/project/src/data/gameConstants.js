@@ -1,0 +1,1009 @@
+// 🪦 `DB_UPGRADE_THRESHOLD` is gone (2026-10-02): Db no longer exists, so
+// there is no bar to fill and nothing for it to unlock.
+
+// Stock is a reservoir, not a fresh hand. Unused notes carry
+// over; only this many spent slots recharge per turn.
+export const STOCK_REFILL_RATE = 6;
+
+// -- 🎼 WEIGHTED STOCK DRAW — half guaranteed in tune, half left to chance ----
+//
+// Every note drawn into a Spirit's OWN hand — the opening stock, the turn-start
+// refill, the Ronin's second note on a find — is, with this probability, picked
+// straight from the palette (`playableScale(root, mode)`). Otherwise it is picked
+// from all twelve, exactly as the draw always was, and may land in tune anyway.
+//
+// 🎯 THE RESULTING IN-PALETTE SHARE IS  g + (1 − g) × paletteSize / 12:
+//   Ronin, six-note Hirajoshi  → 0.50 + 0.50 × 6/12 = **75%**
+//   seven-note modes           → 0.50 + 0.50 × 7/12 = **~79%**
+// (Uniform over twelve it was 50% and 58%.)
+//
+// ⭐ ALEX'S CALL, 2026-09-16, AND THE REASONING IS HIS. The first build was a flat
+// 75% for every Spirit. He preferred this shape: *"I still like the idea of some
+// variance. And if there are basically guaranteed enough notes in a scale to
+// cover moving, the argument of needing to use Discord notes to possibly move is
+// moot. I'd like to try … 50% guaranteed and 50% random."* So:
+//   · the guaranteed half makes a playable line close to certain;
+//   · the random half keeps hands genuinely different from each other;
+//   · a seven-note palette ends ~4 points ahead of the Ronin's six — accepted, and
+//     it is the price of the random half being honestly random.
+// 2/3 guaranteed (83% / 86%) was also on the table — his own first proposal —
+// and he chose the half.
+//
+// ⚠️ THE BOARD IS NOT WEIGHTED, AND MUST NOT BE. Lost Chord tokens are shared by
+// every Spirit, and there is no one palette to lean them toward — they have
+// their own lean, `TOKEN_UNLOCK_SPAWN_SHARE` below.
+//
+// 📌 This shapes NEW notes. Carried-over notes are respelled, not redrawn, so when
+// the root moves some of them stop fitting and a real hand sits a little lower.
+export const STOCK_PALETTE_GUARANTEE = 0.5;
+
+// -- DRIVE / SUSTAIN STACK SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) --
+export const STACK_COMMIT_BUDGET = 3;   // max notes committed to stacks per turn (split freely between Drive & Sustain)
+
+// -- 🅰️ STACK CAPACITY IS FOUND ON THE BOARD (PROGRESSION_REWRITE_DESIGN §2) --
+//
+// ⚠️ IT USED TO BE BOUGHT, AND THAT IS THE CHANGE. Slot 4 came with
+// `theory_dom7`, slot 5 with `theory_modes`, slot 6 with `theory_chromatic` —
+// 38 Db up a ladder `GAME_BRIEF.md` §16 called "close to the only ladder, and
+// buying it is close to automatic". The Theory branch is deleted; the same three
+// seats are now FOUND, by walking onto a Lost Chord that extends your stack's
+// root. `music/stackSlots.js` owns the ladder and the hunt.
+export const STACK_CAP_BASE = 3;   // seats every Spirit opens with
+export const STACK_CAP_MAX  = 6;   // ceiling once all three seats are found
+// 📌 STACK_CAP_BASE + SLOT_LADDER.length must equal STACK_CAP_MAX. Asserted in
+// `stackSlotsCheck.mjs` §1 — this file cannot import the ladder to check it
+// itself without making `data` and `music` mutually dependent.
+
+// 🎯 THE SINGLE SOURCE OF TRUTH, AND IT IS NOW PER STACK. Every read of "how many
+// seats does this stack have" must come through here; never compare against
+// STACK_CAP_MAX (that is the RENDER ceiling, used only to draw the locked seats).
+//
+// ⚠️ THE SIGNATURE CHANGED ON 2026-09-02 AND IT THROWS RATHER THAN COPING.
+// It used to take `unlockedSkills`; it now takes the whole note sheet plus WHICH
+// stack, because Drive and Sustain have different roots and therefore find their
+// seats independently — that asymmetry is half of why the design doubles the
+// board's supply for free. An array reaching this function is an un-migrated
+// caller, and the quiet version of that failure is every stack silently capped at
+// 3 forever. `legalActionsCheck` §15 is what a quiet version of this looks like
+// after six months, so it is loud instead.
+export function stackCapFor(noteState, which = 'drive') {
+  if (Array.isArray(noteState)) {
+    throw new TypeError(
+      'stackCapFor(noteState, which) — an ARRAY was passed. This took `unlockedSkills` ' +
+      'until 2026-09-02; stack seats are now found on the board and live on the note ' +
+      'sheet as `driveSlots` / `sustainSlots`. Pass the note sheet and the stack.');
+  }
+  const ns    = noteState ?? {};
+  const found = which === 'sustain' ? (ns.sustainSlots ?? 0) : (ns.driveSlots ?? 0);
+  return Math.min(STACK_CAP_MAX, STACK_CAP_BASE + Math.max(0, Math.floor(found || 0)));
+}
+
+// NOTE: the old flat `STACK_CAP = 5` export is GONE on purpose. Anything that
+// used to compare a stack length against it must now call stackCapFor(); use
+// STACK_CAP_MAX only for layout loops that draw every slot, locked ones
+// included. Archived code (Rake's noteCost, gallopCondition) will fail to
+// import rather than silently assuming 5 — fix it to take the derived cap.
+
+// -- 🧪 THE SLIDE (METALNESS_REWORK_DESIGN.md §2) --
+// Free movement BACKWARDS along your own slime trail. Speed 4 + 2 slide steps
+// is the "~6 effective moves" the rework quotes.
+//
+// ⚠️ THE CAP AND THE CONSUMPTION ARE BOTH LIVE, AND THEY PRICE DIFFERENT THINGS.
+// Sliding eats the slime it crosses (§5's ruling: all three uses on one meter),
+// which prices a retreat against the Tentacle's reach and the Slam's fuel — a
+// long escape costs a long road. That is the INTERESTING cost, and it is
+// self-limiting only in the long run. The cap is what stops one enormous
+// disengage in a single turn, which no amount of trail-spending would prevent.
+// Tune the cap; the consumption is the design.
+export const SLIDE_STEPS_PER_TURN = 2;
+
+// -- 🧪 SLIME IS AN ABILITY, NOT A PASSIVE (2026-08-17 rework) --
+//
+// ⚠️ IT USED TO TRAIL BEHIND HIM FOR FREE, and that was the design's one
+// unanswered complaint. §5 of the rework doc says it plainly: "it is a resource
+// he accrues for free that rivals can only avoid." Everything else in §3 treats
+// the trail as a CURRENCY — three uses competing for one pool — and a currency
+// nobody pays for is not a currency, it is weather.
+//
+// So laying road is now a deliberate act. It costs 1 AP, it can be called once
+// per turn, and it SETS his movement for that turn rather than adding to it.
+// Walking with it off lays nothing at all.
+//
+// ⚠️ SET, NOT ADD — and the distinction is the whole shape of the turn. AP is
+// `min(melody, speed)`, so a good melody already buys 4 steps; paying 1 for
+// Slime and keeping 3 would make it a straight tax on a good turn. Setting it
+// instead means Slime is worth exactly the same three steps whatever you rolled
+// up — it turns a BAD melody into a road-building turn, which is the first thing
+// in his kit that gives a weak commit somewhere useful to go. (Same idiom as
+// `Goes to 11` in §4d: the interesting version of a number is the one that sets.)
+export const SLIME_AP_COST    = 1;   // to call it
+export const SLIME_MOVE_STEPS = 3;   // …and your movement BECOMES this
+
+// -- 🧪 THE ROAD IS CAPPED BY LENGTH, NOT BY TIME (METALNESS_REWORK_DESIGN.md §3) --
+//
+// TWO rules end a hex, and under normal play they agree.
+//
+// ⚠️ THE LIFETIME IS COUNTED IN HIS OWN TURNS, NOT IN SPIRIT-TURNS. The shipped
+// decay ticked at the end of EVERY Spirit's turn, which in a four-handed game
+// burns a "3 turn" trail in less than one revolution — the road would be gone
+// before its owner ever acted again. `economy.js` carries the same warning about
+// Sunbeam's `blindTurns`, and `decayPoisonSlime` fell into it once already. This
+// is the third system with that shape. Tick it on the OWNER'S turn end.
+//
+// Three of his turns and a hard cap of six means: lay 3 on turn one, lay 3 more
+// on turn two and the board holds all six, lay a third batch on turn three and
+// the FIRST batch is pushed off the end. If he stops laying, the clock catches
+// it instead. That is one rule the player can state — "your last two batches" —
+// expressed as the two mechanisms that enforce it from either side.
+export const SLIME_LIFETIME_TURNS = 3;   // ticked on HIS turn end, never anyone else's
+export const SLIME_TRAIL_MAX      = 6;   // …and a third batch evicts the first
+
+// -- AMP / DICE SYSTEM --
+// ── NEW RIG SYSTEM (AMP_DECK_DESIGN.md) ──
+// Every Spirit starts with a Main Amp at their corner: baseline 1d6, board-wide.
+// Amp I–III add dice to the pool; Power I–III upgrade dice d6→d8 (gated behind
+// matching Amp tier); Range I–III extend the radius where rig bonuses apply.
+// Roll is keep-highest. Outside your Range you fall back to baseline 1d6.
+export const SONIC_BASE_DIE     = 6;
+export const SONIC_UPGRADED_DIE = 8;
+export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
+// 🌀 PSYCHO BUSHIDO — the Iaijutsu dash (§4.1). The cooldown was already ticked
+// by `turnFlow` and stored by `economy` long before the move was reachable to a
+// bot; these two are the rest of its rule, hoisted out of the monolith so the
+// engine and the client cannot drift.
+// ⚠️ THE BONUS IS THE GROUND HE COVERED, AND THE SIGN MATTERS. It used to be
+// `apLeft - dist`, which paid MOST for a charge of zero hexes and nothing for a
+// full-length one. Alex caught it 2026-08-20 by reading the payout table, and
+// that is `SEQUENCING.md` §B8. ⚠️ THE LADDER BELOW MUST STAY MONOTONIC — the
+// day it pays more at 3 than at 5, the sign has flipped back in a new costume.
+//
+// ⭐ RESPECCED 2026-09-04f — `RONIN_ABILITY_DESIGN.md` §2.1.1.
+// The old rule policed range with a PAYOUT CURVE: a charge from next door was
+// legal but strictly worse than the Swing it replaced, because the dash spent
+// the whole AP pool. The new rule polices it with a WINDOW — a charge from next
+// door is not legal at all — and pays a gradient INSIDE that window.
+//
+// 🎯 BOTH HALVES OF THE ARGUMENT WERE RIGHT AND ALEX TOOK BOTH. The window is
+// the legality rule ("the ultimate beginner" can read a bright line); the ladder
+// is the payout ("farther is stronger" is what §2.1 says the ability IS). A flat
+// bonus inside a window would have deleted the second one.
+// 🪦 THE FLAT UNLOCK PRICE (`FLAT_ABILITY_UNLOCK_DB`, 6) IS GONE — 2026-10-02.
+// There is nothing to unlock: the draft picks two abilities and both start
+// ready, and Db itself was cut (Alex: "the cooldowns and 'sacrifices' are the
+// gate, not another economy"). `UPGRADE_SHOP_DESIGN.md` is superseded.
+
+export const PSYCHO_BUSHIDO_CD        = 2;  // rounds, ticked in turnFlow — the universal 2 (the 2026-09-04 respec's 4 is gone)
+export const PSYCHO_BUSHIDO_MIN_RANGE = 3;  // ⭐ closer than this is ILLEGAL, not merely bad
+export const PSYCHO_BUSHIDO_MAX_RANGE = 5;  // ⭐ farther than this is out of the lane
+// ⭐ FLAT, NOT "EVERYTHING YOU HAVE LEFT". The dash used to bill `apLeft`, which
+// made the ability cost a different amount every time it was thrown and made the
+// close charge self-policing. The window does that job now, so the bill is a
+// number: 3 AP total, paid in one go with the Action Token since the strike
+// stopped being a Swing (2026-10-01 — a Drive-vs-Sustain burst, `bushido.js`).
+// ⚠️ IT COMES OUT OF THE SAME `moveStepsLeft` POOL as walking, Shukuchi and the
+// Swing — "3 AP flat" and "movement consumed" in §2.1.1's table are one line,
+// not two. If they were two rules the flat number would mean nothing.
+export const PSYCHO_BUSHIDO_AP_COST   = 3;
+// ⭐ AND IT SPENDS 2 OFF THE DRIVE STACK (Alex, 2026-09-04f). This is the only
+// price in the game paid in PROGRESSION currency rather than combat currency:
+// `music/stackSlots.js` reads `driveStack[0]` as the root that decides which
+// note opens your next seat, so a charge does not just cost Db and tempo — it
+// can cost you the chord you were building. ⚠️ Uncosted by design (the ledger
+// says so): balance is deferred (§B10), so this is recorded, not tuned.
+export const PSYCHO_BUSHIDO_STACK_COST = 2;
+// ⚡ THE RANGE TURNS d6s INTO d8s: 3 → two, 4 → three, 5 → four (Alex,
+// 2026-09-30: "Bushido essentially starts turning the d6 into d8's - the further
+// away the strike, the more dice turn to d8's"; his rulings 2026-10-01: it
+// REPLACES the old Drive bonus, only d6s upgrade, and a pool with fewer d6s than
+// the rung simply runs out). `engine/systems/bushido.js` `bushidoUpgrade` applies it.
+// 🪦 WAS `PSYCHO_BUSHIDO_DRIVE_LADDER` — +2/+3/+4 paid into `tempDrive`, which
+// `sonicRig.drivePowerBreakdown` caps at 2 DICE, so ranges 4 and 5 bought exactly
+// what range 3 did. Same numbers, now as upgrades the cap cannot flatten.
+// 📌 ONE FUNCTION, READ BY THE KERNEL AND THE CLIENT BOTH. Out of the window it
+// answers 0 — a caller that has not checked legality gets nothing rather than a
+// negative or a NaN.
+export const PSYCHO_BUSHIDO_D8_LADDER = [2, 3, 4];
+export function psychoBushidoD8s(dist) {
+  const i = Math.round(dist) - PSYCHO_BUSHIDO_MIN_RANGE;
+  return PSYCHO_BUSHIDO_D8_LADDER[i] ?? 0;
+}
+
+// ─── 🌀 SHUKUCHI ARPEGGIO — 縮地, "shrinking the earth" ───────────────────────
+//
+// An arpeggio is one chord played as separate notes in sequence, and that is
+// exactly the movement: one distance, taken as three strikes of the foot.
+// `RONIN_ABILITY_DESIGN.md` §2.5 and §2.5.0.
+//
+// ⭐ IT IS A MOVEMENT MODE, NOT A MOVEMENT TURN (Alex, 2026-09-04). The first
+// sketch spent the whole turn for six hexes. What ships bills each hop out of
+// the SAME `moveStepsLeft` pool as walking, Swinging and Bushido — so three hops
+// is a Bushido he did not throw, and the ability competes with the rest of his
+// turn instead of sitting outside it.
+//
+// ⚠️ THE HOP JUMPS OVER EVERYTHING — bodies, hazards, walls, 🐙 the slime trail
+// (Alex, §2.5.2 #1). Only the LANDING hex has to be clear. That is knowingly a
+// hard counter to area denial; the accepted brake is the AP bill, NOT a hazard
+// exception, because a Shukuchi that stops at slime is just a walk on a cooldown.
+export const SHUKUCHI_CD         = 2;  // rounds, ticked in turnFlow
+export const SHUKUCHI_MAX_HOPS   = 3;  // hops available for the rest of the turn, once fired
+export const SHUKUCHI_HOP_RINGS  = 2;  // every hop is EXACTLY this far — not "up to"
+export const SHUKUCHI_AP_PER_HOP = 1;  // ⭐ the whole balance of the ability lives on this line
+
+// ─── 🕒 EVERY ABILITY TAKES A COOLDOWN ──────────────────────────────────────
+//
+// Alex's rule, 2026-08-22 (`RONIN_ABILITY_DESIGN.md` §0): an ability with no
+// price and no recharge is not a decision, it is a DEFAULT. It gets taken every
+// turn it is legal and stops competing with the rest of the turn.
+//
+// 🪦 THE PRICE IS NO LONGER Db (Alex, 2026-10-02). Db was cut whole — the
+// cooldown below and each ability's own SACRIFICE (AP, the Action Token, stack
+// notes, Sustain, strings) are the gate. ⚠️ Read "price" in any older doc as one
+// of those sacrifices, never as a currency.
+//
+// 🎯 THERE ARE NO EXEMPTIONS — THERE ARE DIFFERENT RATES. Alex's call, 2026-08-22:
+// *"Make it a 1 turn cool down. Different abilities can cool down at different
+// rates."* Space is Displaced was the strongest exemption case in the game (its
+// own skill text used to promise "no cooldown", and the blink is the slowest
+// Spirit's compensation for being slow) and it did not get one — it got a SHORT
+// number instead. That is the better rule: "is this ability special?" is an
+// argument with no end, "how long should this one be?" is a number.
+//
+// ⏸️ INNATE PASSIVES ARE OUT OF SCOPE, and that is a scope line, not an
+// exemption. Boom Box, Poison Slime and crowd virtuosity are not
+// things you DO — there is no moment of use to charge for. An innate is the
+// character; an active is a choice, and the rule exists to make choices cost.
+export const SHADOW_ILLUSION_CD    = 2;   // rounds — was 3, respecced 2026-09-04f
+// ⭐ HOW MANY OF RONIN'S TURNS THE DOUBLE STANDS. Respecced 3 → 2 (§2.2.1):
+// dearer to own, cheaper to fire, gone sooner — a bluff that stands for three
+// turns stops being a bluff and becomes a fact.
+// ⚠️ IT WAS A BARE `const SHADOW_ILLUSION_TURNS = 3` INSIDE THE 15,000-LINE
+// MONOLITH, which is why it is here now: `turnFlow.js` ticks the double down and
+// could not see the number that set it, so the kernel and the client agreed only
+// by luck. That is the exact shape of the drift `PSYCHO_BUSHIDO_CD` cost.
+// 📌 THE UPKEEP DID NOT NEED A CHANGE. §2.2.1 moves it from "1 Sustain per turn"
+// to "per round" — but `tickShadowIllusion` is called from `advanceTurnNotes`,
+// which fires at the start of the OWNER's turn, so it has ALWAYS been per round
+// by `cooldowns.js`'s convention. The doc was describing the code it already had.
+export const SHADOW_ILLUSION_TURNS = 2;
+// 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02, `RONIN_ABILITY_DESIGN.md`
+// §2.3.00): three strings tuned in the chord step, cast on a rival, whose palette
+// becomes Iwato for their next two turns. The rules are
+// `engine/systems/iwatoCurse.js`; the cooldown is the universal one in
+// `cooldowns.js` (2) — this name is what the docs quote.
+export const CURSED_SHAMISEN_CD    = 2;   // rounds — gap between activations
+
+// 🌌🕳️💻☀️ INTERGALACTIC 0. He is the zoner: his kit is about doing a small thing
+// often, so his rates are short. The shapes justify the spread —
+//   Displace 1  · Alex's number. It is his answer to being speed 4, so it has to
+//                 come back fast or the cooldown re-strands the character the
+//                 ability exists to un-strand.
+//   Gravity  2  · the vortex already hangs for a full round, so a 1 would let the
+//                 next one open the instant the last collapsed — no gap at all.
+//   Inject   2  · a 1 would be decorative: `codeInjectTurns` already blocks
+//                 re-arming while a patch is live, so the cooldown only starts
+//                 mattering at 2 — one turn where the bluff is genuinely
+//                 unavailable. ⚠️ It stays HIDDEN either way: the counter lives
+//                 on his own sheet, and rivals never learn he armed it, so they
+//                 cannot infer the recharge. Do not surface it anywhere shared.
+//   Sunbeam  2  · the only one that fires AUTOMATICALLY on any connecting hit, so
+//                 it is the only one where the cooldown is the whole restraint.
+export const DISPLACE_CD      = 2;
+export const GRAVITY_CD       = 2;
+export const CODE_INJECT_CD   = 2;
+export const SUNBEAM_CD       = 2;
+
+// 🪦 Per-use Db (`PSYCHO_BUSHIDO_DB_COST`, `SHADOW_ILLUSION_DB_COST`,
+// `CURSED_SHAMISEN_DB_COST`, all 5) went with Db itself, 2026-10-02. Each of
+// these abilities is gated by its cooldown and its own sacrifice — Bushido's AP
+// and Drive notes, the double's Sustain drain, the Shamisen's strings and Action.
+
+// 👤 SHADOW ILLUSION — Sustain drain, replacing the 1 Drive token it used to
+// cost at summon. Charged at the start of each of the Ronin's OWN turns while
+// the double stands, and the double COLLAPSES when he has no Sustain left to
+// feed it.
+//
+// 🎯 THE DRAIN IS THE ABILITY, not a tax on it. A one-off token at summon time
+// is a price you pay and forget; a drain is a clock you can hear running. It is
+// what makes the double a genuine trade — *"I can be in two places at once, but
+// I am giving up my defences to do it"* — and it means the Ronin is at his most
+// fragile exactly while rivals cannot tell which body to hit.
+export const SHADOW_ILLUSION_SUSTAIN_DRAIN = 1;
+
+// 🪦 THE GLOW-AND-DEBT SHAMISEN (2026-08-26 → 2026-10-02) is gone: its
+// `CURSED_SHAMISEN_DURATION` (3) and `CURSED_SHAMISEN_PAYOFF_COST` (1 Db/round)
+// went with it. The Iwato curse's own numbers (3 strings, 2 cursed turns, 3
+// Iwato notes to exorcise) live with its look in `board/cursedShamisen.js`.
+
+// 🫁 THE RIG BREATHES — SEQUENCING.md §5.H⁶, shipped 2026-08-20.
+//
+// The radius is no longer a tier you bought. It is
+//
+//     RIG_RADIUS_FLOOR + (your turn ? Drive stack : Sustain stack).length
+//
+// which means the rig reaches further the more you have going on, and shrinks
+// when you spend or get frayed. `RIG_RADIUS_BY_TIER = [4, 5, 7, Infinity]` is
+// GONE rather than deprecated, on purpose: nothing should be able to quietly
+// keep asking a Range tier how far it carries when Range tiers no longer exist.
+//
+// ⚠️ THE FLOOR IS THE ANTI-SPIRAL AND 3 IS NOT ARBITRARY. `makeInitialNoteState`
+// seeds both stacks with the ROOT ALONE, so every Spirit opens the game at
+// 3 + 1 = 4 — exactly the old tier-0 radius. Nothing about the resting state of
+// the board changed. Only a Spirit who has genuinely been emptied out (a Swing
+// spends 2 Drive; a Pose sheds Sustain; `chordFray` eats it under a beating)
+// drops to 3, and a full six-note stack reaches 9. Lower this and you build a
+// game where the Spirit already losing is the one who cannot answer a beam.
+export const RIG_RADIUS_FLOOR = 3;
+
+// ─── 🎛️ THE RIG WORKOUT (MARQUEE_QUIZ_DESIGN.md §4–5) ────────────────────────
+//
+// Pool size and die size are no longer bought with Db. They are WON at the
+// marquee quiz's RIG lane, spent immediately on one of two tracks, and lost to
+// neglect rather than to a timer.
+//
+//   `rigPool`  — extra d6 in the Sonic pool. Stands in for the old Amp tier.
+//   `rigPower` — dice upgraded d6 → d8. Stands in for the old Power tier.
+//
+// ⚠️ THE CEILING IS THE OLD CEILING, ON PURPOSE. `AMP_DECK_DESIGN.md` §2.5 is
+// explicit that the keep-highest rework dropped the maximum Sonic roll from 12
+// to 8, and that every rule leaning on high Sonic rolls — margin-scaled push
+// `ceil(margin/2)`, the knockback tiers, the 7+ Performance triggers — was
+// re-checked against that 8. Capping the workout at 3 pool + 3 power reproduces
+// Amp III / Power III exactly, so nothing downstream needs re-checking. A hard
+// question that wants to feel special should feel special by LASTING LONGER,
+// never by introducing a d10.
+export const RIG_TIER_MAX = 3;
+
+// ⚠️ THE FLOOR IS TODAY'S FREE GRANT, AND IT IS WHAT STOPS THE SPIRAL. Every
+// Spirit used to start with `amp_1` seeded into `unlockedSkills` — 2d6 in range,
+// 1d6 out of it. `rigPool` starts AT this floor and atrophy can never take it
+// below, so the worst case of total neglect is exactly where everyone begins
+// the game: survivable by definition, and no way to be quizzed out of existence
+// by a rival who happens to know their gear.
+export const RIG_POOL_FLOOR = 1;
+
+// 🏋️ ATROPHY — one tier shed for every N of the OWNER'S OWN turns that pass
+// without training at a marquee.
+//
+// ⚠️ COUNTED IN HIS OWN TURNS, NOT IN SPIRIT-TURNS, and this is the third
+// system in the file to carry that warning (see `SLIME_LIFETIME_TURNS` and
+// Sunbeam's `blindTurns`). Tick it on every Spirit's turn end in a four-handed
+// game and a "3 turn" clock expires before its owner has acted twice.
+//
+// 📌 3 IS A GUESS AND IS FLAGGED AS ONE in MARQUEE_QUIZ_DESIGN.md §9. It wants
+// a bench: too fast and the marquee becomes a treadmill nobody can step off,
+// too slow and the "workout" is a purchase with extra steps.
+export const RIG_ATROPHY_TURNS = 3;
+// 🛡️ Sonic DEFENCE die. A rival inside their own rig radius answers the beam
+// with their amp behind them (d6). Caught outside it, they have nothing to push
+// back with and scramble a bare d4 — the same die a Thrash defence rolls. This
+// is also what makes a RIFF-OFF impossible: no live rig, no answering riff.
+export const SONIC_DEF_DIE            = 6;
+export const SONIC_DEF_DIE_OUT_OF_RIG = 4;
+
+export const CAMERA_ZOOM_MS  = 620;          // push-in tween length; impact rumble lands as it settles
+
+// -- LIMELIGHT SYSTEM --
+export const LIMELIGHT_HEX    = 56;   // centre stage hex
+export const LIMELIGHT_TO_WIN = 3;    // (legacy -- instant Limelight win removed; kept for overlay refs)
+export const LIMELIGHT_FAME   = 1;    // (legacy) the old flat payout for merely STANDING on the centre.
+                                      // Superseded by the Pose economy below -- kept only so old
+                                      // saves / overlay refs don't explode. Nothing grants it now.
+
+// -- STRIKE A POSE (2026-08 Limelight rework) --------------------------------
+// Standing on the centre hex pays NOTHING. The Limelight only pays a Spirit who
+// STRIKES A POSE on it, and a pose is a defenceless stance: a posing Spirit
+// rolls NO defence die (engine/systems/combat.js -- defTotal is a flat 0), so
+// anyone who reaches them lands automatically and hard.
+//
+// Why the escalating payout: a flat rate makes the centre a place you either
+// always want or never want. An escalating one makes it a place you have to
+// SURVIVE to profit from -- round one in the middle is barely worth the risk,
+// round four is a Spirit the whole table has to deal with. The count is
+// CUMULATIVE and never resets (getting shoved off costs you the tempo, not the
+// reputation you built), so the threat level of a repeat poser is legible: the
+// HUD shows exactly how dangerous the middle has made them.
+export const POSE_FP_STEP = 1;   // FP added per pose round survived
+export const POSE_FP_MAX  = 4;   // ...capped here. Matches FAME_PER_TURN_CAP -- a
+                                 // maxed poser earns a whole turn's FP ceiling by
+                                 // standing still with their guard down.
+
+// ✨🎸 THE POSE CEILING RIDES THE MODE, 2026-09-15 — Alex's call, *"ride the
+// mode, like the riff cap."*
+//
+// 🐛 WHAT THIS FIXES, AND IT WAS A REAL ONE. `POSE_FP_MAX` says in its own
+// comment that it MATCHES `FAME_PER_TURN_CAP` — and that match silently broke
+// the day `FAME_PER_TURN_CAP_ROUNDS` was added. `RIFF_FP_TURN_CAP` was taught to
+// follow the mode (`battleFlow.grantFame`'s `capScale`); the pose ceiling never
+// was. So in a round-limited match every other Fame source ran uncapped into the
+// hundreds while a maxed pose stayed pinned at 4 — the Limelight economy
+// quietly becoming worthless in the mode that is now the DEFAULT.
+//
+// ⚠️ IT WAS NOT A BUG YOU COULD SEE. Nothing errored, no suite went red, and the
+// constant's comment went on describing a relationship that had stopped being
+// true. The 🎓 general form: **a constant defined as "matches X" does not follow
+// X — it copies X once, and the copy rots when X learns something new.**
+export const POSE_FP_MAX_ROUNDS = Infinity;
+
+/**
+ * 🎸 The per-turn Fame ceiling for a mode. ⭐ THE SINGLE SOURCE OF THE MODE RULE.
+ *
+ * ⚠️ READ THE MODE THROUGH THIS, NEVER BY TESTING THE STRING YOURSELF.
+ * `limelight.js`'s own header records what the third transcription of a rule
+ * costs: *"they agreed, which is exactly why the duplication was safe to keep
+ * and dangerous to leave."* This is that lesson applied before the fact —
+ * `battleFlow.famePerTurnCap` layers the `fameCap` bench instrument on top of
+ * this, and `poseFpMaxFor` is the same rule for the pose ladder, but the
+ * `=== 'rounds'` test itself lives in exactly one place: here.
+ */
+export function famePerTurnCapFor(winCondition) {
+  return winCondition === 'rounds' ? FAME_PER_TURN_CAP_ROUNDS : FAME_PER_TURN_CAP;
+}
+
+/** ✨ The pose ceiling for a mode — `famePerTurnCapFor`'s twin. */
+export function poseFpMaxFor(winCondition) {
+  return winCondition === 'rounds' ? POSE_FP_MAX_ROUNDS : POSE_FP_MAX;
+}
+// A pose costs a Sustain note per round -- posturing is not playing defence, and
+// the armour audibly decays while you hold it. Camping the middle therefore
+// erodes the exact stat that keeps you alive there. A Spirit with an empty
+// Sustain Stack may STILL pose: they just do it with nothing between them and
+// the next swing. Their funeral.
+export const POSE_SUSTAIN_COST = 1;
+
+// ─── 🔦 THE FOUR SPOTLIGHTS (Alex, 2026-09-25) ──────────────────────────────
+// One light per corner, each OWNED by the seat in that corner, each parked on
+// one hex of its own quarter for a whole round and stepping one hex at round
+// end. Rules live in `engine/systems/spotlights.js`; these are its numbers.
+// 🧊 BALANCE IS FROZEN (CLAUDE.md) — every number below is a first placeholder,
+// written down so it can be found, not a tuned value.
+//
+// ⚠️ A POSE NO LONGER DROPS THE GUARD TO NOTHING — anywhere, the Limelight
+// included. It was "no Sustain roll at all"; Alex replaced it with Sustain −1.
+// `attackParams` folds this into `defStat` and hands the reducer `posing:false`,
+// so the reducer's legacy zero-shield branch only ever runs for old replays.
+export const POSE_SUSTAIN_PENALTY = 1;
+// Striking a pose under a spotlight costs this many Sustain notes, paid on the
+// spot (the Limelight keeps its own per-round toll above). No Fame is paid.
+export const SPOTLIGHT_POSE_SUSTAIN_COST = 1;
+// Attacking from under your OWN light: +1 Drive for that attack, i.e. one more
+// die in the pool. It is positional, so it cannot be banked or carried.
+export const SPOTLIGHT_HOME_DRIVE = 1;
+// Posing under your own light heals by how hurt you are (Alex's ladder):
+// 10+ Vibe left → +1, 5–9 → +2, 1–4 → +3. Always clamped to maxVibe.
+export const SPOTLIGHT_HEAL_LADDER = [
+  { minVibe: 10, heal: 1 },
+  { minVibe: 5,  heal: 2 },
+  { minVibe: 0,  heal: 3 },
+];
+// Posing under a RIVAL's light steals this many of their Casual fans, never
+// Diehards. Fewer if they have fewer, or if your house is full.
+export const SPOTLIGHT_STEAL_CASUALS = 2;
+// FP-per-life scales with player count: fewer players → more FP per life.
+// 2P → 8, 3P → 7, 4P → 6.  fameToWin = startingLives × fpPerLife(playerCount).
+export function fpPerLife(playerCount) { return Math.max(5, 10 - playerCount); }
+export const FAME_TO_WIN      = 24;   // legacy fallback (3 lives × 8) — runtime uses startingLives × fpPerLife(playerCount)
+
+// ─── ⭐📏 THE FAME TRACK'S RIGHT-HAND END, IN BATTLE OF THE BANDS ───────────
+//
+// 🎸 A SCORE GAME HAS NO TARGET, SO THE SCOREBOARD NEEDS A SCALE INSTEAD.
+// `battleFlow.fameToWin` returns Infinity in this mode by design, and Infinity
+// is not a coordinate system — `ui/FameRace.jsx` maps every blip through it.
+// This is what it maps through instead. It is furniture, not a rule: nothing in
+// the match reads it, and a Spirit who beats it is drawn "off the chart" rather
+// than stopped.
+//
+// 🎯 MEASURED, NOT GUESSED. `FAME_TRACK_REDESIGN.md` §3🅱️ is explicit that this
+// "is set from whatever a played Battle of the Bands actually produces — not
+// guessed now". 120 matches per cell × 3 seat counts × 3 round limits = 1080
+// matches, searcher v searcher, at the rules as they ship (elimination off,
+// per-turn cap OFF in this mode, fans at 0.12/5.0). `.scratch/famescale.mjs`,
+// 2026-09-16. Leader's final Fame, mean (p90):
+//
+//              10 rounds      15 rounds      20 rounds
+//     2P       37.4 (58)      60.1 (92)      96.5 (168)
+//     3P       47.1 (71)      70.6 (101)    105.3 (188)
+//     4P       43.2 (62)      62.2 (90)      85.2 (118)
+//
+// ⚠️ IT IS SUPER-LINEAR IN ROUNDS, WHICH IS THE WHOLE REASON THIS IS A CURVE
+// AND NOT A RATE. Fame per round is not constant — at 2P it climbs 3.74 → 4.01
+// → 4.83 as the match lengthens — because fans ACCUMULATE and the crowd
+// multiplier compounds on top of them. A "Fame per round × rounds" constant,
+// which is the obvious shape and the one this nearly shipped as, under-scales a
+// long match badly: it puts 18% of 20-round 2P matches off the chart against a
+// 10% target. The exponent is what carries the compounding.
+//
+// ⚠️ AND IT IS KEYED ON PLAYER COUNT, WHICH IS NOT MONOTONIC. 3P scores
+// HIGHEST — above 4P and well above 2P. Every seat plays the same number of
+// turns whatever the table size, so what moves is the crowd: three bands split
+// the fans into workable piles, two never get the multiplier up, four dilute it
+// again. Do not "simplify" this to a single constant; it was checked.
+//
+// 📌 SIZED SO OVER-RUN ≈ 10% — §3🅱️ wants beating the scale to be a flourish,
+// which needs it rare. The fit lands 7–15% across the nine measured cells.
+//
+// ⚠️ RE-MEASURE WHEN THE FAME ECONOMY MOVES. §3🅱️ calls this the fixed scale's
+// one weakness and it is real: any change to the fan weights, the crowd
+// multiplier cap, the per-turn cap or the round limit invalidates the table
+// above. Re-run `.scratch/famescale.mjs` rather than nudging these by feel.
+const FAME_SCALE_K = { 2: 3.26, 3: 3.74, 4: 2.95 };
+const FAME_SCALE_EXP = 1.27;
+export const ROUND_LIMIT_CHOICES = [10, 15, 20];
+
+/**
+ * ⭐📏 The Fame track's right-hand end for a round-limited match.
+ * @param playerCount how many Spirits are at the table
+ * @param roundLimit  rounds before the buzzer
+ */
+/* 📌 `ROUND_LIMIT_DEFAULT` is declared BELOW this line and that is safe: a
+   default parameter is evaluated per CALL, not at definition, and every importer
+   runs after this module finishes initialising. Do not "fix" it by inlining 10
+   — two copies of the round limit is exactly the drift this file keeps paying
+   for (see POSE_FP_MAX, which claimed to match FAME_PER_TURN_CAP and did not). */
+export function fameScaleFor(playerCount, roundLimit = ROUND_LIMIT_DEFAULT) {
+  const k = FAME_SCALE_K[playerCount] ?? FAME_SCALE_K[4];
+  const raw = k * Math.pow(Math.max(1, roundLimit), FAME_SCALE_EXP);
+  return Math.max(5, Math.round(raw / 5) * 5);   // 5s, so the number reads as furniture
+}
+
+// HARD per-turn FP ceiling (2026-07-16 balance pass). Overlapping FP systems
+// (sonic margin + spotlight + rider + groove, riff replays, Azrael, Limelight)
+// compounded with the underdog/crowd multipliers into 20+ FP turns. Every grant
+// flows through grantFame, which clamps the TOTAL a spirit can earn inside one
+// turn window (any spirit's turn) to this. Overflow is DISCARDED — the crowd can
+// only scream so loud.
+export const FAME_PER_TURN_CAP = 4;
+
+// 🎸 BATTLE OF THE BANDS — the per-turn cap is a MODE-DEPENDENT rule, and the
+// two modes want opposite things from it. `WIN_CONDITIONS_DESIGN.md` §4.4:
+// in a RACE the cap is a catch-up brake — it holds the leader back and keeps the
+// finish close (`PROGRESSION_REWRITE_DESIGN.md` §7.5, measured). In a
+// FIXED-LENGTH game every seat gets the same number of turns, so the same
+// constant is a SCORE FLATTENER: it compresses everyone toward
+// `roundLimit × cap` and makes a big crowd worthless — §7.7 measured 48% of all
+// awarded Fame already discarded at the current fan weights, and §7.8 measured
+// that no setting of the window buys the crowd back without widening the margin.
+// A score game has no margin to widen. So it runs UNCAPPED.
+//
+// ⚠️ READ IT THROUGH `battleFlow.famePerTurnCap(state)`, NOT DIRECTLY. A raw
+// import of the constant is a per-turn cap that ignores the mode, which is the
+// bug this comment exists to prevent.
+export const FAME_PER_TURN_CAP_ROUNDS = Infinity;
+
+// 🎸 How many ROUNDS a Battle of the Bands runs before the buzzer. A round is
+// one full revolution of the turn order (`turn.js` `rollRound`), so this is
+// ~`roundLimit` turns for every seat regardless of player count.
+//
+// 📌 10 IS ALEX'S CALL AND IT IS A STARTING POINT, NOT A MEASUREMENT.
+// `PROGRESSION_REWRITE_DESIGN.md` §7.5 measured a Legend Run at a median 8-9
+// turns per player, so 10 is a little longer than today's match — deliberately,
+// because §7.8 found the crowd grows with match LENGTH and this is the mode that
+// wants a big crowd. ⚠️ A fixed-length match has no early finish, so it will FEEL
+// longer than a Legend Run of the same nominal length. Retune from play.
+export const ROUND_LIMIT_DEFAULT = 10;
+
+// 🔥 PRESENTATION ONLY — how small a lead counts as "neck and neck" once someone
+// is inside four points of the crown. The Fame meter and the spirit card's Fame
+// bar both go red on it. ⚠️ NOTHING MECHANICAL HANGS OFF THIS. It is the last
+// living trace of the Rock God finale, where a lead under this number summoned
+// an endgame boss instead of ending the game; the boss was archived on
+// 2026-09-01 and the Fame target now crowns outright at any margin. Retune it
+// freely — the only thing it can break is a colour.
+export const FAME_RACE_CONTESTED_LEAD = 3;
+
+// 🎤 THE DUEL'S OWN CEILING (2026-08-18) — and it is a HIGHER cap, not an
+// exemption. `awardRiffFame` builds a payout out of six terms and then hands it
+// to `grantFame`, which was clipping the lot at 4: measured over 94 bench duels,
+// one that went to sudden death banked 3.81 FP and one that ended in Round 1
+// banked 3.89 (`BOT_STRATEGY_HANDOFF.md` §6.6.9). Margin, perfects, the
+// Headliner belt, the stage-FX rider and the whole Round-2 bonus were being
+// awarded in full and discarded — the marquee event paid exactly what a maxed
+// pose pays, which is `POSE_FP_MAX` above, matched to the general cap on purpose.
+//
+// ⚠️ WHY NOT UNCAPPED. The reason the general cap exists has not gone away: the
+// crowd and underdog multipliers compound, and an unclipped duel with the belt,
+// stage FX and a comeback multiplier can print double figures in one action.
+// This is deliberately a MULTIPLE of the general cap rather than a free number,
+// so the two move together if the economy is ever retuned: a duel is worth up to
+// two ordinary turns of crowd noise, and never a whole life (`fpPerLife` is 8
+// at two players).
+//
+// ⚠️ IT SHARES ONE WINDOW WITH EVERYTHING ELSE, which is the property that keeps
+// it honest. `fameThisTurn` is per Spirit per turn, so a Spirit who already
+// banked 3 FP this turn and then wins a duel takes 5, not 8 — and once they are
+// above 4 for the turn, every ordinary payout after it banks nothing.
+export const RIFF_FP_TURN_CAP = FAME_PER_TURN_CAP * 2;
+
+// -- 🔓 WEIGHTED SPAWN — the board is not allowed to gate you by chance ------
+//
+// ⚠️ SUPPLY IS WHAT KILLS §2 IF IT IS IGNORED, AND THE MARQUEE IS THE PROOF.
+// `makeBoardToken` rolls a UNIFORM pitch class out of 12 and `TOKEN_MAX` is 6, so
+// a specific note is on the board at all roughly 41% of the time — and then you
+// still have to walk to it. The marquee is TWO permanent, published, central
+// hexes and it is visited ~0.5 times a match; 85% of simulated Spirits finish at
+// the rig floor because of it (`GAME_BRIEF.md` §16). A drifting 1-in-12 token is
+// a harder target than the thing nobody already goes to.
+//
+// So this share of newly scattered Lost Chords rolls a pitch class that would
+// open a seat FOR SOMEBODY — not for the Spirit who is about to move, for anyone.
+// 🎯 A TUNING NUMBER, NOT A RULE. The rule is `music/stackSlots.js`; this decides
+// only how generous the board is about it, and it is the first dial to turn if a
+// bench says seats 5 and 6 are never reached (or are reached by turn three).
+export const TOKEN_UNLOCK_SPAWN_SHARE = 0.35;
+
+// UNDERDOG comeback tuning -- see awardFame/underdogBonus.
+export const UNDERDOG_MIN_DEFICIT    = 6;    // must be trailing the loser by at least this much Fame
+export const UNDERDOG_DEFICIT_PER_STEP = 6;  // every 6 Fame of deficit adds +0.5 to the multiplier
+export const UNDERDOG_MAX_MULT       = 2.5;  // hard ceiling on the comeback multiplier
+export const TOKEN_MAX        = 6;    // max board mini-goal tokens on the board at once (all Lost Chords now)
+export const TOKEN_BASE_POOL  = 10;   // target total tokens regardless of player count — fewer players → more starting tokens
+export const TOKEN_PER_ROUND_BASE = 2; // tokens scattered per round with a full roster (scales up as players drop)
+// ⏱️ ROUND CLOCK (2026-08-05): shared board timers below are counted in ROUNDS
+// (one full revolution of the turn order), not in individual player-turns.
+// Values are restated to keep roughly the same real-time length they had on the
+// old per-turn cadence at 3–4 players — see NETCODE/PENDING notes.
+export const TOKEN_DRIFT_TURNS   = 1; // rounds an uncollected Lost Chord sits before it drifts (was 3 spirit-turns)
+
+// -- FAN ECONOMY --
+// Fans never convert to Fame -- they MULTIPLY the Fame every deed is worth.
+// Two bands: Diehards (loyal core, stable) and Casuals (fickle, volatile).
+// 🎤 RE-WEIGHTED 2026-09-02 (Alex's call: "fans should actually mean something").
+//
+// ⚠️ THE OLD `FAN_MULT_CAP` OF 2.0 WAS NOT A CAP. It was the formula's own
+// ceiling written down twice: at the fan caps below, 1 + 0.10x6 + 0.03x14 =
+// 2.02, so the clamp only ever shaved 0.02 off a LITERAL FULL HOUSE and bound
+// nothing else in the game, ever. Raising that number on its own would have
+// been a pure no-op -- the weights are what the multiplier is made of.
+//
+// 📌 AND THE REAL COMPLAINT WAS INTEGER ROUNDING, NOT THE CEILING. `grantFame`
+// does `Math.round(fp * mult)`. At the old 0.03, one Casual moved a 3 FP payout
+// from 3.87 to 3.96 -- both round to 4. Measured at a typical crowd, ONE CASUAL
+// FAN CHANGED THE PAYOUT AT NO GRANT SIZE THE GAME ACTUALLY PAYS (1,2,3,4,6);
+// only at 8 did it ever cross a boundary. A fan you cannot feel is not an
+// economy, and no amount of raising the clamp above it would have helped.
+//
+// So the weights are scaled to put a full house just past the new ceiling --
+// 1 + 0.40x6 + 0.12x14 = 5.08 vs the 5.0 clamp -- which is the SAME SHAPE the
+// old numbers had (2.02 vs 2.0), just with room in it. The ~3.3:1 Diehard:Casual
+// ratio is deliberately preserved: a Diehard is still worth about three Casuals.
+// One Casual is now +0.12 and one Diehard +0.40, both of which move a real
+// payout across a rounding boundary.
+//
+// ⚠️ THIS PUSHES HARD ON `FAME_PER_TURN_CAP`, WHICH IS THE POINT OF FRICTION.
+// A heavier crowd multiplies every deed into a per-turn window that is still 4.
+// See PROGRESSION_REWRITE_DESIGN.md §7.7 for what that measured out at -- the
+// discard is the number to watch, and it is Alex's call whether the window
+// moves with the crowd.
+//
+// ✅ 2026-09-15 — THAT FRICTION IS GONE, AND THESE TWO NUMBERS ARE RESTORED TO
+// WHAT THE BLOCK ABOVE ALREADY DERIVED. The warning was written on 2026-09-02
+// and it was right: the window was 4, so a heavier crowd just fed the discard.
+// `CORE_LOOP_REWORK_BRIEF.md` §0 is the resolution — the default match is now
+// ROUND-LIMITED (`state.js`), where `famePerTurnCap` returns Infinity, so there
+// is no window left to overflow and `WIN_CONDITIONS_DESIGN.md` §9 measured 0%
+// discarded at every set length.
+//
+// 🎓 THE LESSON WORTH KEEPING: the derivation in the comment block above was
+// correct and complete on 2026-09-02, and the constants underneath it were walked
+// back to 0 and 3.0 anyway — because the CAP made the right numbers unusable. The
+// comment and the code disagreed for two weeks and only the comment was true.
+// ⚠️ If you find yourself zeroing a weight whose own comment explains why it
+// should not be zero, the thing to change is the constraint, not the weight.
+//
+// 🪦 `FAN_CASUAL_WEIGHT` READ 0 WITH THE NOTE *"casuals now grow permanent Sonic
+// die size"*. That ladder (`sonicDieSides`) is DELETED as of 2026-09-15 (R5,
+// runaway risk), so casuals had nothing left to buy — restoring this weight is
+// the step that gives them a job again, and the deletion is what makes it safe.
+// **The two are one change; `CORE_LOOP_REWORK_BRIEF.md` §0 is the order.**
+export const FAN_DIEHARD_WEIGHT  = 0.40;  // multiplier added per Diehard (loyal core -- worth ~3 casuals)
+export const FAN_CASUAL_WEIGHT = 0.12;    // ⭐ restored 2026-09-15 — a full house is 1 + 0.40×6 + 0.12×14 = 5.08
+// ═══ 🤘 THE SEATS ARE THE CAP ════════════════════════════════════════════════
+// Alex, 2026-09-22 — first "there needs to be no gate at all to diehards", then
+// the clarification that matters: *"this was relative to how many seats allow
+// fans to grow. The number of fans allowed is the number of seats allowed.
+// Diehards can theoretically grow out to the same number — which would basically
+// have normal fans be 0, while diehards fill out every seat."*
+//
+// ⭐ SO THERE IS EXACTLY ONE CEILING NOW, AND IT IS A PLACE TO SIT. Not a
+// Diehard ceiling and a Casual ceiling and a multiplier clamp, three numbers
+// that had to be kept in agreement — one number, `FAN_TOTAL_CAP`, which IS the
+// seat count. A Spirit with 30 Diehards and no Casuals is legal and is what a
+// perfect run looks like.
+//
+// ⭐ AND THE MULTIPLIER IS NOW DERIVED RATHER THAN DECLARED. `FAN_MULT_CAP`
+// stays `Infinity` on purpose: the crowd bounds it without a second opinion. A
+// full house of Diehards is 1 + 0.40×30 = **×13.0**, and that ceiling moves by
+// itself if the grandstand ever grows another row. The old 5.0 was a number
+// someone had to remember to keep next to 5.08, and this file's own history
+// (the 2.0-vs-2.02 era) is what that costs.
+//
+// 📌 WHAT DID **NOT** CHANGE: the EARN RATE. `FAN_PROMOTE_EVERY` (3 consecutive
+// centre turns) and `LOYALTY_PER_DIEHARD` (24) are untouched. The ceiling moved;
+// the verb did not.
+
+// 🪑 THE SEATS. The arena grandstand grows a row at a time with the crowd and
+// stops here, and because the crowd stops here too, every fan has a chair.
+// ⚠️ 5 ROWS IS A MEASURED LIMIT, NOT A TASTE CALL. Past it the top row goes
+// through the lighting truss at y 3.35 and the back row floats more than a metre
+// off the island. `.scratch/arenaClearance.mjs` re-derives both.
+// ⚠️ RAISING `CROWD_ROWS_MAX` RAISES THE FAN CAP AND THE MULTIPLIER CEILING WITH
+// IT. That is the point — but it means a seating change is an economy change,
+// and `.scratch/famescale.mjs` has to be re-run behind it.
+export const CROWD_ROWS_MAX      = 5;
+export const CROWD_SEATS_PER_ROW = 6;
+export const CROWD_DRAWN_MAX     = CROWD_ROWS_MAX * CROWD_SEATS_PER_ROW;  // 30 seats
+
+/** 🎟️ Every fan a Spirit can have, of either band, because it is every seat. */
+export const FAN_TOTAL_CAP = CROWD_DRAWN_MAX;
+// 📌 Both bands can theoretically fill the house alone, so neither has a ceiling
+// of its own any more — these exist so a reader asking "how many Diehards are
+// possible" gets an answer, and they are deliberately the SAME number.
+// ⚠️ NEITHER IS A CLAMP ANY MORE. Clamping on one band in isolation is what
+// would let 30 Casuals sit on top of 6 Diehards. `addCasuals` is the only place
+// a Casual gain is bounded, and it bounds against the TOTAL.
+export const FAN_DIEHARD_CAP     = FAN_TOTAL_CAP;
+export const FAN_CASUAL_CAP      = FAN_TOTAL_CAP;
+export const FAN_MULT_CAP = Infinity;     // 🤘 derived from the crowd — see above
+
+// 🎚️ THE HIGHEST MULTIPLIER THE HOUSE CAN ACTUALLY PRODUCE — a full 30 seats of
+// Diehards, 1 + 0.40×30 = ×13.0. Derived, so it follows the seat count by itself.
+// 🚨 THIS EXISTS BECAUSE `FAN_MULT_CAP` WENT TO `Infinity` AND SOMETHING WAS
+// DIVIDING BY IT. `evaluate.js` normalised its `fanMult` term with
+// `(mult - 1) / (FAN_MULT_CAP - 1)`, which at ∞ is **0** — the bot would have
+// gone on playing while valuing fans at nothing, with no error and nothing on
+// screen to say so. SEQUENCING §B finding 5, live, inside an hour of the change.
+// ⚠️ A CLAMP AND A SCALE ARE NOT THE SAME NUMBER and must not share a constant.
+// `FAN_MULT_CAP` answers "is there a ceiling" (no). `FAN_MULT_MAX` answers "what
+// does a full house feel like" (×13.0). Anything NORMALISING wants this one.
+export const FAN_MULT_MAX = 1 + FAN_DIEHARD_WEIGHT * FAN_TOTAL_CAP;
+
+/**
+ * 🎟️ Take on `gain` Casuals, bounded by the seats the Diehards have not taken.
+ * ⭐ THE ONE PLACE A CASUAL GAIN IS CLAMPED. Every site that used to do
+ * `Math.min(FAN_CASUAL_CAP, casuals + gain)` calls this instead — five in the
+ * client and one in `economy.js` — because a per-band clamp cannot see the other
+ * band and would quietly overfill the house.
+ * 📌 Promotion needs no equivalent: hardening a Casual into a Diehard is
+ * net-zero on the total, which is exactly how Diehards climb to a full house.
+ */
+export function addCasuals(ns = {}, gain = 0) {
+  const diehards = Math.max(0, ns.diehards ?? FAN_DIEHARD_START);
+  const casuals  = Math.max(0, ns.casuals ?? 0);
+  return Math.max(0, Math.min(casuals + gain, FAN_TOTAL_CAP - diehards));
+}
+
+/** 🎟️ Harden one more Diehard, bounded by the same house. Used by the debug
+ *  grant; ordinary promotion goes through `fansFromDeed`, which spends a Casual
+ *  and therefore cannot overfill. */
+export function addDiehard(ns = {}, gain = 1) {
+  const diehards = Math.max(0, ns.diehards ?? FAN_DIEHARD_START);
+  const casuals  = Math.max(0, ns.casuals ?? 0);
+  return Math.max(0, Math.min(diehards + gain, FAN_TOTAL_CAP - casuals));
+}
+
+export const FAN_DIEHARD_START   = 2;
+export const FAN_CASUAL_START    = 0;
+export const EXCITE_PER_CASUAL   = 14;    // performance excitement to draw 1 new Casual fan
+export const LOYALTY_PER_DIEHARD = 24;    // performance loyalty to harden 1 Casual -> Diehard
+export const FAN_GAIN_BY_RING    = { main: 2, pit: 1, floor: 1, back: 0 }; // casuals gained on a clean commit, by zone
+export const FAN_DECAY           = 2;     // casuals bored off per turn once the outer-edge grace runs out
+export const FAN_BORED_AFTER     = 3;     // consecutive turns in the OUTER ring before fans start drifting off
+export const FAN_PROMOTE_EVERY   = 3;     // consecutive centre-perform turns to harden 1 casual -> diehard
+export const FAN_RECOVERY_LAG    = 3;     // your turns locked out of crowd-gain after a demolition
+// 🪦 THIS COMMENT USED TO READ *"light crowd scatter; earned die size survives"*.
+// That clause was the whole reason the scatter was kept LIGHT — losing fans was
+// survivable because `peakCasuals` meant your die size never fell back. Both are
+// deleted (R5, 2026-09-15), so ⚠️ a scatter now costs live Fame multiplier with
+// nothing ratcheted behind it. 📌 The number is unchanged and flagged, not
+// retuned: `CLAUDE.md`'s balance freeze holds, and this is a balance question.
+export const FAN_FLEE_MIN = 1; // light crowd scatter
+export const FAN_FLEE_MAX = 2; // light crowd scatter
+export const FAN_DEFECT_TO_VICTOR = 0; // fans cannot be stolen
+
+// -- EVENT SPACES --
+// 🎪 TWO MARQUEES, NOT ONE (2026-08-20, MARQUEE_QUIZ_DESIGN.md §1). One event
+// hex on a 111-hex board is not a decision, it is proximity: whoever already
+// stood nearby takes it and everyone else concedes the round. Two makes the
+// player choose which to route toward, and gives a second Spirit a target
+// instead of a spectator's seat.
+// ⚠️ THIS IS A THROUGHPUT CHANGE AS WELL AS A CHOICE ONE. Trivia pays FANS, and
+// fans are the one economy with no per-turn ceiling (`FAME_PER_TURN_CAP` clamps
+// Fame and never touches them, because fans MULTIPLY Fame rather than being
+// it). Doubling the marquees roughly doubles quiz throughput, so if the crowd
+// multiplier starts topping out at `FAN_MULT_CAP` too early, the payouts in
+// `TRIVIA_REWARD` are the dial to turn — not this count.
+export const EVENT_HEX_COUNT     = 2;  // 🪦 RETIRED 2026-09-29 — the count is one per seat now (`systems/marqueeSpaces.js`); kept for old tests
+// 🎪 A relit marquee lands at least this far from where the last one was taken
+// (`MARQUEE_QUIZ_DESIGN.md` §11) — no stepping off and straight back on.
+export const MARQUEE_RELIGHT_MIN_DIST = 2;
+// 🎤 TWO KINDS OF MARQUEE (Alex, 2026-09-29 — `MARQUEE_QUIZ_DESIGN.md` §13).
+// Rolled when a marquee LIGHTS and shown on the board, so it is a routing choice:
+//   · COMMUNITY (1 in 3): everyone at the table answers; the first RIGHT answer
+//     wins the card; a wrong answer locks that player out; open 15 s.
+//   · SOLO (2 in 3): the lander answers alone, on a 10 s clock; running out of
+//     time is a wrong answer.
+export const MARQUEE_COMMUNITY_SHARE = 1 / 3;
+export const MARQUEE_SOLO_SECONDS = 10;
+export const MARQUEE_COMMUNITY_SECONDS = 15;
+// 🤖 When a bot answers in a community round: uniformly inside this window
+// (seconds). Seeded, so every table sees the same bot click at the same moment.
+export const MARQUEE_BOT_ANSWER_S = [3, 12];
+export const EVENT_RESPAWN_TURNS = 1;  // ROUNDS after a trigger before a new marquee lights up (was 3 spirit-turns)
+// 🎪 Minimum axial distance between two live marquees.
+// ⚠️ TWO MARQUEES IN ONE CORNER IS WORSE THAN ONE ANYWHERE — a pair inside a
+// single Spirit's pocket hands them BOTH over uncontested, which is the exact
+// failure the second hex exists to fix. Home → Limelight is 5 on this map, so 4
+// stops them sharing a neighbourhood without shoving them to opposite edges.
+export const EVENT_MIN_SEPARATION = 4;
+
+// 🃏 MARQUEE PRIZE CARDS (Alex, 2026-09-29 — `MARQUEE_QUIZ_DESIGN.md` §10).
+// Every marquee is the same: one question, no lane, no difficulty to pick, and
+// a correct answer wins ONE random card for the battle deck
+// (`engine/systems/marqueeCards.js`). A player holds at most this many; a
+// fourth means swapping one out or letting the new one go.
+export const MARQUEE_HAND_MAX = 3;
+
+// -- FLAMING DISC / GROUPIE --
+export const FLAMING_DISC_COUNT  = 6;
+export const FLAMING_DISC_ROUNDS = 2;
+
+
+// -- CHARGE ZONES -- (ECONOMY_HANDOFF.md — the Lighters replacement objective)
+// Fixed (non-roaming) board hexes, picked once at setup — unlike Lost Chords,
+// they don't move or vanish, they just go dormant for a bit after use.
+// Zones only spawn on hexes the lightning bolt overlay actually touches
+// (LIGHTNING_TRACK_HEXES). Tapping one CHARGES the Spirit: a random 50/50
+// grant of either a die FLOOR charge (attack dice can't roll below 3) or a
+// die CEILING charge (attack dice upgrade one size — d6→d8, etc.). Floor and
+// ceiling STACK with each other but never with themselves: a duplicate draw
+// flips to the other type; holding both refreshes both. A charge lasts
+// CHARGE_ZONE_BOOST_TURNS of the holder's turns (≈2 rounds) or until a battle
+// ensues — fighting burns the charge, win or lose. The Overcharge skill
+// (Electric route) unlocks an alternative chord-assist payout instead.
+// 🪦 RETIRED FOR NOW (Alex, 2026-09-29: "Lets retire the 'charge' spaces for
+// now"). Zero zones are placed, so nothing lights, nothing is tapped and no
+// charge is ever granted; every reader already handles an empty list. Put the
+// 2 back to bring them back.
+export const CHARGE_ZONE_COUNT       = 0;  // fixed lightning hexes on the board (was 2)
+export const CHARGE_ZONE_BOOST_TURNS = 2;  // charge duration (holder's turns) on pickup
+export const CHARGE_ZONE_COOLDOWN    = 2;  // ROUNDS before a drained zone relights (was 4 spirit-turns)
+export const CHARGE_FLOOR_BONUS      = 2;  // floor charge: attack die results below 1+2 read as 3
+
+// -- 🎸💥 THE SMASH (2026-08-05 rework) --
+// The all-out front. You spend EVERYTHING that makes you dangerous — every
+// unused note in your stock, your ENTIRE Drive stack, and a note off your
+// Sustain — and in return the payout is fixed, undefendable, and aimed at the
+// rival's defence rather than their health bar: 2 Vibe, 2 notes torn off their
+// Sustain stack, 2 hexes of knockback.
+//
+// WHY FLAT: the old Smash scaled with notes thrown, which made it a numbers
+// puzzle ("hoard stock, then dump") rather than a decision. Paying with your
+// chord makes the decision the interesting part — you are trading your next
+// turn's offence for a guaranteed hole in their defence, right now.
+// The old `smashOutcome` scaling survives in engine/systems/combat.js because
+// Intergalactic 0's BLASTER OF RA still uses it — that skill spends the same
+// stock but hits a whole beam, so it keeps the throw-count curve.
+export const SMASH_AP_COST       = 2;  // Action Points (also ends all remaining movement)
+export const SMASH_DAMAGE        = 2;  // Vibe, undefendable
+export const SMASH_SUSTAIN_STRIP = 2;  // notes torn off the rival's Sustain stack
+export const SMASH_KNOCKBACK     = 2;  // hexes the rival is hurled
+export const SMASH_SELF_SUSTAIN  = 1;  // notes it costs YOU off your own Sustain stack
+
+// -- THRASH / SONIC ATTACK SPLIT --
+// Thrash (melee) — d4-based, Vibe-focused, minimal push/FP.
+// -- 🔊 GOES TO 11 (METALNESS_REWORK_DESIGN.md §4d) --
+// It SETS the attack stat rather than adding to it, which is why it can be
+// louder than ATK_BONUS_CAP without the special case the ability it replaced
+// needed — and why calling it while ALREADY above 11 turns him DOWN. The amp
+// only goes to 11. See engine/systems/eleven.js for the full argument.
+export const ELEVEN_DRIVE = 11;
+
+// ⚠️ TWO, NOT ONE, and the sum is in eleven.js because getting it wrong makes
+// the cost silently free: ticked at the END of his own turn, a seed of 1 clears
+// before he ever plays a turn without a rig. Two buys the full turn.
+export const ELEVEN_AMP_BLOWN_TURNS = 2;
+
+// ─── 🎲 THE DIALS AND THE DICE (CHORD_VOCABULARY_DESIGN.md, Alex 2026-09-27) ──
+// The Drive/Sustain dial reads 1–10 (`music/vocabularies.js`); buffs ride on
+// top. A stack's POWER (dial + buffs) turns into dice like this:
+//   · one d6 per point, up to DICE_ROLLED_MAX (8);
+//   · every point past 8 turns one of those d6s into a d8 — a six-note chord
+//     (dial 10) rolls 8 dice with two d8s, and a Moshpit on top makes it four;
+//   · the best DICE_KEPT_MAX (5) faces count, fewer if the stack has fewer
+//     seats (3 seats keep 3, 4 keep 4, 5 and 6 keep 5 — the 6th seat buys the
+//     d8s, not a sixth die).
+// 📌 d8 → d10 is a marquee CARD (not built). Charge-zone ceiling still grows
+// every attack die one size on top of this.
+export const DIAL_MAX        = 10;
+export const DICE_ROLLED_MAX = 8;
+export const DICE_KEPT_MAX   = 5;
+// 🔊 THE ELEVEN DIE (Alex, 2026-09-27; d12 → d6 2026-09-28): a d6 with FIVE
+// faces reading 11 and ONE reading 1. Goes to 11 swaps it in for one of his
+// dice; it is ALWAYS kept, and its 1 is an absolute fail — 1 in 6 (≈17%).
+// ⚠️ Why a d6 and not the d12: at 1 in 12 the fizzle almost never happened, so
+// the move read as a free +7 and nobody sweated the throw. 1 in 6 is roughly
+// break-even on a maxed rig and a real boost on a small one (the underdog's
+// move). 📌 50/50 WITH a whole-throw fizzle was priced and rejected: −23% to
+// −36% on average against not pressing it at all.
+// `11` in a pool array is this die and nothing else — no real die has eleven
+// sides. The LAST face (index ELEVEN_FACES−1) is the 1; every other face is 11.
+export const ELEVEN_DIE   = 11;
+export const ELEVEN_FACES = 6;
+
+export const ATK_BONUS_CAP           = 5;   // hard ceiling on stacked attack bonuses (tempDrive + stance) -- keeps the accumulative wave in check
+export const THRASH_DIE              = 4;   // base die for both attacker and defender in Thrash
+export const THRASH_CEIL_DIE         = 6;   // ceiling charge upgrades d4 → d6
+export const THRASH_DAMAGE_CAP       = 4;   // max Vibe damage from a single Thrash hit
+export const THRASH_WHIFF_DMG        = 1;   // losing attacker only takes this much Vibe (humiliation tap)
+export const THRASH_PUSH_THRESHOLD   = 1;   // margin needed before Thrash pushes 1 hex — any successful hit shoves the target
+// Sonic (ranged) — keep-highest pool, FP/push focused, minimal Vibe damage.
+export const SONIC_VIBE_CAP          = 2;   // max Vibe damage from a Sonic hit
+export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from main/pit ring
+// Hexes crossed by the animated lightning bolt on the board art (measured from
+// board_lightning_animated.png against the hex grid; #56 Limelight also under
+// the bolt but stays excluded from the spawn pool).
+export const LIGHTNING_TRACK_HEXES   = [28, 37, 47, 55, 57, 64, 65, 75];
+
+// -- STYLE SYSTEM -- REMOVED.
+// `STYLE_DB_CAP` capped the per-commit Style payout. The Style Db payout is gone
+// (it re-scored gestures the Drive and Sustain boosts already pay for, and it was
+// an aesthetic judge in a currency that now pays only for facts), so the cap has
+// nothing to clamp. Style survives as character flavour in data/styles.js.
+
+// -- DISSONANCE EDGE -- REMOVED (system cut — Theory learning streamlined).
+
+
+// ─── PER-SPIRIT ABILITY TUNING ──────────────────────────────────────────────
+// ⚠️ MOVED OUT OF THE MONOLITH 2026-08-16, and the reason is worth recording
+// because it is the same reason twice over.
+//
+// These thirteen numbers are RULES — Db prices, ring radii, drain amounts,
+// blindness durations — and they lived beside the JSX purely by accident of
+// where the abilities were first written. That had two costs. `SKILL_TREE`
+// interpolates every one of them into its skill descriptions, so the tree could
+// not be extracted while they stayed here; and the engine could not read a Db
+// price without the client handing it over. §7 has been asking for an
+// innate-constants module since `PERF_CLIFF` landed in two policy files; this
+// is that module's first tenant.
+//
+// 📌 They are grouped by the ability that owns them rather than sorted, so a
+// retune reads as one block.
+
+// 🔊 THE SONIC BEAM'S LENGTH — flat 3 for everyone since Sunbeam stopped being a
+// range capstone. It is the LONGEST reach any attack in the game has, which is
+// why it lives here rather than in one policy file: `legalActions` uses it to
+// build the beam, and `evaluate` uses it as the distance past which a rival is a
+// plan rather than a target. One number, two consumers, no transcription.
+export const SONIC_BEAM_REACH = 3;
+// 🔊 …and never next door: the Sonic needs a rival 2–3 hexes down the line, so
+// the hex in front of you is not in the beam (Alex, 2026-10-03: *"unable to fire
+// from only 1 space away … must be 2 - 3 spaces away"*). The Blaster of Ra
+// still fires down the whole line from 1 (`sonicBeam(…, { minRange: 1 })`).
+export const SONIC_MIN_RANGE = 2;
+
+// 🤘 THE THRASH BILL (Alex, 2026-10-03): the attacker CHOSE the fight, so he
+// pays SWING_DRIVE_SPEND (2) win, lose or tie, and may not Thrash at all with
+// fewer than that in his Drive stack; the defender didn't choose it but still
+// threw his Drive, so he pays THRASH_DEFENDER_SPEND (1) win, lose or tie (or
+// whatever he has, if less). Both off the TOP, after the dice are thrown.
+// `battleFlow.battleConsequences` is the one place it is charged.
+export const SWING_DRIVE_SPEND = 2;
+export const THRASH_DEFENDER_SPEND = 1;
+
+// ☀️ SUNBEAM — the whiteout.
+export const SUNBEAM_BLIND_TURNS     = 1;    // turns of whiteout on a clean proc
+export const SUNBEAM_LINGER_CHANCE   = 0.5;  // odds the burn sears in for a 2nd turn
+export const SUNBEAM_MAX_BLIND_TURNS = 2;    // hard ceiling — the sun always sets
+
+// 🌀 SPACE IS DISPLACED — the paid blink. §2 of the Metalness rework cites this
+// as the roster's only other free-ish movement, which is why its price matters
+// to a doc two directories away.
+export const DISPLACE_MIN_RINGS = 2;   // nearest legal landing ring (1 = a normal step, so it's excluded)
+export const DISPLACE_MAX_RINGS = 3;   // furthest legal landing ring
+
+// 🕳️ GRAVITY CONTROL — the black hole vortex.
+export const GRAVITY_PLACE_RINGS = 2;  // how far out he can drop it
+export const GRAVITY_PULL_RINGS  = 2;  // rivals this close (or closer) get dragged
+export const GRAVITY_PULL_HEXES  = 1;  // hexes each caught rival is dragged inward
+export const GRAVITY_NOTE_DRAIN  = 2;  // notes cut from NEXT turn's refill for anyone dragged INTO it
+
+// 💻 CODE INJECTION — the hidden commit.

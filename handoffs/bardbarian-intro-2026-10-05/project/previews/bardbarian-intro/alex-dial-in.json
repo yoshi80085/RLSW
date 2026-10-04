@@ -1,0 +1,44 @@
+{
+  "version": 1,
+  "scene": "Bardbarian / The opening act",
+  "settings": {
+    "players": 4,
+    "godScale": 1.17,
+    "presence": 0.24,
+    "detail": 0.74,
+    "storm": 0.9,
+    "stagger": 1.1,
+    "fallHeight": 24,
+    "impact": 1.35,
+    "shake": 0.65,
+    "bloom": 0.55,
+    "exposure": 1.15,
+    "camera": "cinematic",
+    "reduced": false
+  },
+  "defaults": {
+    "players": 4,
+    "godScale": 1,
+    "presence": 0.55,
+    "detail": 0.68,
+    "storm": 0.8,
+    "stagger": 1.1,
+    "fallHeight": 19,
+    "impact": 1,
+    "shake": 0.35,
+    "bloom": 0.65,
+    "exposure": 1.15,
+    "camera": "cinematic",
+    "reduced": false
+  },
+  "changedFromDefault": {
+    "godScale": 1.17,
+    "presence": 0.24,
+    "detail": 0.74,
+    "storm": 0.9,
+    "fallHeight": 24,
+    "impact": 1.35,
+    "shake": 0.65,
+    "bloom": 0.55
+  }
+}
