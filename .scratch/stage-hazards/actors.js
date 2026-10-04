@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { createStandee, STANDEE, STANDEE_Y } from '../../src/board/standee.js';
-import ronin from '../../src/standees/cosmic_ronin.png';
+import ronin from '../../src/standees/Cosmic_Ronin.png';
 import monster from '../../src/standees/Metalness_monster.png';
 import glam from '../../src/standees/Glamarchy.png';
 import { xyz, shoveAt, reactionAt } from './motion.js';
