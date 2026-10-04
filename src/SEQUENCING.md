@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — every handoff (87 rows), dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — every handoff (94 rows), dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,69 +26,57 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 53-pyro. 🎆 Pyro is Astra's mortars — they fire every turn, a shove stops on one — 2026-10-02
+## 59-triage. 🧪 The 21 red suites — brought up to the code, four left with owners — 2026-10-04
 
-Alex, on porting the pyro-shove preview: *"I want a Spirit that if it gets shoved
-into or in the way of a blaster/mortar to stop on the mortar — get blasted up and
-fall back on the mortar that then disassembles down into the arena again."* Then the
-rules: *"they fire under 2 conditions — 1. end of a player's turn (not a full round)
-… coming back before the start of the next player's turn, or 2. if a player gets
-pushed into it … it stops on the mortar and takes damage … 1st round about 5
-mortars, 2nd 10 or so, 3rd 13 or so"*, and *"real Vibe damage — like 3 or so"*.
-Mortars only — no blasters, no curtain.
+Alex: *"Triage the 21 red suites in test:all."* The standee import-case fix
+(`f98c35a`) let the esbuild suites run on Linux for the first time in weeks,
+and 21 of the 89 in `test:all` were red. Each was read against the CLIENT
+before anything moved (§B2): almost all were a test written before a rule
+changed, not a code fault.
 
-- 🎲 **The rules — pyro v2** (`data/stageEffects.js`, `engine/systems/stageFx.js`):
-  `PYRO_TURN_ENDED` (every armed mortar fires; `caught` = whoever stands on one),
-  `PYRO_TURN_STARTED` (re-arm on fresh hexes, sized `PYRO_ROUND_HEXES` 5/10/13 by
-  show round), `PYRO_CHARGE_STRUCK` (a forced move entered one: it is spent, the
-  state remembers who in `pyro.struck`). The round tick is only the show clock.
-  `PYRO_DAMAGE` 1 → **3**. ⚠️ **Versioned**: only an activation carrying
-  `pyroVersion: 2` runs them — the client opts in; a replay log recorded before
-  keeps the old round-clock cadence, bit for bit (`test:stagefx` unchanged, 90).
-- 💥 **The stop** — `battleFlow.js` `knockback` ends the slide ON an armed mortar
-  (read inline: `stageFx.js` already imports `battleFlow`) and hands the client's
-  `hexHazards` hook `pyroStruck`; the client's own pushes (`battleKnockback`, the
-  one-hex push, the TV scatter) ask `strikePyroCharge` first. Walking / sliding /
-  Shukuchi do not set one off — you are simply standing on it at your turn's end.
-  The END TURN volley runs before the round block, the re-arm after it, so a show's
-  last volley closes it and no armed mortar is left to fizzle.
-- 🎬 **The look** — one tracked copy of each preview module, which the `.scratch`
-  pages now import: `board/pyroMortars.js` (Astra's mortar, blasters/curtain as
-  options; parity-checked against her original over 4,218 frames, Δ = 0),
-  `board/pyroShove.js` (the reaction + Alex's 10-lever dial-in + a show clock that
-  turns hit-stop and slow motion into a real↔show mapping + the deploy / volley /
-  retract cue builders), `board/pyroBlast.js` (the hit's fire), `audio/pyroSfx.js`
-  (my voices byte-for-byte, on the SFX fader). `board/pyroStage.js` puts it on the
-  board: each wave a set (the wave number is its identity), the reaction started by
-  `standeeSteps`' new `onLand` hook so the approach stays the game's skate, the
-  struck mortar redrawn on the reaction's own clock so it freezes with the piece;
-  the renderer adds the lens shake and zoom punch around its draw and puts the
-  camera back.
-- 🐛 **Fixed on the way** — the struck mortar's crown was heard 1.15 s after the
-  bang (the page's own shell) while Astra's burst is SEEN at 1.5 s; a frame landing
-  before the stage's first tick would have deployed a wave at second 0 and dropped
-  its machinery; the piece kept the daze's last micro-tilt after the hand-back.
-- 🧪 **Evidence** — `test:pyrorules` **92** (mutation-checked: disable the stop,
-  it goes red), `test:pyroshove` **116,482** (the page's 98,738-assertion check ported;
-  it is ~102k now because airMs 950 → 1100 lengthens every sampled timeline),
-  `test:pyrostage` **62** (the real GLB arena; mutation-checked on the pose),
-  `test:pyrojourney` **8** (the real `Game` by its own controls: a new set every
-  END TURN, 5 → 10 → 13, the show ending; mutation-checked on the volley).
-  Every suite, isolated baseline worktree (56b7656) vs this tree: **87 suites on both, plus the 4 new ones: 21 red before and 21 red after — the same 21, each with the same first failure** (the known combat-fixture, Db-cut and missing-`.scratch`-file reds), and every passing suite reports the same count on both.
-  Bundle (case-tolerant twin, see below): **0 warnings**, before and after.
-- ⚠️ **This machine is case-sensitive** — the client's three case-mismatched PNG
-  imports (`STATE_OF_PLAY` 🚩, Alex's call) stop `check:bundle` and every suite that
-  bundles the client. The evidence above used temporary untracked symlinks for those
-  three files in both trees; nothing about them is committed.
-- ⏳ **Not seen on real hardware.** The cloud browser is software-rendered: nobody
-  has seen this on a real GPU or heard it on speakers.
+**What the tests had not caught up with** (one commit per group, all on
+`chore/cleanup-rockgods-tutorial`):
+- 🤘 **The Thrash is the clash.** `attackRolled` stamps every Swing/Sonic v2 since
+  2026-09-20, so `selftest`'s Phase 3b now guards the *legacy* (un-versioned)
+  replay path on purpose; `attackParams`' old single-die tower is unreachable,
+  so `test:transition` §6–7 test the shared rig; both sides pay (2 / 1, off the
+  TOP) win or lose; a Thrash squares the fighters up (`test:slime`'s Tentacle);
+  a Thrash never consumes Smash exposure (Sonic and Bushido do).
+- 🔊 **No rig radius** (`rigRadius` is 0 since the vocabularies): `inRig` means the
+  amp is not blown — `test:eval` §8, the riff-off's stranded case, `test:eleven` §4.
+- 🎲 **Dice are the Drive dial**; Goes to 11 is the Eleven die swapped for the
+  weakest, always kept (`test:eleven` §3); the beam is hexes 2–3, so the riff-off
+  fixture stands two apart.
+- 🪦 **Cuts**: Sunbeam and Azrael (both left `battleConsequences` on 2026-09-22);
+  Db (no ability is priced in it — `test:b0`); the 2D board (no 3D/2D switch —
+  `test:journey`); the old timed Shamisen curse (the journey takes the Iwato
+  Shamisen up); Pickles' tip overlay (`test:crowdbubble`); the archived 2D battle
+  overlay (`test:battlejourney` drives the 3D clash and keeps the aftermath).
+- 📏 The chord table's 1–5 rebase is asserted THROUGH the rebase (`test:b0`), and it
+  ties dom9 with dom7 in total power — recorded, not tuned (§B10).
+- 🧩 Six source-reading checks pinned a line's exact shape (`moving=` chain, a
+  200-char window, `markSolid`'s list, the Island) and now assert membership.
+- 🗑️ **Deleted `spendDriveStack`** (transition.js): only `test:bushido` called it, it
+  still took from the FRONT, and §6 compared it to a hand-written front slice —
+  green for weeks against a rule the game dropped on 2026-09-27. §6 now reads
+  `bushidoDrawPatch` against `attackParams`' real Thrash plan.
+- 🗺️ `ARCHITECTURE.md` gained rows for 14 stage-effect modules (lasers, smoke, bats,
+  crumbling); `test:arch` is green. CLAUDE.md's "twenty-six suites" is 89.
 
-**Next — Alex's calls:** (1) the end state (`dazed`), hit-stop on every mortar hit,
-and the shell + burst in a hit — shipped at their defaults; (2) the **Burn** was
-kept as it was — he set only the damage; (3) should a vortex DRAG stop on a mortar
-(it does not — a pull, not a push); (4) the page's "sympathy" volley is now
-page-only (in the game the others fire at END TURN, by the rule); (5) a real-GPU
-look and a listen.
+**⛔ LEFT RED, ON PURPOSE — each needs Alex, not a test edit:**
+1. ⁉️ `test:bushido` — **the Shadow cooldown (2) no longer outlasts the double (2
+   turns)**, so it can be kept up rather than spent. Flattening every CD to 2 at
+   the Db cut did it. Which number moves is a rule.
+2. 📂 `test:shukuchiui`, `test:standeemove`, `test:dice` read `.scratch/` preview
+   files that were **never committed** (`shukuchi-hop-preview.html`,
+   `standee-move-preview.js`, `sonic-rework/barrage.{mjs,html}`). Commit them from
+   Alex's machine and they run anywhere; making them skip would hide the port check.
+
+**⁉️ To confirm:** Sunbeam and Azrael went inside a commit titled "3D arena edits".
+The kits agree they are gone; the suites now assert it. If that was an accident,
+those two sections are where to start the revival.
+
+🎯 **Next:** Alex's two calls above; then `test:all` runs end to end.
 
 ---
 
@@ -230,18 +218,19 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 87 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 94 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
+| `59-triage` | 2026-10-04 | **LIVE — §A above.** The 21 red suites brought up to the current rules (Thrash clash, no radius, Eleven die, cuts, rebase); `spendDriveStack` deleted; 14 ARCHITECTURE rows. Left red for Alex: the Shadow CD/duration invariant, and three suites needing uncommitted `.scratch/` previews. |
 | `58-thrashbill` | 2026-10-03 | Thrash bill: attacker 2 Drive notes, defender 1, win/lose/tie; a Thrash (and the Tentacle) needs 2 Drive notes; a tie throws both back a hex, no Vibe. Shadow whiffs pay the Drive price; the Sonic whiff's AP fixed to 1. Thrash constants moved to `gameConstants` so `battleFlow` stays art-free (`test:sandbox`). `test:legal`, `test:swing`. |
 | `57-thrash` | 2026-10-03 | Swing renamed **Thrash** in every player-facing string (rail, overlay, 3D captions, prompts, tutorial, ability/card text, logs). Internal identifiers stay `swing` — replays and network actions carry the kind. Journey checks click `Thrash`. |
 | `56-sonic1note` | 2026-10-03 | Sonic spends 1 Drive note off the top again (the 09-11 whole-charge rule reversed — an empty rig was a free kill for the next Thrash). `SONIC_DRIVE_SPEND` wired into the client and `transition.js`. `test:legal`. |
 | `55-sonicreach` | 2026-10-03 | Sonic reaches 2–3 hexes, never adjacent: `SONIC_MIN_RANGE`, `sonicBeam` skips hex 1; client `getSonicBeam` delegates to it; Blaster of Ra keeps the full line (`getBlasterBeam`). A same-day Swing version of this rule was reverted — Alex meant the Sonic. `test:legal`, `test:sonicjourney`, `test:riffarenajourney`. |
 | `54-sonic1ap` | 2026-10-03 | Sonic Attack costs 1 AP (was 2): `SONIC_AP_COST` and every client gate/charge/label read it; riff-off follows. `test:legal`. |
-| `53-pyro` | 2026-10-02 | **LIVE — §A above.** Pyro v2: Astra's mortars fire at every END TURN (5/10/13 by show round), a shove stops on one, 3 Vibe; the pyro-shove preview ported into `board/pyroMortars.js` / `pyroShove.js` / `pyroBlast.js` / `pyroStage.js` and `audio/pyroSfx.js`. `test:pyrorules`, `test:pyroshove`, `test:pyrostage`. |
+| `53-pyro` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Pyro v2: Astra's mortars fire at every END TURN (5/10/13 by show round), a shove stops on one, 3 Vibe; the pyro-shove preview ported into `board/pyroMortars.js` / `pyroShove.js` / `pyroBlast.js` / `pyroStage.js` and `audio/pyroSfx.js`. `test:pyrorules`, `test:pyroshove`, `test:pyrostage`. |
 | `52-dbcut` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. Db cut entirely: abilities gated by kit + 2-round cooldown only, melody pays fans only, upgrade shop and old event cards / Major-Minor bonus removed. `test:loadouts`, `test:skilltree`, `test:playfinder`. |
 | `51-iwatoport` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Iwato curse goes into the game: take up, three strings from the next turn (up to 3 a turn, from the hand), the cast, the cursed palette everywhere, exorcism in the commit, the arena stage, the infected wheel, the sound, and the loadout pop-out. `test:shamisen`, `test:shamisenjourney`. |
 | `50-iwatocurse` | 2026-10-02 | Archived in `../docs/archive/SEQUENCING-handoffs-2026-09-08-to-09-29.md`. The Cursed Shamisen redesigned as the Iwato curse (strings, cast, a cursed Scale Wheel, exorcism); its five animated moments built for the dial-in. `test:cursedshamisen`. |

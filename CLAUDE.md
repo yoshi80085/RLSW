@@ -210,15 +210,15 @@ evidence that it looks right.
 
 ## Testing
 
-**`npm run test:all`** is the full sweep — **twenty-six suites**, one command,
+**`npm run test:all`** is the full sweep — **eighty-nine suites** (2026-10-04), one command,
 stops on the first red. Run it before reporting anything as done, and quote the
 assertion counts. If a count drops, explain why rather than letting it pass
 unremarked.
 
-Individual suites are `npm run test:<suite>`: engine, legal, eval, transition,
-turnflow, determinism, battleflow, winconditions, stackslots, melody, slime,
-eleven, score, harness, riffparity, skilltree, shamisen, shukuchi, shukuchiui,
-bushido, client, render, b0, riff, trace, arch.
+Individual suites are `npm run test:<suite>`; ⚠️ the authoritative list is the
+`test:all` line in `package.json` — a list copied here went stale at 26 while the
+sweep grew to 89. To run them all without stopping on the first red, loop over
+that line's `test:*` names one at a time.
 ⚠️ **`test:all` will not finish inside a 2-minute shell** on this VM, and
 `test:render` alone can take longer than that cold (it esbuilds the monolith
 first). Run the suites in batches rather than reading a timeout as a failure. `npm run bench:bot` runs the §6.6 bot
