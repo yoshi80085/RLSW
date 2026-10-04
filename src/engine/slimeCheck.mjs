@@ -22,7 +22,7 @@ import {
 import { legalActions, tentacleOptions, swingCone } from "./policies/legalActions.js";
 import { SLIDE_STEPS_PER_TURN, SLIME_TRAIL_MAX, SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS } from "../data/gameConstants.js";
 import { HEX_BY_NUM, ALL_HEXES } from "../board/hexMap.js";
-import { axialDist } from "../board/hexGeometry.js";
+import { axialDist, angleTo } from "../board/hexGeometry.js";
 
 let count = 0;
 const ok = (cond, msg) => { count++; assert.ok(cond, msg); };
@@ -396,8 +396,13 @@ function walk(startNum, n) {
      '⚠️ the reach is PAID IN ROAD — spent before the dice, so a whiffed reach is never free');
   for (const h of chosen.spend) eq(slimeAt(res.state, h), null, 'every hex it reached through is gone');
   eq(res.state.spirits.find(s => s.id === MM).num, self.num, 'and he never moved');
-  eq(res.state.spirits.find(s => s.id === MM).facing, self.facing,
-     '⚠️ …and never turned. Both trail abilities decline the re-face walking gives you.');
+  // ⚠️ HE TURNS ONLY TO SQUARE UP. A Tentacle is a Thrash, and since the clash
+  // (2026-09-20) `rollSwingClash` faces both fighters at each other — the client
+  // takes the same road (`initiateSwing` → `attackRolled('swing')`). What the
+  // reach still declines is the re-face WALKING gives you: he faces the rival
+  // he struck, not wherever a step would have pointed him.
+  eq(res.state.spirits.find(s => s.id === MM).facing, angleTo(HEX_BY_NUM[self.num], HEX_BY_NUM[spot]),
+     '⚠️ …and turned only to face the rival he struck — the clash squares them up.');
   eq(res.state.turn.actionTokenUsed, true, 'it spends the one attack of the turn');
 }
 

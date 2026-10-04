@@ -19,8 +19,10 @@ import { knockback, runBattleFlow } from "./systems/battleFlow.js";
 import { legalActions } from "./policies/legalActions.js";
 import { applyBotAction } from "./policies/transition.js";
 import { makeRng } from "./rng.js";
+import { throwPool } from "./systems/dicePool.js";
+import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
 import {
-  ELEVEN_DRIVE, ELEVEN_AMP_BLOWN_TURNS, ATK_BONUS_CAP,
+  ELEVEN_DRIVE, ELEVEN_AMP_BLOWN_TURNS, ATK_BONUS_CAP, ELEVEN_DIE,
   SONIC_DEF_DIE, SONIC_DEF_DIE_OUT_OF_RIG,
 } from "../data/gameConstants.js";
 
@@ -84,77 +86,70 @@ const armed = (st, id, extra = {}) => withNs(st, id, {
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 3. ⚠️ IT SETS, IT DOES NOT ADD — so it is a CEILING as much as a floor.
-//    This is the whole ability, and the half people forget is the second one.
+// 3. 🔊 THE ELEVEN DIE — it SWAPS IN for his weakest die, and is always kept.
+//    ⚠️ REWRITTEN 2026-10-04. This section asserted the old dial — "it SETS the
+//    attack to ELEVEN_DRIVE, so it is a ceiling" — through `attackParams`'s
+//    single-die tower. Since the chord vocabularies (2026-09-27) the Thrash and
+//    the Sonic both throw the rig's pool, and Goes to 11 is the Eleven die: a
+//    d6 with five 11s and one 1 (since 2026-09-28), in place of his weakest
+//    die, always kept, and a 1 fizzles the whole throw (`dicePool.js`).
 // ═════════════════════════════════════════════════════════════════════════════
 {
   const st = armed(base, MM);
   const before = attackParams(st, MM, RONIN, 'swing');
-
   const loud = attackParams(apply(st, elevenCalled(MM)), MM, RONIN, 'swing');
-  eq(loud.atkStat, ELEVEN_DRIVE, 'cranked, he swings at exactly eleven');
-  ok(loud.atkStat > before.atkStat, '…which is louder than the chord alone');
-  ok(loud._derived.cranked, 'and the derivation says why');
 
-  // ── THE JOKE, AND THE BALANCE LEVER, ARE THE SAME RULE ───────────────────
-  // Pile every legal buff on first. The tower is capped at ATK_BONUS_CAP, so the
-  // biggest honest attack is chord + 5 — and on a DRIVE-LEAN chord that clears
-  // 11 comfortably: a dom7 is worth 8 (a dom13, the fattest in the table, is 10).
-  // The minor triad the rest of this file uses is only 5, i.e. 10 towered, which
-  // is why the down-turn needs a real chord to demonstrate. Worth knowing in its
-  // own right: the ceiling only bites when he has actually built something.
-  const towered = withNs(st, MM, {
-    driveStack: ['C', 'E', 'G', 'A#'],
-    tempDrive: ATK_BONUS_CAP, moshDrive: ATK_BONUS_CAP,
-  });
-  const tall    = attackParams(towered, MM, RONIN, 'swing');
-  ok(tall.atkStat > ELEVEN_DRIVE,
-     'a fully-towered swing is already louder than eleven (otherwise the next assertion proves nothing)');
+  ok(before.dicePool.length > 0 && !before.dicePool.includes(ELEVEN_DIE), 'un-cranked, an ordinary pool');
+  ok(loud.dicePool.includes(ELEVEN_DIE), 'cranked, the Eleven die is in his hand');
+  eq(loud.dicePool.length, before.dicePool.length, '…IN PLACE of a die, not on top — the dice count is the chord\'s');
+  eq(loud.dicePool.filter(d => d === ELEVEN_DIE).length, 1, '…exactly one of it');
+  const lowest = Math.min(...before.dicePool);
+  eq([...loud.dicePool].sort(), [...before.dicePool.slice(0, before.dicePool.indexOf(lowest)),
+      ...before.dicePool.slice(before.dicePool.indexOf(lowest) + 1), ELEVEN_DIE].sort(),
+     '…and it is his WEAKEST die it replaces');
 
-  const turnedDown = attackParams(apply(towered, elevenCalled(MM)), MM, RONIN, 'swing');
-  eq(turnedDown.atkStat, ELEVEN_DRIVE,
-     '⚠️ …and calling it TURNS HIM DOWN. The amp only goes to 11.');
-  ok(turnedDown.atkStat < tall.atkStat, 'strictly quieter than not calling it');
-  ok(turnedDown._derived.crankedDown, 'the derivation flags that this call cost him damage');
-
-  // ── AND THE CAP IS UNTOUCHED, which is why no exemption was needed. ──────
-  // The ability this replaced took its +6 by riding `atkBase`, i.e. by being
-  // written OUTSIDE ATK_BONUS_CAP. A cap with an exemption in it is not a cap.
-  eq(tall._derived.atkBonusCapped, true,
-     '⚠️ the ordinary bonus tower is still capped — Eleven overwrites the total instead of exempting itself from the rule');
+  // Always kept, whatever else he throws.
+  for (let seed = 1; seed <= 40; seed++) {
+    const t = throwPool([6, 6, 6, 6, ELEVEN_DIE], 2, makeRng(seed));
+    ok(t.pool.includes(ELEVEN_DIE), `seed ${seed}: the Eleven die is kept even when only 2 dice count`);
+    eq(t.fizzled, t.vals[t.pool.indexOf(ELEVEN_DIE)] === 1, `seed ${seed}: a 1 on it, and only that, fizzles the throw`);
+  }
+  // A 1 in six: both faces turn up across a modest sweep.
+  const faces = new Set(Array.from({ length: 120 }, (_, i) => throwPool([ELEVEN_DIE], 1, makeRng(i + 1)).vals[0]));
+  eq([...faces].sort((x, y) => x - y), [1, 11], 'the Eleven die shows 11 — or, sometimes, 1');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 4. THE BLOWN AMP — offline, not weak, and it costs no new systems.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const st   = armed(base, MM, { unlockedSkills: ['goes_to_11', 'amp_1', 'amp_2', 'power_1', 'range_1'] });
+  const st   = armed(base, MM);
   const home = st.spirits.find(s => s.id === MM);
 
   const healthy = rigFor(home, st.noteStates[MM]);
-  ok(healthy.inRange, 'standing at home with a real rig, he is in range');
+  ok(healthy.inRange, 'with the amp up, he is in rig');
   ok(healthy.pool.length > 1, '…and throws more than the baseline die');
 
   const blownSt = apply(st, elevenCalled(MM));
   const blown   = rigFor(home, blownSt.noteStates[MM]);
   ok(ampBlown(blownSt.noteStates[MM]), 'the rig is down');
   eq(blown.inRange, false,
-     '⚠️ a blown amp reads as OUT OF RIG wherever he stands — §3.1\'s existing rule, reused whole rather than reimplemented');
+     '⚠️ a blown amp reads as OUT OF RIG wherever he stands — the gate legalActions already reads');
   eq(blown.pool.length, 1, '…back to the bare baseline die');
 
-  // ── WHAT THAT ACTUALLY COSTS, both halves ────────────────────────────────
-  // 1. The Sonic is not weaker, it is GONE: `legalActions` refuses to emit it.
+  // ── WHAT THAT ACTUALLY COSTS ─────────────────────────────────────────────
+  // The Sonic is not weaker, it is GONE: `legalActions` refuses to emit it.
   const aimed = apply(withNs(blownSt, MM, { melodyLine: [] }), moveBudgetSet(4, false));
   const facing = { ...aimed, spirits: aimed.spirits.map(s => s.id === RONIN ? { ...s, num: 2 } : s), acting: MM };
   ok(!legalActions(facing, MM, {}).some(a => a.kind === 'sonic'),
      '⚠️ the Sonic is OFFLINE, not merely worse — the searcher is never offered it');
 
-  // 2. He braces on a bare d4 when a beam comes back at him.
+  // 🛡️ And the armour he traded is gone: an incoming beam meets no shield.
+  // (The old d4 brace — SONIC_DEF_DIE_OUT_OF_RIG — went with the radius; the
+  // shield is his Sustain dice now, and Goes to 11 spent his Sustain stack.)
   const incoming = attackParams(blownSt, RONIN, MM, 'sonic');
-  eq(incoming.defDie, SONIC_DEF_DIE_OUT_OF_RIG,
-     '⚠️ …and he answers an incoming beam on a d4 instead of a d6 — the worst square on the board, brought to him');
-  const safe = attackParams(st, RONIN, MM, 'sonic');
-  eq(safe.defDie, SONIC_DEF_DIE, '(which he would not, with the rig up)');
+  eq(incoming.sustainPool, [], '⚠️ …and an incoming beam meets no shield: the Sustain he traded was the shield');
+  ok(attackParams(st, RONIN, MM, 'sonic').sustainPool.length > 0, '(which he would have, un-cranked)');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -197,10 +192,20 @@ const armed = (st, id, extra = {}) => withNs(st, id, {
     { applyAction: (s, a) => applyAction(s, a, makeRng(3)) },
   );
 
-  const moved = shove(base);
+  // ⚠️ ON OPEN FLOOR. The base fixture stands him on hex 1, a RIM hex, and the
+  // straight shove from the Ronin points off the stage — with no ring-out
+  // allowed that is a path of zero for reasons that have nothing to do with
+  // the dial, and the immunity assertion below would pass on it vacuously.
+  const here = HEX_BY_NUM[45];
+  const from = [[1, 0], [0, 1], [-1, 1], [-1, 0], [0, -1], [1, -1]]
+    .map(([dq, dr]) => [HEX_BY_QR[`${here.q + dq},${here.r + dr}`], HEX_BY_QR[`${here.q - 2 * dq},${here.r - 2 * dr}`]])
+    .find(([nb, back]) => nb && back)[0];
+  const open = { ...base, spirits: base.spirits.map(sp =>
+    sp.id === MM ? { ...sp, num: 45 } : sp.id === RONIN ? { ...sp, num: from.num } : sp) };
+  const moved = shove(open);
   ok(moved.result.path.length > 0, 'ordinarily a 2-hex shove moves him');
 
-  const planted = shove(apply(armed(base, MM), elevenCalled(MM)));
+  const planted = shove(apply(armed(open, MM), elevenCalled(MM)));
   eq(planted.result.path.length, 0,
      '⚠️ on eleven he does not move an inch. §1b: this was the Beast\'s one genuinely good idea, and the only answer to a Smash this Spirit ever had — cutting the ability is not the same as throwing away the part that worked.');
 }
