@@ -5,6 +5,8 @@
 import assert from "node:assert/strict";
 import { makeRng, restoreRng, hashSeed } from "./rng.js";
 import { makeInitialState } from "./state.js";
+import { initialLoadout } from "../data/loadouts.js";
+import { readStack } from "../music/vocabularies.js";
 import { applyAction } from "./reduce.js";
 import {
   gameInit, turnStarted, turnEnded, turnSkipped,
@@ -436,9 +438,20 @@ const config = {
         `underdogBonus matches old math (w=${w},l=${l},base=${base})`);
 }
 
-// -- Phase 3b: ATTACK_ROLLED (swing) --------------------------------------------
+// -- Phase 3b: ATTACK_ROLLED (swing) — the LEGACY opposed roll ------------------
+// ⚠️ `attackRolled` has stamped every Swing `swingVersion: 2` and every Sonic
+// `sonicVersion: 2` since 2026-09-20 (the clash / the barrage — their own suites
+// are test:swing and test:sonic), and v2 rolls from the noteStates rig, IGNORING
+// `atkStat`. The un-versioned path below is what an OLD REPLAY carries, and it
+// still has to resolve the way it did — so these blocks strip the stamp and
+// guard that path. Without the strip they were asserting 7 + d6 against a rig
+// the config's Spirits never built, and failing on the first seed.
+const legacyAttack = (...args) => {
+  const { swingVersion, sonicVersion, ...action } = attackRolled(...args);
+  return action;
+};
 {
-  const mk = (over = {}) => attackRolled("swing", "wildaxe", "vera",
+  const mk = (over = {}) => legacyAttack("swing", "wildaxe", "vera",
     { atkStat: 7, defStat: 5, ...over });
 
   // determinism: same state+seed+action → identical verdict
@@ -498,9 +511,15 @@ const config = {
   assert.equal(bs.keptIdx, null);
 }
 
-// -- Phase 3b: ATTACK_ROLLED (sonic keep-highest pool) --------------------------
+// -- Phase 3b: ATTACK_ROLLED (sonic) — the LEGACY hit-count volley -------------
+// ⚠️ THIS BLOCK USED TO TEST A SONIC THAT NO PATH HAS ANY MORE: keep the single
+// highest die, add the stat, oppose a defender d6. Every Sonic — versioned or
+// not — now enters combat.js's volley branch; an un-versioned one (an old
+// replay) throws each die once against a FLAT shield of `defStat` and counts
+// the hits (`resolveLegacyVolley`). That is what is guarded here; the modern
+// barrage is test:sonic's.
 {
-  const sonic = (pool, over = {}) => attackRolled("sonic", "wildaxe", "vera",
+  const sonic = (pool, over = {}) => legacyAttack("sonic", "wildaxe", "vera",
     { atkStat: 6, defStat: 4, dicePool: pool, ...over });
 
   for (const pool of [[6, 6], [6, 6, 6], [6, 6, 8], [8, 8, 8]]) {
@@ -509,12 +528,13 @@ const config = {
       assert.equal(b.diceVals.length, pool.length, "one value per die");
       b.diceVals.forEach((v, i) =>
         assert.ok(v >= 1 && v <= pool[i], `die ${i} within [1, ${pool[i]}]`));
-      assert.equal(b.atkRoll, Math.max(...b.diceVals), "keeps the highest die");
-      assert.equal(b.keptIdx, b.diceVals.indexOf(b.atkRoll), "keptIdx points at the max");
-      assert.equal(b.atkTotal, 6 + b.atkRoll);
-      assert.equal(b.defTotal, 4 + b.defRoll);
-      assert.equal(b.margin, Math.abs(b.atkTotal - b.defTotal));
-      assert.equal(b.damage, sonicDamage(b.margin), "sonic damage = sonicDamage(margin)");
+      const hits = b.diceVals.filter(v => v > 4).length;
+      assert.equal(b.shieldValue, 4, "a legacy shield is the flat defStat");
+      assert.deepEqual(b.diceHits, b.diceVals.map(v => v > 4), "a die hits when it beats the shield");
+      assert.deepEqual([b.hitCount, b.atkTotal, b.margin], [hits, hits, hits], "the hits are the score");
+      assert.equal(b.attackerWon, hits > 0);
+      assert.equal(b.damage, sonicDamage(hits), "sonic damage = sonicDamage(hits)");
+      assert.equal(b.sonicVersion, 1, "an un-versioned Sonic stays legacy");
     }
   }
 
@@ -524,28 +544,16 @@ const config = {
     applyAction(makeInitialState(config, 321), sonic([6, 6, 8])).battle,
     "same seed → identical sonic roll");
 
-  // 3d8 can punch past a d6 ceiling — at least one seed rolls atkRoll ≥ 7
+  // a d8 can show a face a d6 cannot — at least one seed rolls a 7+
   let big = false;
   for (let seed = 1; seed <= 300 && !big; seed++)
-    if (applyAction(makeInitialState(config, seed), sonic([8, 8, 8])).battle.atkRoll >= 7) big = true;
+    if (Math.max(...applyAction(makeInitialState(config, seed), sonic([8, 8, 8])).battle.diceVals) >= 7) big = true;
   assert.ok(big, "3d8 pool can exceed a d6 ceiling");
 
-  // posing defender still rolls nothing under a sonic pool
+  // a posing defender holds up no shield — every die lands
   for (let seed = 1; seed <= 40; seed++) {
     const b = applyAction(makeInitialState(config, seed), sonic([6, 6], { posing: true })).battle;
-    assert.deepEqual([b.defRoll, b.defTotal, b.attackerWon], [0, 0, true]);
-  }
-
-  // sonic verdict regression vs old Game math given identical rolls
-  for (let seed = 1; seed <= 200; seed++) {
-    const b = applyAction(makeInitialState(config, seed), sonic([6, 6, 8], { halveDef: true })).battle;
-    const atkRoll = Math.max(...b.diceVals);
-    const defRoll = Math.max(1, Math.floor(b.rawDefRoll / 2));
-    const at = 6 + atkRoll, dt = 4 + defRoll;
-    assert.deepEqual(
-      [b.atkRoll, b.defRoll, b.atkTotal, b.defTotal, b.attackerWon, b.margin, b.damage],
-      [atkRoll, defRoll, at, dt, at > dt, Math.abs(at - dt), sonicDamage(Math.abs(at - dt))],
-      "sonic verdict matches sonicDamage");
+    assert.deepEqual([b.shieldValue, b.hitCount, b.attackerWon], [0, 2, true]);
   }
 }
 
@@ -776,7 +784,11 @@ const config = {
   const cornerId = Object.keys(CORNERS)[0];
   const home = CORNERS[cornerId].homeNum;
   // Seed a full spirit shape (Vibe/lives/corner) via the Phase-2 sync bridge.
-  const seed = applyAction(makeInitialState(config, 314), spiritsSynced([
+  // ⚠️ ELIMINATION ON, SAID OUT LOUD. An unspecified match is round-limited
+  // with elimination OFF since the win-condition flip (`state.js`), where a
+  // knockdown spends no life and nobody is KO'd — the very two things this
+  // block exists to check. test:winconditions owns the 'off' side.
+  const seed = applyAction(makeInitialState({ ...config, elimination: "on" }, 314), spiritsSynced([
     { id: "wildaxe", num: 42, facing: 3, corner: cornerId, color: "#fff", cpu: false, lives: 3, vibe: 10, maxVibe: 10, knockedOut: false },
     { id: "vera",    num: 77, facing: 1, corner: cornerId, color: "#f00", cpu: true,  lives: 1, vibe: 2,  maxVibe: 8,  knockedOut: false },
   ]));
@@ -797,8 +809,10 @@ const config = {
   const v = koState.spirits.find(s => s.id === "vera");
   assert.deepEqual([v.lives, v.knockedOut, v.num], [0, true, 77], "out of lives → KO in place");
   // reducer branch == the resolveKnockdown kernel directly (single source)
-  assert.deepEqual(v, resolveKnockdown(seed.spirits.find(s => s.id === "vera")).next,
-    "KNOCKDOWN_RESOLVED == resolveKnockdown kernel");
+  // …plus the reducer's own `knockdownCount` generation, which lets an in-flight
+  // shove tell a respawn-in-place from the body it was already pushing (combat.js).
+  assert.deepEqual(v, { ...resolveKnockdown(seed.spirits.find(s => s.id === "vera")).next, knockdownCount: 1 },
+    "KNOCKDOWN_RESOLVED == resolveKnockdown kernel (+ the knockdown generation)");
 
   // WINNER_DECLARED — records the winner slice
   assert.equal(seed.winner, null, "winner starts null");
@@ -839,8 +853,12 @@ const config = {
   // matches an independent rebuild on the same forked stream (single source of truth)
   const rebuilt = {};
   const frng = makeRng(4242 >>> 0).fork("noteStatesInit");
-  for (const sp of s.spirits) rebuilt[sp.id] = makeInitialNoteState(sp.id, frng);
-  assert.deepEqual(rebuilt, s.noteStates, "makeInitialState builds via makeInitialNoteState on the forked rng");
+  // 📌 …with the seat's drafted kit laid over it, locked — the draft fixes two
+  // abilities from turn one (2026-10-02), and `state.js` writes them at birth.
+  for (const sp of s.spirits) rebuilt[sp.id] = {
+    ...makeInitialNoteState(sp.id, frng), unlockedSkills: initialLoadout(sp), loadoutLocked: true,
+  };
+  assert.deepEqual(rebuilt, s.noteStates, "makeInitialState builds via makeInitialNoteState on the forked rng (+ the drafted loadout)");
 
   // still plain-JSON (no Set/Map/function slipped in) — the Phase-8 contract
   assert.deepEqual(JSON.parse(JSON.stringify(s.noteStates)), s.noteStates, "note sheets are plain JSON");
@@ -1916,9 +1934,15 @@ const config = {
   const ch = botMod.botSpiritChord('wildaxe', ['C4', 'E4', 'G4']);
   assert.ok(typeof ch.drive === 'number', "botSpiritChord returns drive");
   assert.ok(typeof ch.sustain === 'number', "botSpiritChord returns sustain");
-  // Intergalactic 0 gets +1 sustain
-  const chI = botMod.botSpiritChord('intergalactic_0', ['C4', 'E4', 'G4']);
-  assert.equal(chI.sustain, ch.sustain + 1, "intergalactic_0 gets +1 sustain");
+  // 🪦 Intergalactic 0's innate +1 Sustain is GONE (2026-09-27, chord
+  // vocabularies). The bot must read a stack exactly as the player's own
+  // vocabulary does — no hidden bump the HUD would not show.
+  // ⚠️ Bare names — a stack holds 'C', not 'C4'; octaves read as an EMPTY stack
+  // and the comparison below would pass on two zeroes.
+  const chI = botMod.botSpiritChord('intergalactic_0', ['C', 'E', 'G', 'B', 'D']);
+  assert.ok(chI.drive > 0, "the bot reads a real stack");
+  assert.deepEqual(chI, readStack('intergalactic_0', ['C', 'E', 'G', 'B', 'D']),
+    "the bot reads Intergalactic 0's stack from her own vocabulary, no innate bump");
 
   // ── botPlanStackCommit (Drive/Sustain split) ──
   const stackNS = {
@@ -2257,7 +2281,7 @@ const config = {
 // was literally the same function the Sustain boost calls), and Style was an
 // aesthetic judge in a currency that now pays only for facts a player can aim at.
 
-// -- sonicRig: the workout × distance × THE BREATHING RADIUS -----------------
+// -- sonicRig: the Drive dial is the dice; the dormant marquee tiers ---------
 // AMP_DECK_DESIGN.md §2 for the dice; SEQUENCING.md §5.H⁶ for the radius;
 // MARQUEE_QUIZ_DESIGN.md §4–§5 for where the tiers come from and how they go.
 //
@@ -2278,69 +2302,48 @@ const config = {
   const ns = (pool = RIG_POOL_FLOOR, power = 0, n = 0, which = 'sustainStack') =>
     ({ rigPool: pool, rigPower: power, [which]: Array(n).fill('C') });
 
-  // ── The floor: what every Spirit carries, trained or not ──
-  {
-    const r = sonicRig(ns(), 0);
-    assert.deepEqual(r.pool, [6, 6], "floor: 2d6 — the free grant `amp_1` used to make");
-    assert.equal(r.inRange, true, "floor: at home, always in range");
-    assert.equal(r.radius, RIG_RADIUS_FLOOR, "floor: an empty stack reaches exactly the radius floor");
-  }
-  {
-    const r = sonicRig(ns(), 99);
-    assert.deepEqual(r.pool, [6, 6], "floor far away: still 2d6 — the Main Amp is board-wide");
-    assert.equal(r.inRange, false, "floor far: out of range");
-  }
-  // ⚠️ A SHEET WITH NO RIG FIELDS AT ALL (an old save, or a test fixture) must
-  //    read as the floor rather than as nothing.
-  assert.deepEqual(sonicRig({}, 0).pool, [6, 6], "a sheet with no rig fields degrades to the floor, not to 1d6");
-  assert.deepEqual(rigTiers({}), { pool: RIG_POOL_FLOOR, power: 0 }, "…and rigTiers says so");
+  // ⚠️ REWRITTEN AGAIN 2026-10-04. The floor/range/radius checks that stood
+  // here asserted a rig the game no longer has: since the chord vocabularies
+  // (2026-09-27) the dice are ONE d6 PER POINT OF DRIVE, read off the Drive
+  // stack by the Spirit's own vocabulary (`drivePowerBreakdown`), from anywhere
+  // on the board — `rigRadius` is a constant 0 and the beam does the aiming.
+  // The marquee tiers below are dormant (nothing grants them) but their
+  // helpers still exist, so their own checks stay.
+  const { drivePowerBreakdown } = await import("./systems/sonicRig.js");
+  const { powerPool } = await import("./systems/dicePool.js");
+  const drive = notes => ({ driveStack: notes, sustainStack: ['C'] });
+  // ⚠️ A REAL Spirit: an unknown id has no vocabulary, reads 0 Drive, and every
+  // check below would pass on empty pools.
+  const SP = 'cosmic_ronin';
 
-  // ── Pool tiers (in range) — pool size grows ──
-  assert.deepEqual(sonicRig(ns(2, 0), 0).pool, [6, 6, 6], "pool 2: 3d6");
-  assert.deepEqual(sonicRig(ns(3, 0), 0).pool, [6, 6, 6, 6], "pool 3: 4d6 — the ceiling");
+  // ── No Drive, no dice — never the old 2d6 floor ──
+  assert.deepEqual(sonicRig({}, 0).pool, [], "a sheet with no Drive stack throws nothing");
+  assert.deepEqual(sonicRig(ns(3, 3), 0).pool, [], "…and dormant marquee tiers add nothing to it");
 
-  // ── Power tiers upgrade d6 → d8, and CANNOT exceed pool ──
-  assert.deepEqual(sonicRig(ns(1, 1), 0).pool, [8, 6], "pool 1 + power 1: d8+d6");
-  assert.deepEqual(sonicRig(ns(2, 2), 0).pool, [8, 8, 6], "pool 2 + power 2: 2d8+d6");
-  assert.deepEqual(sonicRig(ns(3, 3), 0).pool, [8, 8, 8, 6], "full rig: 3d8+d6");
-  assert.deepEqual(sonicRig(ns(1, 3), 0).pool, [8, 6],
-    "power is CLAMPED to pool — you cannot upgrade a die you do not have");
-
-  // ── 🫁 THE BREATHING RADIUS — floor + stack length ──
-  assert.equal(rigRadius({}, false), RIG_RADIUS_FLOOR, "no stacks at all → the floor, not a crash");
-  assert.equal(rigRadius(ns(1, 0, 1), false), RIG_RADIUS_FLOOR + 1, "the opening state (root alone) → floor + 1 = 4");
-  assert.equal(rigRadius(ns(1, 0, 6), false), RIG_RADIUS_FLOOR + 6, "a full six-note stack → 9, the ceiling of the rule");
-
-  // The opening radius is 4 — EXACTLY the old tier-0 number, which is the whole
-  // reason the floor is 3. If this assertion ever moves, the resting state of
-  // every board in the game moved with it.
-  assert.equal(sonicRig(ns(1, 0, 1), 4).inRange, true,  "opening stack: dist 4 inside");
-  assert.equal(sonicRig(ns(1, 0, 1), 5).inRange, false, "opening stack: dist 5 outside");
-  assert.deepEqual(sonicRig(ns(3, 3, 1), 5).pool, [6, 6], "out of range → Main Amp floor 2d6, upgrades stripped");
-
-  // Stack up and the same Spirit reaches further from the same corner.
-  assert.equal(sonicRig(ns(1, 0, 4), 7).inRange, true,  "four-note stack: dist 7 inside");
-  assert.equal(sonicRig(ns(1, 0, 4), 8).inRange, false, "four-note stack: dist 8 outside");
-
-  // ⚠️ WHOSE TURN IT IS PICKS THE STACK, and this is the assertion that pins it.
-  // The same Spirit, the same hex, two different answers depending on whether
-  // they are acting — a big Drive stack reaches on YOUR turn, a big Sustain
-  // stack is what keeps you in rig on THEIRS.
-  {
-    const driveHeavy = { rigPool: 1, driveStack: Array(5).fill('C'), sustainStack: ['C'] };
-    assert.equal(sonicRig(driveHeavy, 7, 0, true).inRange,  true,  "acting: the Drive stack carries the rig to 8");
-    assert.equal(sonicRig(driveHeavy, 7, 0, false).inRange, false, "…and on somebody else's turn the same Spirit is stranded on Sustain");
+  // ── The dice ARE the Drive dial ──
+  for (const notes of [['C'], ['C', 'G'], ['C', 'E', 'G'], ['C', 'E', 'G', 'B', 'D']]) {
+    const sheet = drive(notes), { power } = drivePowerBreakdown(sheet, SP);
+    const r = sonicRig(sheet, 0, 0, true, SP);
+    if (notes.length > 1) assert.ok(power > 0, `${notes.join(' ')}: a voiced stack reads some Drive`);
+    assert.equal(r.power, power, `${notes.join(' ')}: the rig's power is the breakdown's`);
+    assert.deepEqual(r.pool, powerPool(power), `${notes.join(' ')}: one die per point of power`);
   }
 
-  // ── chargeBoost — adds d8 dice that work ANYWHERE ──
+  // ── Distance from home no longer matters — there is no radius ──
   {
-    const r = sonicRig(ns(1, 0), 99, 1);
-    assert.deepEqual(r.pool, [8, 6, 6], "charge boost out of range: +1 d8 on top of the board-wide floor");
-    assert.equal(r.inRange, false);
+    const sheet = drive(['C', 'E', 'G']);
+    assert.deepEqual(sonicRig(sheet, 99, 0, true, SP), sonicRig(sheet, 0, 0, true, SP),
+      "the same dice at the far side of the board as at home");
+    assert.equal(rigRadius(sheet, true), 0, "rigRadius is a constant 0");
+    assert.equal(sonicRig(sheet, 99, 0, true, SP).inRange, true, "in range anywhere while the amp is not blown");
   }
+
+  // ── A buff is a die, and the log can say which (Alex's 2026-09-30 playtest) ──
   {
-    const r = sonicRig(ns(1, 1), 0, 1);
-    assert.deepEqual(r.pool, [8, 8, 6], "charge boost in range: d8(power) + d8(charge) + d6");
+    const sheet = { ...drive(['C', 'E', 'G']), tempDrive: 1 };
+    const base = drivePowerBreakdown(drive(['C', 'E', 'G']), SP).power;
+    assert.equal(drivePowerBreakdown(sheet, SP).power, base + 1, "a temp Drive boost is one more die");
+    assert.equal(drivePowerBreakdown(sheet, SP, 1).power, base + 2, "…and the home spotlight one more again");
   }
 
   // ── 🏋️ THE WORKOUT: spending won tiers ──
@@ -2352,10 +2355,6 @@ const config = {
   assert.deepEqual(rigSpendable(ns(2, 1)), { pool: true, power: true }, "mid-build: either track takes a tier");
   assert.deepEqual(rigSpendable(ns(3, 3)), { pool: false, power: false }, "maxed: neither does");
 
-  // ⚠️ THE CEILING IS THE OLD CEILING — 3 pool + 3 power is exactly Amp III /
-  //    Power III, so §2.5's "max Sonic roll is 8" survives untouched.
-  assert.equal(Math.max(...sonicRig(ns(RIG_TIER_MAX, RIG_TIER_MAX), 0).pool), 8, "full rig ceiling = 8, not 10");
-  assert.equal(sonicRig(ns(RIG_TIER_MAX, RIG_TIER_MAX), 0).pool.length, 4, "full rig = 4 dice");
 
   // ── 🏋️ ATROPHY: shed by neglect, never below the floor ──
   {
@@ -2381,7 +2380,6 @@ const config = {
     for (let i = 0; i < RIG_ATROPHY_TURNS * 6; i++) sheet = { ...sheet, ...rigAtrophyTick(sheet).patch };
     assert.deepEqual(rigTiers(sheet), { pool: RIG_POOL_FLOOR, power: 0 },
       "🎯 total neglect lands EXACTLY where every Spirit starts the game — the spiral has a bottom");
-    assert.deepEqual(sonicRig(sheet, 0).pool, [6, 6], "…which is 2d6, same as turn one");
   }
 
   // ── rigPoolLabel ──
@@ -2392,9 +2390,8 @@ const config = {
   assert.equal(rigPoolLabel([8, 8, 6, 6]), "2d6+2d8");
 
   // ── Determinism: same inputs → same outputs (pure function contract) ──
-  const sheet = ns(2, 1, 2);
-  assert.deepEqual(sonicRig(sheet, 3), sonicRig(sheet, 3), "pure: identical calls match");
-  assert.deepEqual(sonicRig(sheet, 3, 1), sonicRig(sheet, 3, 1), "pure: with chargeBoost");
+  const sheet = drive(['C', 'E', 'G']);
+  assert.deepEqual(sonicRig(sheet, 3, 0, true, SP), sonicRig(sheet, 3, 0, true, SP), "pure: identical calls match");
 }
 
 // -- 🎪 THE MARQUEE QUIZ: lanes, buckets, per-bucket recycling ----------------

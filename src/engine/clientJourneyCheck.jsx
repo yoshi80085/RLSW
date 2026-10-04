@@ -51,12 +51,15 @@ try {
   // Layout changes must preserve real in-progress controls, not only engine state.
   const stock = document.querySelector('[data-tip-anchor="note-stock"]');
   const board = document.querySelector('[data-board-view] .arena-tactical > svg');
-  await click(button('3D board'));
+  // 🪦 THERE IS NO "3D board" / "2D board" SWITCH ANY MORE. The standalone 2D
+  // presentation was archived 2026-09-22 (`const board3D = true` in the client),
+  // so the match OPENS immersive and stays there; this journey used to click
+  // into 3D here and back out to 2D at the end, and failed on the missing button.
+  assert.equal(button('3D board'), undefined, 'no 3D toggle — the board is always 3D');
   assert.equal(document.querySelector('[data-match-layout]').dataset.matchLayout, 'immersive');
   assert.ok(document.querySelector('[data-immersive-track]'), '3D melody uses the immersive floating track');
-  assert.equal(document.querySelector('[data-tip-anchor="note-stock"]'), stock, '3D retains the dealt hand DOM');
-  assert.equal(document.querySelector('[data-board-view] .arena-tactical > svg'), board, '3D retains the board DOM');
-  assert.ok(button('Commit (3 notes'), 'draft survives entering immersive mode');
+  assert.ok(stock && board, 'the dealt hand and the board are mounted');
+  assert.ok(button('Commit (3 notes'), 'the draft is live in the immersive layout');
   const panelButton = text => [...document.querySelectorAll('[aria-label="Arena panels"] button')].find(el => el.textContent === text);
   await click(document.querySelector('.match-player-card')); // 🎡 Spirit details: the card's ＋ (the nav's middle chip is Scale now)
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, true);
@@ -91,15 +94,16 @@ try {
   assert.ok(shadow?.stepsLeft > 0, 'Shadow Illusion receives an independent movement budget');
   assert.ok(button('👤 Shadow')?.textContent.includes(`${shadow.turnsLeft}t`),
     'the live ability control reports the active Shadow duration');
-  await click(button('🎸 Shamisen'));
-  const curse = observedState?.noteStates?.[roninId]?.shamisenCurse;
-  assert.ok(curse?.turnsLeft > 0, 'Cursed Shamisen starts its timed curse');
-  assert.equal(curse?.paidThisRound, false, 'Cursed Shamisen begins with its debt unpaid');
-  assert.ok(button('💰 Pay Debt'), 'the active curse exposes its live debt control');
-  await click(button('💰 Pay Debt'));
-  assert.equal(observedState?.noteStates?.[roninId]?.shamisenCurse?.paidThisRound, true,
-    'Pay Debt protects the active curse for this round');
-  assert.ok(button('💰 Pay Debt')?.textContent.includes('✓'), 'the debt control confirms payment');
+  // 🎸 THE IWATO CURSE (2026-10-02). The timed curse and its 💰 Pay Debt button
+  // this journey used to drive are gone; one rail button now walks the curse's
+  // whole life, and its first step is taking the instrument up — free, and the
+  // strings only open NEXT turn.
+  assert.equal(button('💰 Pay Debt'), undefined, '🪦 there is no debt to pay any more');
+  await click(button('🎸 Take up Shamisen'));
+  const shamisen = observedState?.noteStates?.[roninId]?.shamisen;
+  assert.ok(shamisen, 'taking it up puts the Shamisen on his sheet');
+  assert.equal(shamisen.ready, false, '…but its strings do not open until his next turn');
+  assert.ok(button('🎸 Shamisen · strings next turn'), 'the same button now says which step he is on');
   // Inspect details, then return through the same controls a player uses.
   await click(document.querySelector('.match-player-card')); // 🎡 Spirit details: the card's ＋ (the nav's middle chip is Scale now)
   await click(panelButton('Turn'));
@@ -131,12 +135,10 @@ try {
   assert.ok(button('Commit (1 notes'), 'next player can build a melody');
   await click(button('Commit (1 notes'));
   assert.ok(document.querySelector('[data-tip-anchor="end-turn"]'), 'next player can commit and act');
-  await click(button('2D board'));
-  assert.equal(document.querySelector('[data-match-layout]').dataset.matchLayout, 'classic');
-  assert.equal(document.querySelector('[data-board-view] .arena-tactical > svg'), board, '2D recovery retains original board');
-  for (const region of document.querySelectorAll('[data-hud-region]')) assert.equal(region.hidden, false, 'classic shows every HUD region');
-  assert.ok(document.querySelector('[data-tip-anchor="end-turn"]'), 'view switch does not reset the phase');
-  console.log('PASS: melody, immersive layout/drawers, preserved live controls, Shukuchi hop, Shadow summon, Shamisen debt, Bushido arm/cancel, next-turn reset, second commit, 2D recovery');
+  assert.equal(button('2D board'), undefined, 'no 2D toggle either — the classic layout is archived');
+  assert.equal(document.querySelector('[data-board-view] .arena-tactical > svg'), board,
+    'the board DOM survives two whole turns — nothing remounted it');
+  console.log('PASS: melody, immersive layout/drawers, preserved live controls, Shukuchi hop, Shadow summon, Shamisen take-up, Bushido arm/cancel, next-turn reset, second commit, no 2D switch');
 } finally {
   await act(async () => root.unmount());
   dom.window.close();

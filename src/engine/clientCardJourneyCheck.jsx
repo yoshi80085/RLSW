@@ -31,8 +31,15 @@ const until=async(read,message,ms=12000)=>{for(let i=0;i<ms/10;i++){const found=
 let n=0;const ok=(c,m)=>{assert.ok(c,m);n++;};
 
 await act(async()=>root.render(<Game gameState={config} onReturnToLobby={()=>{}} onEngineState={s=>{state=s;}}/>));
-await click(button('Continue to Melody'));
+// 🤘 A Thrash needs 2 Drive notes since 2026-10-03 and every Spirit opens on its
+// root alone — so pick the Drive stack and voice one more note into it (the
+// recipe `clientSwingJourneyCheck` uses), or the Thrash button below is greyed out.
 const me=state.acting;
+const driveBefore=state.noteStates[me].driveStack.length;
+await click([...document.querySelectorAll('button.stack-chip')].find(b=>b.textContent.trim()==='Drive'));
+await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
+ok(state.noteStates[me].driveStack.length===driveBefore+1,'a second note went onto the Drive stack');
+await click(button('Continue to Melody'));
 
 // 1 · Deal from the Testing Grounds (deck order; a full hand swaps its first card):
 //     loaded4, loaded5, loaded6; then biggerCab and fullStack each take slot 0.

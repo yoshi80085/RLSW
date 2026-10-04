@@ -140,71 +140,30 @@ const battle = (over = {}) => ({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 4. SUNBEAM draws EXACTLY ONE value off the seeded stream.
-//    §0.4: a double-draw here desyncs every replay and freezes online clients,
-//    and it fails silently. Assert the cursor delta, not the outcome.
+// 4. 🪦 SUNBEAM IS GONE — and a connecting hit must draw NOTHING for it.
+//    The blind left `battleConsequences` on 2026-09-22 and Intergalactic 0's
+//    kit is Blaster of Ra / Displace / Gravity / Code Injection, so no seat can
+//    draft it. This section used to assert the armed beam drew exactly once;
+//    what is worth keeping from it is the §0.4 half: an rng draw on a hit that
+//    no rule spends desyncs every replay, silently. So: even a sheet that still
+//    CARRIES the old id (an old save) gets no draw and blinds nobody.
+//    📌 The client still renders a whiteout for `blindTurns`, and the
+//    SUNBEAM_* constants survive in gameConstants — dead weight, not a defect.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  const armed = (() => {
-    let s = freshState(31337);
-    s = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'intergalactic_0',
-      patch: { unlockedSkills: ['sunbeam'] } });
-    return s;
-  })();
-
-  const withBeam = drive(
+  let legacy = freshState(31337);
+  legacy = applyAction(legacy, { type: 'NOTE_SHEET_PATCHED', spiritId: 'intergalactic_0',
+    patch: { unlockedSkills: ['sunbeam'] } });
+  const hit = drive(
     st => battleConsequences({
       state: st, chordOf,
       battle: battle({ attackerId: 'intergalactic_0', defenderId: 'cosmic_ronin', sonicAttack: true }),
     }),
-    armed, { seed: 5150 },
+    legacy, { seed: 5150 },
   );
-  const noBeam = drive(
-    st => battleConsequences({
-      state: st, chordOf,
-      battle: battle({ attackerId: 'intergalactic_0', defenderId: 'cosmic_ronin', sonicAttack: true }),
-    }),
-    freshState(31337), { seed: 5150 },   // same seed, skill NOT unlocked
-  );
-
-  const beamDraws = withBeam.trace.filter(t => t === 'action:RANDOM_BATCH_DRAWN').length;
-  eq(beamDraws, 1, 'an armed Sunbeam draws exactly once — never twice (§0.4)');
-  eq(noBeam.trace.filter(t => t === 'action:RANDOM_BATCH_DRAWN').length, 0,
-     'an unarmed Sunbeam draws nothing at all');
-
-  const blind = withBeam.state.noteStates.cosmic_ronin.blindTurns ?? 0;
-  ok(blind >= 1 && blind <= 2, 'blind lands within [1,2] — the sun always sets');
-  eq(withBeam.state.noteStates.intergalactic_0.dbPoints, undefined,
-     '🪦 Sunbeam charges no Db — there is none (cut 2026-10-02)');
-
-  // ── 🕒 AND IT RECHARGES (2026-08-22) ───────────────────────────────────────
-  // ⚠️ SUNBEAM IS THE ONLY ABILITY THAT FIRES WITHOUT THE PLAYER CHOOSING IT —
-  // it rides any connecting attack whenever it is ready — so the cooldown
-  // is the whole of its restraint, and nothing else in this file would notice if
-  // it silently stopped applying.
-  eq(withBeam.state.noteStates.intergalactic_0.abilityCd?.sunbeam, SUNBEAM_CD,
-     '☀️ a fired Sunbeam goes on cooldown');
-
-  // Same battle, same seed, but the beam is already recharging: it must not
-  // fire, and — the part that actually breaks replays — must
-  // not draw off the seeded stream at all.
-  const recharging = (() => {
-    let s = freshState(31337);
-    s = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'intergalactic_0',
-      patch: { unlockedSkills: ['sunbeam'], abilityCd: { sunbeam: 1 } } });
-    return s;
-  })();
-  const cooling = drive(
-    st => battleConsequences({
-      state: st, chordOf,
-      battle: battle({ attackerId: 'intergalactic_0', defenderId: 'cosmic_ronin', sonicAttack: true }),
-    }),
-    recharging, { seed: 5150 },
-  );
-  eq(cooling.trace.filter(t => t === 'action:RANDOM_BATCH_DRAWN').length, 0,
-     '☀️ a recharging Sunbeam draws NOTHING — an rng draw behind a closed gate is a desync');
-  eq(cooling.state.noteStates.cosmic_ronin.blindTurns ?? 0, 0,
-     'and nobody goes blind');
+  eq(hit.trace.filter(t => t === 'action:RANDOM_BATCH_DRAWN').length, 0,
+     '🪦 a connecting hit draws nothing for a Sunbeam that no longer exists (§0.4)');
+  eq(hit.state.noteStates.cosmic_ronin.blindTurns ?? 0, 0, '…and nobody goes blind');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -421,21 +380,27 @@ const battle = (over = {}) => ({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 7. AZRAEL — the streak pays the attacker, and resets when he is the one down.
+// 7. 🪦 AZRAEL IS GONE — a knockdown pays the attacker no streak Fame.
+//    The streak payout left `battleConsequences` on 2026-09-22, and Metalness's
+//    kit is Goes to 11 / Moshpits / Tentacle. This section asserted the streak
+//    climbed and paid; what survives is the reset on the downed Spirit's own
+//    sheet (`knockStreak: 0` in the knockdown patch), still written, now unread.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   let s = freshState(808);
   s = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'Metalness_Monster',
     patch: { unlockedSkills: ['azrael'], knockStreak: 2 } });
+  s = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'cosmic_ronin', patch: { knockStreak: 4 } });
+  const fameBefore = s.noteStates.Metalness_Monster.fame ?? 0;
 
   const { state } = drive(
     st => vibeDamage({ state: st, targetId: 'cosmic_ronin', dmg: 99,
                        sourceLabel: 'test', attackerId: 'Metalness_Monster' }),
     s,
   );
-  eq(state.noteStates.Metalness_Monster.knockStreak, 3, 'the streak climbs on a knockdown');
-  ok((state.noteStates.Metalness_Monster.fame ?? 0) > 0, 'Azrael pays FP equal to the streak');
-  eq(state.noteStates.cosmic_ronin.knockStreak, 0, "the downed Spirit's own streak resets");
+  eq(state.noteStates.Metalness_Monster.knockStreak, 2, '🪦 no streak climbs — even on an old sheet carrying the id');
+  eq(state.noteStates.Metalness_Monster.fame ?? 0, fameBefore, '🪦 …and no streak Fame is paid');
+  eq(state.noteStates.cosmic_ronin.knockStreak, 0, "the downed Spirit's own streak still resets");
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

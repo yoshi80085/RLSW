@@ -148,7 +148,7 @@ console.log('§6 🧱 amps, fans and dice are a solid layer above the board');
   fanBody.material.opacity = .2; markSolid([root]);
   ok('re-marked every frame: a mesh that fades out drops off', !fanBody.layers.isEnabled(SOLID_LAYER));
   const r = read('./arenaRenderer.js'), vis = read('./arenaVisuals.js');
-  ok('renderer: clear once, copy the solids, THEN the standees on the same depth', /foreground\.clear\(\);markSolid\(\[crowd\.group,\.\.\.visuals\.solidRoots\(\)\]\);solid\.render\(scene,camera\);foreground\.render\(foregroundScene,camera\);/.test(r)
+  ok('renderer: clear once, copy the solids, THEN the standees on the same depth', /foreground\.clear\(\);markSolid\(\[(?:smoke\.vent,)?crowd\.group,\.\.\.visuals\.solidRoots\(\)\]\);solid\.render\(scene,camera\);foreground\.render\(foregroundScene,camera\);/.test(r) // (the smoke vent joined the solids with the smoke show)
     && /foreground\.autoClear=false/.test(r));
   ok('renderer: the copy runs AFTER the arena is drawn (its pixels are the source)', r.indexOf('composer.render();') < r.indexOf('solid.render(scene,camera)'));
   ok('visuals: every amp tier and the Sonic AND Swing floor dice are solid roots', /solidRoots:\(\)=>\[\.\.\.\[\.\.\.rigs\.values\(\)\]\.flatMap\(r=>r\.levels\),sonic\?\.dice\?\.group,swing\?\.dice\?\.group[,\]]/.test(vis));
@@ -162,9 +162,10 @@ console.log('§6 🧱 amps, fans and dice are a solid layer above the board');
   // 🪨 2026-09-25: the amps' bases are modelled half a unit INTO the Stage; the
   // re-draw painted them on top of the board as a plinth until the ground joined
   // the depth pass. Depth: solids + ground. Colour: solids only.
-  ok('🪨 the depth pass also holds the ground (Stage, Island) so buried amp bases stay buried',
+  ok('🪨 the depth pass also holds the ground (Stage, Riven World) so buried amp bases stay buried',
     /camera\.layers\.enable\(OCCLUDER_LAYER\);\s*scene\.overrideMaterial = depthOnly/.test(src)
-    && /markOccluders\(\[model\.getObjectByName\('Stage'\),model\.getObjectByName\('Island'\)\]\)/.test(r));
+    // 🌌 The Island is the Riven World's formation now (the floating-island edit).
+    && /markOccluders\(\[model\.getObjectByName\('Stage'\),(?:model\.getObjectByName\('Island'\)|rivenWorld\.formation)\]\)/.test(r));
   {
     const ground = new THREE.Group(); const slab = new THREE.Mesh(box(), new THREE.MeshStandardMaterial()); ground.add(slab);
     ok('🪨 markOccluders tags the ground on its own layer, never the solid one', markOccluders([ground, null]) === 1

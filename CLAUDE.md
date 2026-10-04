@@ -24,7 +24,7 @@ For the Rock God opening scene, read
 Editable source and artwork are in `previews/bardbarian-intro/`; Alex's exact
 2026-10-04 settings are `alex-dial-in.json` there and drive the preview defaults.
 Run `npm run dev:intro`. A portable source-and-assets snapshot is available at
-`handoffs/bardbarian-intro-2026-10-04.zip`. The handoff records the accepted
+`handoffs/bardbarian-intro-2026-10-05.zip`. The handoff records the accepted
 first-turn entrance rule and what remains to integrate into normal matches.
 
 ## 🗺️ THE SYSTEMS MAP — Alex's picture of the game, and it is a DELIVERABLE
@@ -220,15 +220,15 @@ evidence that it looks right.
 
 ## Testing
 
-**`npm run test:all`** is the full sweep — **twenty-six suites**, one command,
+**`npm run test:all`** is the full sweep — **ninety suites** (2026-10-05), one command,
 stops on the first red. Run it before reporting anything as done, and quote the
 assertion counts. If a count drops, explain why rather than letting it pass
 unremarked.
 
-Individual suites are `npm run test:<suite>`: engine, legal, eval, transition,
-turnflow, determinism, battleflow, winconditions, stackslots, melody, slime,
-eleven, score, harness, riffparity, skilltree, shamisen, shukuchi, shukuchiui,
-bushido, client, render, b0, riff, trace, arch.
+Individual suites are `npm run test:<suite>`; ⚠️ the authoritative list is the
+`test:all` line in `package.json` — a list copied here went stale at 26 while the
+sweep grew to 89. To run them all without stopping on the first red, loop over
+that line's `test:*` names one at a time.
 ⚠️ **`test:all` will not finish inside a 2-minute shell** on this VM, and
 `test:render` alone can take longer than that cold (it esbuilds the monolith
 first). Run the suites in batches rather than reading a timeout as a failure. `npm run bench:bot` runs the §6.6 bot

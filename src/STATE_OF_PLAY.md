@@ -1,6 +1,6 @@
 # 🧭 STATE OF PLAY — the whole game, current truth only
 
-**2026-10-04 — Bardbarian opening: PREVIEW, user dial-in saved.** The real arena now has a tunable opening study at `previews/bardbarian-intro/` (`npm run dev:intro`): a giant spectral outline of the bard-barbarian Rock God, outstretched hands, swirling storm and lightning, staggered crash landings between grandstands and home hexes, then the real picker riff, first step and two fans for each seat. Supports 2/3/4 players, reduced motion, camera/timing/effect controls, saved settings and Copy dial-in. **Accepted new rule, NOT YET LIVE:** Spirits begin in protected waiting spaces with no fans; each enters the old starting hex on its own first turn and gains two fans. The preview demonstrates the rule but does not change the client, engine, targeting, bot, saves or network. The exact 2026-10-04 user export is saved in `previews/bardbarian-intro/alex-dial-in.json` and imported as the preview defaults. Claude can continue via `../CLAUDE_BARDBARIAN_INTRO_HANDOFF.md` and the portable `handoffs/bardbarian-intro-2026-10-04.zip`. Production port still must cover the client/engine/bot paths together, including occupied entrance hexes. `test:intro`: 98 checks; browser playback verified. Details: `../previews/bardbarian-intro/README.md`.
+**2026-10-05 — Bardbarian opening: PREVIEW, user dial-in and Claude handoff saved.** The real arena now has a tunable opening study at `previews/bardbarian-intro/` (`npm run dev:intro`): a giant spectral outline of the bard-barbarian Rock God, outstretched hands, swirling storm and lightning, staggered crash landings between grandstands and home hexes, then the real picker riff, first step and two fans for each seat. Supports 2/3/4 players, reduced motion, camera/timing/effect controls, saved settings and Copy dial-in. **Accepted new rule, NOT YET LIVE:** Spirits begin in protected waiting spaces with no fans; each enters the old starting hex on its own first turn and gains two fans. The preview demonstrates the rule but does not change the client, engine, targeting, bot, saves or network. The exact 2026-10-04 user export is saved in `previews/bardbarian-intro/alex-dial-in.json` and imported as the preview defaults. Claude can continue via `../CLAUDE_BARDBARIAN_INTRO_HANDOFF.md` and the portable `handoffs/bardbarian-intro-2026-10-05.zip`. Production port still must cover the client/engine/bot paths together, including occupied entrance hexes. `test:intro`: 98 checks; packaged browser preview verified. The local merge reconciles Bardbarian `61f50a1` with Claude updates `6e7238a` on `chore/cleanup-rockgods-tutorial`; branch history is in the handoff. Bundle and architecture checks pass; the 90-suite sweep completes 36 suites before the known Shadow cooldown assertion. Details: `../previews/bardbarian-intro/README.md`.
 
 **2026-10-04 — Sustain is the living oval-hex shield.** Alex's complete Sustain preview settings are the production defaults in `board/sustainShield.js` (2.9 × 3.6, shallow 0.13 face, eight rings, three glitter strands, selected hue 280). Sonic and Psycho Bushido use that same renderer. Real remaining shield HP dims and frays the form; absorbed damage sheds glitter from the contact point; the real break releases glitter and curved ring fragments. The clock still owns hit-stop and slow motion, and the beam meets the new face at the existing contact stand-off. The Sustain amp feeds rings and glitter into the build. This is a visual change; damage, dice, audio and action costs are unchanged. The selected purple is Alex's shield dial-in; the amp feed retains the defender's colour. The inspector at `previews/sustain-shield/` re-exports the production renderer and offers synthetic damage controls. Production checks are part of `test:sonicfx`.
 
@@ -69,6 +69,8 @@ seven missing laser/smoke architecture rows remain. Two-device timing is unverif
 
 **2026-09-30 🎭 the standees HOP, and land with a sound** (Alex's dial-in off `.scratch/standee-move-preview.html` — *"I found a good sound I think. I'd like to run with this for now"*): every hex change is queued and played out (`board/standeeSteps.js`, the pure half + every number in `board/standeeMotion.js` `STANDEE_MOVE`) — a walk step is a **hop** (crouch, arc, tip forward, squash on landing), a 2+ hex leap (Shukuchi) a **shimmer blink**, a knockback a **skate backwards** with a clack. Each landing rings **stone on glass** (`audio/landingSfx.js` `slab`, a C3 body under a faint C6, weight .45, echo .06, two sparkle pings) after a **heavy rumble** in the air, and lights the hex (ripple, flash, 10 sparkles, in the player's colour). One fixed note for everyone (pitch mode `fixed`); bots at .55. Fast clicks queue and speed up, never skip a landing. Reduced motion: the piece is simply there, the hex fades, the sound still plays. On the SFX fader. Replaced the silent 0.2 s lerp. ⭐ The preview reads its defaults FROM `STANDEE_MOVE` (one copy), and the page offers 14 voices in three families (glass / weighted / space) if a re-dial is wanted. `test:standeemove` **318**. ⏳ Nobody has seen it in a real match yet.
 
+**2026-10-04 ⏎ Enter ends the turn** in Move & Act (Alex) — the turn's third Enter, after *Continue to Melody* and *Commit*. Calls the same `endTurn` as the End ⏭ button. ⚠️ **Never on auto-repeat**: Commit is also Enter, so a held key would otherwise run straight through the action phase; a fresh second press does end it. Your own turn only, never in a battle, event or text field. `test:notekeysjourney` **28** (was 23; mutation-tested).
+
 **2026-09-30 ⌨️ the numpad walks the Spirit** (`ui/numpadMove.js`, Alex: *"8 is up, 2 is down … 7, 9, 1, and 3 are diagonal"*): 8/2 straight up/down, 7/9/1/3 the four diagonals. ⭐ His rulings: **4 and 6 do nothing** (a flat-topped hex has no left/right neighbour) and **up is board north**, whatever the camera does. By `e.code`, so Num Lock on or off both work and the top-row digits (the Riff-Off's strings) are untouched. Move & Act step only, your own turn, never in a battle, event or text field, no auto-repeat; a key goes through the SAME `onHexClick` / `move` as a click, so the budget, blockers, dazed and the free slime slide all hold. Walks the 👤 Shadow when its walk is armed; leaves another armed action (Swing, Face, Shukuchi) alone; with nothing armed a press arms the walk and steps. `test:numpadjourney` **23** (the real `Game`, mutation-tested).
 
 **2026-09-30 🧹 melody lines no longer cut off mid-phrase** (`audio/ampVoice.js`): every note unplugs itself from the audio graph once it has finished — the front of its chain when its oscillators stop, the echo and reverb sends after the echo fade. Connected filters used to keep ~25 s of silent voices per commit on the audio thread, which starved the next phrase. Same treatment for the Zero's scratches and the commit-layer noises. Sound-neutral (≤ −49 dB, tails only). `test:voiceleak`. ⏳ Not yet heard by Alex.
@@ -79,7 +81,7 @@ seven missing laser/smoke architecture rows remain. Two-device timing is unverif
 
 **2026-09-30 🎲 an extra die says where it came from**: arming a Swing or Sonic logs e.g. *"5 dice: Drive 4 +1 standing in your own spotlight"* (`engine/systems/sonicRig.js` `drivePowerBreakdown` — the rig is computed FROM it). One die per Drive point is intact; the dial shows the stack, the dice add its buffs (temp boost, Mosh, home spotlight). 🎛️ **The SOUND plate is at Alex's dial-in** (`ui/MatchSurface.jsx`, `.scratch/sound-plate-preview.html`, 3 of 12 levers moved): labels 10.5 px, numbers 17 px, Db in gold with **READY** / `/5` against the kit's cheapest ability (`hud.dbCost` from `ABILITY_DB_COST` — the preview's 6 was a slip, 5 is the price), and a `+N` chip on the Drive dial (10.5 px) whose hover names the buff (`hud.driveBonus` / `driveWhy`).
 
-🚩 **Four image imports differ in CASE from git's filenames** (`standees/cosmic_ronin*.png`, `Metalness_monster_mirror.png` — git has `Cosmic_Ronin*`, `Metalness_Monster_mirror`). Windows resolves them; a Linux build (Render) will not. Not fixed — a rename, Alex's call.
+✅ **2026-10-04: the standee imports match git's filenames** (`Cosmic_Ronin*.png`, `Metalness_Monster_mirror.png`). The IMPORTS were re-cased; no file was renamed. A Linux build (Render) resolves them now, and `check:bundle` is at zero warnings.
 
 **2026-09-30 🔊 the Sonic's rings draw over EVERYTHING but the attacker** (`board/beamLayer.js`): the whole clash draws last on the foreground canvas, with the arena's own bloom, over amps, fans, dice and both standees; only the attacking Spirit's print can hide it, which is how the far side of the loop goes behind them. Loses the depth-of-field blur on the beam. `test:beamlayer`. ⏳ Not yet seen by Alex on a real GPU.
 
@@ -202,8 +204,8 @@ Spec: `RONIN_ABILITY_DESIGN.md` §2. Build order: its §8.1.
 | ability | verb | state |
 |---|---|---|
 | 🌀 **Shukuchi Arpeggio** | a step that leaps **2 hexes** and clears everything between, **up to 3 per turn, 1 AP each**, any direction; every landing picks up | ✅ **DONE — HEADLESS *AND* IN THE CLIENT, 2026-09-04e.** `test:shukuchi` 68 · `test:shukuchiui` 80. Button, ring-2 targeting, arcs, hover ghost, budget rail. 🎯 **Out of `BOT_CLIENT_GAPS`** — the bench and the played game agree about it again |
-| 🗡️ **Psycho Bushido** | draw on a rival **3–5 hexes** directly in front, ⚡ **a Drive-vs-Sustain BURST since 2026-10-01** — the range turns **2 / 3 / 4 d6s into d8s**, the Rival's Sustain is a shield, damage = what gets through, the Sonic's push, no counter-blow — **3 AP flat**, **−2 off the Drive stack**, and ⭐ **any body in the lane stops it** | ✅ **BUILT HEADLESS AND IN THE CLIENT.** `test:bushidoburst` **1031**, `test:bushidoarena` **15**, `test:bushido` **108** (🚩 red on older Db/cooldown respec assertions that predate the burst). Lane geometry, the pre-Swing payment **and now the blocker set** (`bushidoBlockers`) all come from `engine/systems/bushido.js`. ✅ **The three-way occupancy split is CLOSED 2026-09-05** — click, highlight and searcher read one set. 🎸 **A draw costs 2 stack notes** (it was up to 4 while the strike was a Swing). 🎨 **Lane overlay shipped at Alex’s screenshot settings** — `ui/BushidoOverlay.jsx`; `test:bushidoui` 331 checks, plus real client arm/cancel coverage |
-| 👤 **Shadow Illusion** | body double, **2 turns**, drinks Sustain | ✅ **DONE 2026-09-04f.** CD 3→4, per-use 2→1 Db, duration 3→2. `SHADOW_ILLUSION_TURNS` hoisted out of the monolith. ⚠️ §6.3's rider rides with it: the duration was cut with all three pop conditions still live |
+| 🗡️ **Psycho Bushido** | draw on a rival **3–5 hexes** directly in front, ⚡ **a Drive-vs-Sustain BURST since 2026-10-01** — the range turns **2 / 3 / 4 d6s into d8s**, the Rival's Sustain is a shield, damage = what gets through, the Sonic's push, no counter-blow — **3 AP flat**, **−2 off the Drive stack**, and ⭐ **any body in the lane stops it** | ✅ **BUILT HEADLESS AND IN THE CLIENT.** `test:bushidoburst` **1031**, `test:bushidoarena` **15**, `test:bushido` **100 pass, then 🚩 one deliberate red** (the Shadow invariant below). Lane geometry, the pre-Swing payment **and now the blocker set** (`bushidoBlockers`) all come from `engine/systems/bushido.js`. ✅ **The three-way occupancy split is CLOSED 2026-09-05** — click, highlight and searcher read one set. 🎸 **A draw costs 2 stack notes** (it was up to 4 while the strike was a Swing). 🎨 **Lane overlay shipped at Alex’s screenshot settings** — `ui/BushidoOverlay.jsx`; `test:bushidoui` 331 checks, plus real client arm/cancel coverage |
+| 👤 **Shadow Illusion** | body double, **2 turns**, drinks Sustain | ✅ **DONE 2026-09-04f.** ⁉️ **CD is now 2** (every cooldown flattened to the universal 2 when Db was cut) — **equal to the 2-turn double**, so `test:bushido`'s "the cooldown must outlast the double" is RED on purpose: Alex picks which number moves. Was: CD 3→4, per-use 2→1 Db, duration 3→2. `SHADOW_ILLUSION_TURNS` hoisted out of the monolith. ⚠️ §6.3's rider rides with it: the duration was cut with all three pop conditions still live |
 | 🎸 **Cursed Shamisen** | ⭐ **THE IWATO CURSE** (Alex, 2026-10-02): take it up (free) → from his NEXT turn tune **3 strings** with Iwato notes (1 ♭2 4 ♭5 ♭7 on the key he took it up in) as the chord step's 3rd destination, **up to 3 a turn from the hand**, out of the 3-commit budget → cast on a rival **within 3 hexes** (Action Token, 2-round CD) → their palette **is Iwato for their next 2 turns** (discord: no fans — ⁉️ **the curse lost half its bite when Db was cut, 2026-10-02**; Alex flagged it for a rewrite) unless they **exorcise** it on their next turn with 3 different Iwato notes. `RONIN_ABILITY_DESIGN.md` §2.3.00 | ✅ **BUILT** — rules, client, arena (`cursedShamisenArena.js`), the infected wheel, sound, loadout pop-out · `test:shamisen` 91 · `test:shamisenjourney` 27 · ⛔ bots never take it up · ⁉️ range, LOS and hit-snaps unruled |
 | 🎵 ~~Wa no Koe~~ | — | 🪦 **CUT, AND DELETED 2026-09-04.** Gone from kernel, client, data, bot and 3 suites. `melodyCommitCheck` §13 is now the revival guard. The **12 Db mastery slot is empty** |
 
@@ -402,27 +404,26 @@ already doing quite a bit"*). With no currency there is nothing to sink, so
 > anatomy.
 
 
-🚩 **`test:arch` IS RED TOO** (found 2026-09-22). **Eleven modules have no row in
-`ARCHITECTURE.md`** — the five Swing-clash ones and six from the loadout work.
-✅ The Swing five are documented as of 2026-09-22. ⛔ **The six loadout ones are
-an open call**: `loadoutCheck.mjs`, `loadoutUiCheck.jsx`, `ui/SpiritDraft.jsx`,
-`ui/AbilityWallet.jsx`, `data/loadouts.js`, `data/spiritIdentity.js`. A wrong row
-is worse than no row (§B1), so they want the session that built them.
-🎯 Nobody saw it because `test:all` stops on the first red and `test:b0` fails
-long before `test:arch` is reached.
+🧪 **THE SWEEP, 2026-10-04: `test:all` is 89 suites; 85 pass, 4 are red, and each red has an owner.**
+The image-case fix let the esbuild suites run on Linux again, which exposed 21 reds —
+nearly all tests written before a rule changed (the Thrash clash, the 2–3 hex beam,
+the vocabularies' dice, the Eleven die, Db's cut, spending off the TOP, the 2D board's
+archive, the Iwato curse). Those were brought up to the code; the four left are not
+the tests' to fix:
+- ⁉️ **`test:bushido` — the Shadow cooldown (2) no longer outlasts the double (2 turns).**
+  A rule, so it was left failing: Alex decides which number moves.
+- 📂 **`test:shukuchiui`, `test:standeemove`, `test:dice` read preview files that were
+  never committed** — `.scratch/shukuchi-hop-preview.html`, `.scratch/standee-move-preview.js`,
+  `.scratch/sonic-rework/barrage.mjs` + `.html`. They are on Alex's machine only; commit
+  them and these three run anywhere. ⚠️ Until then they cannot pass in any fresh clone.
+- 📌 **Two removals rode in a commit titled "3D arena edits" (2026-09-22):** ☀️ Sunbeam's
+  blind and 💀 Azrael's streak Fame left `battleConsequences`, and neither is in any kit
+  now. The suites now assert they are gone — ⁉️ **confirm that was intended.**
+- ✅ `test:arch` is green: the 14 unlisted stage-effect modules have rows. The six
+  loadout modules this list used to name as unlisted are listed.
 
-🪦 **AND TWO SUITES WERE ORPHANED** (fixed 2026-09-22): `test:swing` existed and
-`test:all` never called it; `arenaDiceSequenceCheck.mjs` was referenced by **no
-script at all** and had never run. Both are in `test:all` now, alongside the new
-`test:dice` and `test:cue`. ⛔ **All thirteen server smokes (`n2`–`n13`) remain
-unwired** — no npm script runs any of them. Textbook §B3, three times over.
-
-🚩 **`test:b0` AND `test:bushidoui` ARE RED** (2026-09-18, and they pre-date that
-session's work). `b0check.mjs:61` expects a seeded single note to read **Drive 3**
-and the engine says **1** — the 1–5 chord-table rebase that is already an open
-question on the board. `test:bushidoui` dies on `ENOENT: Claude outputs/bushido-lane-preview.html`.
-⚠️ **`test:all` stops on the first red, so the full sweep does not currently run
-end to end.** Neither is a balance item; both are a test disagreeing with the code.
+⛔ **All thirteen server smokes (`n2`–`n13`) remain unwired** — no npm script runs any
+of them (§B3).
 
 1. 🎨 **Bushido lane port complete.** Recovered the saved preview and applied the three 2026-09-05 screenshots. `test:bushidoui`: 331 checks across 11 scenarios × 6 facings. `test:journey` verifies arm/cancel and turn handoff. Next engineering work: a completed client battle journey before extracting combat orchestration.
 2. ⚠️ **STALE — THE RING BEAM IS PORTED.** `sonicZigzagVisuals.js` (72KB),

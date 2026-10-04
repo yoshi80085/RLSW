@@ -25,7 +25,8 @@
 //   3. THE BILL IS FLAT AND IT IS THE SAME BILL IN BOTH ENGINES. A kernel that
 //      charges less than the client is a searcher playing a cheaper game — the
 //      exact failure `melodyCommit.js` warns about and §5-hopport.D caught.
-//   4. THE DRIVE-STACK PRICE TAKES FROM THE FRONT, LIKE EVERY OTHER DRIVE SPEND.
+//   4. THE DRIVE-STACK PRICE TAKES FROM THE TOP, LIKE EVERY OTHER DRIVE SPEND
+//      (since 2026-09-27 — the paragraph below is the FRONT-era reasoning).
 //      `attackParams.js` slices `SWING_DRIVE_SPEND` off the head on every Swing,
 //      and `music/stackSlots.js` documents that as the game's way of RE-POINTING
 //      what a player hunts. Bushido eating the tail instead would have been a
@@ -44,10 +45,10 @@
 import assert from "node:assert";
 import { makeInitialState } from "./state.js";
 import { legalActions } from "./policies/legalActions.js";
-import { applyBotAction, spendDriveStack } from "./policies/transition.js";
+import { applyBotAction } from "./policies/transition.js";
 import { makeRng } from "./rng.js";
 import { ABILITY_CD, cooldownLeft } from "./systems/cooldowns.js";
-import { SWING_DRIVE_SPEND } from "./systems/attackParams.js";
+import { SWING_DRIVE_SPEND, attackParams } from "./systems/attackParams.js";
 import {
   PSYCHO_BUSHIDO_CD, PSYCHO_BUSHIDO_AP_COST,
   PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
@@ -129,7 +130,10 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(PSYCHO_BUSHIDO_MIN_RANGE, 3, '🗡️ the draw opens at 3 hexes (§2.1.1)');
   eq(PSYCHO_BUSHIDO_MAX_RANGE, 5, '🗡️ …and closes at 5');
   eq(PSYCHO_BUSHIDO_AP_COST, 3, '🗡️ 3 AP flat — not "everything you have left"');
-  eq(PSYCHO_BUSHIDO_CD, 4, '🕒 4-round cooldown — was 2');
+  // 🕒 2 rounds — the universal cooldown since Db was cut (2026-10-02: "the
+  // cooldowns … are the gate"). The 2026-09-04 respec had made it 4; every
+  // ability's cooldown was flattened to 2 in gameConstants, and this read 4.
+  eq(PSYCHO_BUSHIDO_CD, 2, '🕒 the universal 2-round cooldown');
   eq(PSYCHO_BUSHIDO_STACK_COST, 2, '🎸 …and 2 notes off the Drive stack, which is new');
   eq(PSYCHO_BUSHIDO_D8_LADDER, [2, 3, 4], '⭐ the ladder Alex settled 2026-09-04e — since 2026-10-01 counted in d6s turned into d8s');
 
@@ -259,46 +263,55 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 6. 🎸 THE STACK BILL — one direction, the game's direction.
+// 6. 🎸 THE STACK BILL — one direction, the game's direction: off the TOP.
+//    ⚠️ REWRITTEN 2026-10-04. This section tested `spendDriveStack`, a helper
+//    in transition.js that NOTHING CALLED but this file — it still took from
+//    the FRONT, and the "same as the Swing" check compared it to a hand-written
+//    front slice rather than to the Swing's real bill. Both had been wrong
+//    since Alex moved every Drive spend to the TOP (2026-09-27: "the root stays,
+//    the chord steps down"), and the section stayed green throughout — §B2 to
+//    the letter. The helper is deleted; this reads `bushidoDrawPatch` (the one
+//    the client and the kernel both call) against `attackParams`' own Thrash plan.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  eq(spendDriveStack(['C3', 'E3', 'G3', 'B3'], 2), ['G3', 'B3'],
-    '🎸 two off the FRONT of a four-note stack — the foundation, not the tail');
-  eq(spendDriveStack(['C3', 'E3'], 2), [],
+  const draw = stack => bushidoDrawPatch({ driveStack: stack }, 3).driveStack;
+  eq(draw(['C', 'E', 'G', 'B']), ['C', 'E'],
+    `🎸 ${PSYCHO_BUSHIDO_STACK_COST} off the TOP of a four-note stack — the root stays, the chord steps down`);
+  eq(draw(['C', 'E']), [],
     '🎸 …and a two-note stack is emptied, which is a legal state ("drive exhausted")');
-  eq(spendDriveStack(['C3'], 2), [],
-    '🎸 …as is a short stack, taken for what it has');
+  eq(draw(['C']), [], '🎸 …as is a short stack, taken for what it has');
+  eq(draw(undefined), [], '🎸 …and an absent stack is not a crash');
 
-  // ⭐ SAME DIRECTION AS THE SWING, ASSERTED AGAINST THE SWING'S OWN RULE rather
-  // than against a literal. `music/stackSlots.js` calls the front spend the
-  // design's way of re-pointing a hunt; if Bushido ever drifts to taking the tail
-  // there will be two conventions for one stack and only this line can tell.
+  // ⭐ SAME DIRECTION AS THE THRASH, asserted against the Thrash's OWN plan
+  // (`attackParams` → `swingChordLeft`, which `battleConsequences` charges) —
+  // never against a literal. Two conventions for one stack is the trap.
   {
-    const stack = ['C3', 'E3', 'G3', 'B3'];
-    const bySwing   = stack.slice(SWING_DRIVE_SPEND);
-    const byBushido = spendDriveStack(stack, SWING_DRIVE_SPEND);
-    eq(byBushido, bySwing,
-      '⭐ Bushido spends the Drive stack exactly the way a Swing does — one stack, one direction');
+    const stack = ['C', 'E', 'G', 'B'];
+    const st = makeInitialState({ mode: 'ffa', spirits: [
+      { id: RONIN, num: 45, corner: 'blue' }, { id: 'Metalness_Monster', num: 1, corner: 'yellow' }] }, 7);
+    const sheet = { ...st, noteStates: { ...st.noteStates, [RONIN]: { ...st.noteStates[RONIN], driveStack: stack } } };
+    const thrashLeft = attackParams(sheet, RONIN, 'Metalness_Monster', 'swing').swingChordLeft;
+    eq(thrashLeft, stack.slice(0, -SWING_DRIVE_SPEND), '(the Thrash plans its bill off the top)');
+    eq(draw(stack), thrashLeft,
+      '⭐ Bushido spends the Drive stack exactly the way a Thrash does — one stack, one direction');
   }
-
-  // ⭐ AND THE ROOT MOVES UP, WHICH IS THE POINT, NOT A CASUALTY. Spending the
-  // foundation hands the root to the next note and the 🔦 hunt marker follows it.
-  eq(spendDriveStack(['C3', 'E3', 'G3'], 1)[0], 'E3',
-    '🔦 the root hands off to the next note up — the hunt re-points, by design');
-
-  eq(spendDriveStack(['C3', 'E3'], 0), ['C3', 'E3'], '🎸 a zero bill is a no-op');
-  eq(spendDriveStack(undefined, 2), [], '🎸 …and an absent stack is not a crash');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 7. 👤 SHADOW ILLUSION — the respec, and the constant that came out of the client.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  eq(SHADOW_ILLUSION_CD, 4, '👤 4-round cooldown — was 3 (§2.2.1)');
+  eq(SHADOW_ILLUSION_CD, 2, '👤 the universal 2-round cooldown (§2.2.1 had 4; flattened when Db was cut, 2026-10-02)');
   eq(SHADOW_ILLUSION_TURNS, 2, '👤 the double stands 2 of his turns — was 3');
   eq(SHADOW_ILLUSION_SUSTAIN_DRAIN, 1, '👤 …and eats 1 Sustain each of them');
   eq(ABILITY_CD.shadow_illusion, SHADOW_ILLUSION_CD, '🕒 the cooldown table reads the constant');
 
+  // 🚩 RED ON PURPOSE, 2026-10-04 — A DECISION FOR ALEX, NOT A STALE TEST.
+  // Flattening every cooldown to 2 when Db was cut (2026-10-02) put the CD
+  // EQUAL to the double's 2-turn life, so this invariant broke. Which number
+  // moves — the cooldown back above the duration, or the duration down — is a
+  // game rule, so it was left failing rather than edited to pass. See
+  // STATE_OF_PLAY's open decisions.
   // ⚠️ THE COOLDOWN MUST OUTLAST THE DOUBLE, or he can stand a second one up the
   // turn the first falls and the ability stops being a thing you SPEND. That is
   // the whole point of the respec, and it is the relationship rather than either
@@ -357,10 +370,10 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   const before = structuredClone(ns);
   const patch = bushidoDrawPatch(ns, 5);
   eq(ns, before, 'draw calculation does not mutate the live sheet');
-  eq(patch.driveStack, ['C', 'D'], 'draw spends from the front');
+  eq(patch.driveStack, ['A', 'B'], 'draw spends from the TOP (2026-09-27)');
   eq('tempDrive' in patch, false, '🪦 the draw no longer pays tempDrive — the range turns d6s into d8s instead (2026-10-01)');
   eq(patch.dbPoints, undefined, '🪦 the draw pays no Db');
-  eq(patch.abilityCd, { other: 2, psycho_bushido: 4 }, 'draw preserves other cooldowns');
+  eq(patch.abilityCd, { other: 2, psycho_bushido: PSYCHO_BUSHIDO_CD }, 'draw preserves other cooldowns');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

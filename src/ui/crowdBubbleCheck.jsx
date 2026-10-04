@@ -136,9 +136,16 @@ console.log('§4 the client gates it and wires it');
   // ⚠️ THE FANS AND PICKLES ARE SEPARATE SWITCHES (Alex, 2026-09-17): turning the
   // tips off must not mute the crowd.
   ok(!gate.includes('beginnerEnabled'), 'the crowd coach does not ride the Beginner tips switch');
-  const disable = c.match(/onDisable=\{\(\) => \{([^}]*)\}\}/)?.[1] ?? '';
-  ok(disable.includes('setBeginnerEnabled(false)') && !disable.includes('setFanCoachEnabled'),
-    "the tip's own turn-off button turns off tips only");
+  // 🪦 PICKLES IS ARCHIVED (`const beginnerEnabled = false` in the client): the
+  // tip overlay is not mounted, so its "Turn off tips" button does not exist and
+  // this check failed looking for it. What it guarded still holds — if the
+  // overlay comes back, its turn-off must not reach the fans.
+  const disable = c.match(/onDisable=\{\(\) => \{([^}]*)\}\}/)?.[1];
+  const archived = /const beginnerEnabled = false;/.test(c) && !/<BeginnerTipOverlay\b/.test(c);
+  ok(archived ? disable === undefined
+              : disable?.includes('setBeginnerEnabled(false)') && !disable.includes('setFanCoachEnabled'),
+    archived ? "🪦 the tip overlay is archived — no turn-off button to reach the fans"
+             : "the tip's own turn-off button turns off tips only");
   ok(/label:'Fan hints'[\s\S]{0,300}onClick:\(\) => setFanCoachEnabled\(v => !v\)/.test(c), 'the menu has its own Fan hints toggle');
   const hookLine = c.split('\n').find(l => l.includes('const crowdCoach = useCrowdCoach('));
   ok(!!hookLine && /^ {2}const /.test(hookLine), 'useCrowdCoach is called at the top level of Game (never behind an if)');

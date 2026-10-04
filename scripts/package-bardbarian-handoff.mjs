@@ -8,7 +8,7 @@ import { build } from 'esbuild';
 
 const root = process.cwd(), preview = 'previews/bardbarian-intro';
 const destination = process.argv.find(arg => arg.startsWith('--out='))?.slice(6)
-  ?? 'handoffs/bardbarian-intro-2026-10-04';
+  ?? 'handoffs/bardbarian-intro-2026-10-05';
 const out = path.resolve(root, destination), handoffsRoot = path.resolve(root, 'handoffs');
 if (!out.startsWith(handoffsRoot + path.sep)) throw new Error('Output must be inside this workspace’s handoffs folder.');
 if (fs.existsSync(out) && fs.readdirSync(out).length) throw new Error('Destination already has files. Use --out=handoffs/a-new-folder to preserve it.');
@@ -32,7 +32,10 @@ for (const name of fs.readdirSync(path.join(root, preview))) {
 }
 copy('public/cosmic-arena/cosmic-arena.glb', 'project/public/cosmic-arena/cosmic-arena.glb');
 const handoff = 'CLAUDE_BARDBARIAN_INTRO_HANDOFF.md'; copy(handoff, handoff);
-for (const source of ['CLAUDE.md', 'src/STATE_OF_PLAY.md', 'src/SEQUENCING.md', 'src/ARCHITECTURE.md', 'package.json']) copy(source, `context/${source}`);
+copy(handoff, `project/${handoff}`);
+for (const source of ['CLAUDE.md', 'src/STATE_OF_PLAY.md', 'src/SEQUENCING.md', 'src/ARCHITECTURE.md', 'package.json',
+  'docs/archive/SEQUENCING-2026-10-04-test-triage.md',
+  'docs/archive/SEQUENCING-2026-10-04-before-bardbarian.md']) copy(source, `context/${source}`);
 const version = name => JSON.parse(fs.readFileSync(path.join(root, `node_modules/${name}/package.json`), 'utf8')).version;
 write('project/package.json', JSON.stringify({ name: 'rlsw-bardbarian-intro-preview', private: true,
   type: 'module', version: '1.0.0', engines: { node: '>=22.12.0' },
@@ -41,6 +44,7 @@ write('project/package.json', JSON.stringify({ name: 'rlsw-bardbarian-intro-prev
   dependencies: { three: version('three') }, devDependencies: { vite: version('vite') },
 }, null, 2) + '\n');
 write('project/vite.config.js', "export default { base: '/RLSW/' };\n");
+write('project/CLAUDE.md', `# Editable Bardbarian preview\n\nRead ${handoff} first. Edit previews/bardbarian-intro/ directly.\nThe exact saved user settings are alex-dial-in.json in that directory; timeline.js\nimports them. Preserve that provenance when experimenting. Run npm test after edits.\nUse npm run dev to preview; npm install is required on a fresh machine.\nThis package contains the scene and its dependencies, not the full game.\nProduction gameplay integration must happen in the original repository.\nThe context folder one level up holds reference copies of the repository handoffs.\n`);
 write('README.md', `# Bardbarian — start here
 
 Read ${handoff} before editing. Alex's exact selected settings are saved in

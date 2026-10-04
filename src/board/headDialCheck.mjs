@@ -166,7 +166,9 @@ console.log('§7 the wiring');
   ok(/headDials\.update\(frame\.spirits,clock\*1000/.test(visuals), 'arenaVisuals feeds every frame on the arena clock');
   ok(/headDials\.tick\(time\*1000,camera,pawns/.test(visuals), 'arenaVisuals places the dials over the live pawns each tick');
   ok(/headDials\.dispose\(\)/.test(visuals), 'and disposes them with the scene');
-  ok(/moving=stats\.effects>0\|\|stats\.headDials>0/.test(renderer), 'reduced-motion rendering keeps drawing while a dial is up (or it would never disappear)');
+  // 📌 Any position in the `moving=` chain — smoke, lasers, pyro and tiles have all
+  // joined it since, and a regex pinned to its first two terms went red on each.
+  ok(/moving=[^;]*\bstats\.headDials>0/.test(renderer), 'reduced-motion rendering keeps drawing while a dial is up (or it would never disappear)');
   const call = client.slice(client.indexOf('sceneFrame={board3D ? arenaFrame({'), client.indexOf('}) : undefined}>', client.indexOf('sceneFrame={board3D ? arenaFrame({')));
   ok(/stats:Object\.fromEntries\(spirits\.map/.test(call), 'the client passes stats into the scene frame');
   ok(/spiritChord\(s\.id, noteStates\[s\.id\]\?\.driveStack \?\? \[\]\)\.drive/.test(call)

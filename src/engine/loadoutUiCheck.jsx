@@ -14,7 +14,9 @@ for(const name of ['document','HTMLElement','Element','Node','MutationObserver']
 globalThis.IS_REACT_ACT_ENVIRONMENT=true;
 const root=createRoot(document.getElementById('root'));
 const button=text=>[...document.querySelectorAll('button')].find(el=>el.textContent.includes(text));
-const click=async el=>{assert.ok(el,'button exists');assert.equal(el.disabled,false,'button enabled');await act(async()=>el.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));};
+// ⚠️ `!== true`, not `=== false`: the hand's note chips are <div>s, which have no
+// `disabled` at all — a strict false failed every note click, not just greyed buttons.
+const click=async el=>{assert.ok(el,'button exists');assert.notEqual(el.disabled,true,'button enabled');await act(async()=>el.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));};
 let config, observed;
 try {
  await act(async()=>root.render(<Lobby onStart={c=>{config=c;}}/>));

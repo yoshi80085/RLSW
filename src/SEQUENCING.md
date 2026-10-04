@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — every handoff (87 rows), dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — every handoff (96 rows), dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -49,7 +49,7 @@ the same file. Scale 1.17, presence .24, detail .74, storm .9, fall height 24,
 impact 1.35, shake .65, bloom .55; every unchanged setting is preserved too.
 `CLAUDE_BARDBARIAN_INTRO_HANDOFF.md`, linked from CLAUDE.md, maps editing paths,
 launch commands, assets, checks and the remaining port. The portable source and
-assets snapshot is `handoffs/bardbarian-intro-2026-10-04.zip`. It is a local
+assets snapshot is `handoffs/bardbarian-intro-2026-10-05.zip`. It is a local
 handoff, not an upload or a remote Git update.
 
 **Status: selected settings saved; preview only.** No normal-match rule or visual port yet. The accepted
@@ -63,12 +63,23 @@ Checks: 98 intro assertions, lint clean, preview and app bundles clean with zero
 warnings. Browser playback reaches each first turn in order: only entrants get
 two fans; 2/3/4 players, reduced motion, seek/replay, persistence/export verified,
 no browser errors. Fixed an effects teardown that detached its reusable root.
-Full suite passes intro (98), vocabulary (640), cards (441), then fails the
-untouched card journey's `enabled` assertion. Audio cues exercised, speaker mix
-not judged. Architecture validation also reports 14 existing missing module rows
-(laser/smoke, bats and crumbling); all listed paths/exports resolve. The external
+The original full sweep stopped at the card journey; the incoming Claude commits
+fix that failure and the 14 missing architecture rows. On 2026-10-05 the combined
+checkout passes intro (98), preview lint, both bundles (zero warnings), and
+architecture (8 checks; 391 modules, 512 paths, 684 exports). The full sweep completes 36 suites, then
+stops at Claude's documented Shadow cooldown rule invariant in `test:bushido`.
+The isolated source project also passes 98 intro checks and loads Alex's exact
+settings and assets in Chromium without warnings/errors. Audio cues exercised,
+speaker mix not judged. The external
 Claude Systems Map has no callable Artifact publishing
 tool in this environment; the repository handoff records the pending port.
+
+**2026-10-05 branch reconciliation:** local `61f50a1` and incoming `6e7238a`
+diverged from `5ba5ff1` on `chore/cleanup-rockgods-tutorial`; the older Thrash
+branch was already merged at `71170f7`. Completed the pending local merge,
+keeping the Bardbarian handoff here and preserving the incoming `59-triage`
+verbatim in `../docs/archive/SEQUENCING-2026-10-04-test-triage.md`. Both are in
+the index. No remote push. The root Claude handoff explains the history.
 
 Next: Claude can continue from the saved dial-in and editable handoff. Integrate
 the presentation and accepted rule into normal matches when that work resumes.
@@ -213,13 +224,14 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 87 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 96 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
 | `59-intro` | 2026-10-04 | Bardbarian introduction preview, saved Alex dial-in and portable Claude handoff. Accepted off-board first-turn rule; gameplay port still pending. |
+| `59-triage` | 2026-10-04 | Archived in `../docs/archive/SEQUENCING-2026-10-04-test-triage.md`. The 21 red suites brought up to the current rules (Thrash clash, no radius, Eleven die, cuts, rebase); `spendDriveStack` deleted; 14 ARCHITECTURE rows. Left red for Alex: the Shadow CD/duration invariant, and three suites needing uncommitted `.scratch/` previews. |
 | `54-sustain` | 2026-10-04 | Living Sustain shield production port. Archived in `../docs/archive/SEQUENCING-2026-10-04-before-bardbarian.md`. |
 | `58-thrashbill` | 2026-10-03 | Thrash bill: attacker 2 Drive notes, defender 1, win/lose/tie; a Thrash (and the Tentacle) needs 2 Drive notes; a tie throws both back a hex, no Vibe. Shadow whiffs pay the Drive price; the Sonic whiff's AP fixed to 1. Thrash constants moved to `gameConstants` so `battleFlow` stays art-free (`test:sandbox`). `test:legal`, `test:swing`. |
 | `57-thrash` | 2026-10-03 | Swing renamed **Thrash** in every player-facing string (rail, overlay, 3D captions, prompts, tutorial, ability/card text, logs). Internal identifiers stay `swing` — replays and network actions carry the kind. Journey checks click `Thrash`. |

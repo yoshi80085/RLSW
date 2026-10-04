@@ -4,7 +4,7 @@
 // Style: Shred = high Drive | Flair = high Sustain | Groove = balanced lean-Sustain.
 // Speed: 4–6 — max hexes of movement per turn.
 import glamarchy from "../standees/Glamarchy.png";
-import cosmic_ronin from "../standees/cosmic_ronin.png";
+import cosmic_ronin from "../standees/Cosmic_Ronin.png";
 import intergalactic_0 from "../standees/Intergalactic_0.png";
 import metalness_monster from "../standees/Metalness_monster.png";
 

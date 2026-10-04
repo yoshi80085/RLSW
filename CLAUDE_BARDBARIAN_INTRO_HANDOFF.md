@@ -1,15 +1,17 @@
 # Claude handoff — Bardbarian / The opening act
 
-Prepared 2026-10-04 (Asia/Tokyo). Workspace: `C:\Users\ATBro\rlsw-sim`.
+Completed 2026-10-05 (Asia/Tokyo), preserving Alex's 2026-10-04 dial-in.
+Workspace: `C:\Users\ATBro\rlsw-sim`.
 
 ## Start here
 
 If Claude has this workspace, edit `previews/bardbarian-intro/` directly. It
 contains the complete editable scene and its artwork. It is outside `.scratch`
-and is not Git-ignored. **These files are currently local, uncommitted work:**
-a remote Git checkout will not receive them until they are committed/pushed.
+and is not Git-ignored. The original preview and selected settings are in commit
+`61f50a1` (`bardbarian`). This handoff's merge and packaging updates are local;
+remote Claude sessions need the resulting commits pushed or the ZIP supplied.
 
-For Claude on another machine, provide `handoffs/bardbarian-intro-2026-10-04.zip`.
+For Claude on another machine, provide `handoffs/bardbarian-intro-2026-10-05.zip`.
 It contains an isolated `project/` with all imported local source dependencies,
 the arena GLB, character PNGs, Bardbarian artwork, the full dial-in export,
 run instructions and SHA-256 manifest. Extract it with its directory structure
@@ -33,6 +35,31 @@ npm install
 npm run dev
 npm test
 ```
+
+## Branch history and merge — read before continuing
+
+The working branch is `chore/cleanup-rockgods-tutorial`. Both lines below branched
+from `5ba5ff1`; this was a local/remote divergence on the same branch:
+
+- Local `61f50a1` (`bardbarian`): opening preview, saved dial-in, artwork and handoff.
+- Incoming `6e7238a` (`origin/chore/cleanup-rockgods-tutorial` at inspection): twelve
+  commits, starting at `d4dc474`, covering Enter-to-end-turn, image import casing,
+  test triage and documentation. Author: Claude.
+- The earlier `claude/optimistic-fermat-iccc1e` work through `092f129` (Thrash,
+  Sonic cost/range changes) was already merged at `71170f7`, before their common
+  ancestor. Do not reapply it or interpret the Bardbarian branch as missing it.
+
+An interrupted merge was present on arrival. Its only conflicted file was
+`src/SEQUENCING.md`: both sides replaced the live handoff. The resolution keeps
+the Bardbarian entry in §A and preserves Claude's complete `59-triage` entry at
+`docs/archive/SEQUENCING-2026-10-04-test-triage.md`, linked in §C. Both histories
+are retained; the incoming gameplay/test edits are kept. Windows image filenames
+were aligned with their already-tracked capitalization so Linux imports agree.
+
+Check `git status` and `git log --graph --oneline -15` before further work. The
+merge is completed locally as part of this handoff; no remote push is performed.
+Use the merged branch for continuation. The ZIP is an editable scene snapshot,
+not a Git checkout or a replacement for this branch's full gameplay code.
 
 ## Alex's saved dial-in — the current baseline
 
@@ -115,17 +142,29 @@ a mounted normal match. Preserve unrelated uncommitted work in this workspace.
 
 ## Validation and packaging
 
-`npm run test:intro`: 98 checks. The first version passed preview lint, preview
-bundle and application bundle checks, and browser playback for all seat counts.
-The full game suite has unrelated failures recorded in the preview README
-(card journey `enabled`, missing architecture entries). Speaker balance still
-needs a listening pass. The saved-settings update reruns the relevant preview
-checks and verifies the isolated project's dependencies and copied assets.
+Verified on the combined checkout, 2026-10-05:
+
+- `npm run test:intro`: 98 checks; the copied isolated project also passes all 98.
+- Preview lint, preview bundle and full application bundle: clean, zero warnings.
+- `test:arch`: 8 checks, all 391 modules / 512 paths / 684 exports accounted for.
+- Packaged preview in Chromium: exact selected controls and rendered arena,
+  Bardbarian and assets; no browser warnings or errors. The first version also
+  exercised full entrance playback, 2/3/4 seats, seeking, replay and storage.
+- `test:all` now includes 90 suites. It completes 36 suites, including the formerly failing card journey,
+  then stops at the documented `test:bushido` Shadow cooldown invariant: cooldown
+  2 does not outlast duration 2. This rule decision was already flagged by Claude;
+  no cooldown or duration was changed here. Log: `.scratch/bardbarian-merge-full-suite.log`.
+
+The earlier card-journey failure and missing architecture rows were fixed by the
+incoming commits. Do not treat that old preview report as the merged branch's
+current status. Speaker balance still needs a listening pass; later full-sweep
+suites were not reached in this run. The archive preserves Claude's broader
+test-triage report, including preview files missing from fresh clones.
 
 To regenerate the source snapshot after edits:
 
 ```text
-node scripts/package-bardbarian-handoff.mjs
+node scripts/package-bardbarian-handoff.mjs --out=handoffs/bardbarian-intro-NEW-DATE
 ```
 
 Then archive the contents of its output folder into a **new** ZIP, or explicitly

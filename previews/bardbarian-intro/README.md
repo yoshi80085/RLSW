@@ -12,7 +12,7 @@ settings as the current baseline. Fresh previews and Reset look use that look.
 For Claude continuation, start at
 [CLAUDE_BARDBARIAN_INTRO_HANDOFF.md](../../CLAUDE_BARDBARIAN_INTRO_HANDOFF.md).
 The editable source, dependencies and assets are also packaged in
-`handoffs/bardbarian-intro-2026-10-04.zip` in the repository.
+`handoffs/bardbarian-intro-2026-10-05.zip` in the repository.
 
 ## The sequence
 
@@ -88,11 +88,14 @@ Browser: complete 4-player playback, later seats remaining at zero fans, all fou
 ending on two fans, 2/3-player variants, reduced motion, replay, chapter seeking,
 saved controls and changed-value export; no browser warnings or errors. Audio
 was exercised in the browser, but speaker balance still needs a listening pass.
-The full sweep passes intro (98), vocabulary (640), cards (441), then stops at
-the unrelated `clientCardJourneyCheck` assertion `enabled` (the clicked button
-is disabled). Logs: `.scratch/bardbarian-full-suite.log`.
-`test:arch` also finds 14 pre-existing missing entries for laser/smoke, bats and
-crumbling modules; all 497 documented paths and 684 listed exports still resolve.
+After merging Claude's newer commits on 2026-10-05, the earlier card journey
+failure and missing architecture rows are fixed. `test:arch` passes 8 checks:
+391 source modules, 512 paths and 684 exports. The full sweep completes 36 suites, then stops at the
+already-documented `test:bushido` Shadow cooldown rule: cooldown 2 does not
+outlast duration 2. No gameplay rule was changed to make this test pass.
+Log: `.scratch/bardbarian-merge-full-suite.log`. The source package passes the
+same 98 intro checks and loads the saved settings and assets in Chromium with
+no browser warnings/errors. See the root handoff for the branch history.
 
 The external Claude Systems Map could not be updated: this session has no
 Artifact read/republish tool. The canonical repository documents record the

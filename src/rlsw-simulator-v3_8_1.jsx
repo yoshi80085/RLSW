@@ -4115,6 +4115,36 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
+  // ⏎ ENTER ENDS THE TURN in Move & Act (Alex, 2026-10-04) — the third Enter in
+  // the turn, after Continue to Melody and Commit. ⭐ It calls the SAME
+  // `endTurn` the End ⏭ button does, so the key and the button cannot gate
+  // differently (the `continueToMelody` rule).
+  // ⚠️ `e.repeat` IS THE LOAD-BEARING GUARD. Commit is also Enter, and the turn
+  // flips to move_act the instant it lands — without it, HOLDING Enter on the
+  // melody would commit and then auto-repeat straight past the whole action
+  // phase. A deliberate second press still ends the turn; a held key does not.
+  // 📌 canAct-gated (as the numpad is), not netSync-gated like the note keys:
+  // ending your own turn is a per-client act `endTurn` already guards.
+  const enterEndHandlerRef = useRef(() => false);
+  function enterEndTurn(e) {
+    if (e.key !== 'Enter' || e.repeat || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return false;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? ''))) return false;
+    if (!acting || !isMyTurn || !canAct || isBot(acting)) return false;
+    if (battleState || activeEvent) return false;
+    // 🔓 The seat-unlock cinematic holds the board — keys are swallowed.
+    if (seatUnlockFx && !seatUnlockFx.short) return true;
+    if (turnStep !== 'move_act') return false;
+    endTurn();
+    return true;
+  }
+  useEffect(() => { enterEndHandlerRef.current = enterEndTurn; });
+  useEffect(() => {
+    const onKey = (e) => { if (enterEndHandlerRef.current(e)) e.preventDefault(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
   // Open the stream only while the player is actually building a melody, and
   // hand it back the moment they aren't — no hot mic sitting open all game.
   useEffect(() => {
