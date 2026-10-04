@@ -866,3 +866,24 @@ launch, follows live projectile positions and then frames contacts/aftermath.
 New matches request `arenaVersion:1`; versionless logged actions retain the old
 duel for replay compatibility. The last committed melody has its own persistent
 note-sheet field, since the per-turn `committedMelody` is cleared on turn start.
+
+### Stage-effect modules — lasers, smoke, bats, the crumbling stage (rows added 2026-10-04)
+
+📌 These fourteen were built and wired into suites without rows, so `test:arch` sat red on them. The rows below are written from each module's own header and exports, not from a design doc — read the module before trusting a row.
+
+| Module | Responsibility |
+|---|---|
+| `board/arenaLasers.js` | `createArenaLasers` — 🔦 the live laser show on the foreground canvas, with real depth against arena solids (the smoke compositor reads that depth too). Which lanes are active and when the show ends come from the engine; this only animates the hardware. |
+| `board/laserRig.js` | `LASER_LOOK`, `point`, `createLaserPod`, `createLaserLane`, `matchLaserLayout`, `flightPose`, `angleDelta`, `disposeLaserObject` — the laser pods and beam lanes as Three.js objects, and how a pod flies between layouts. |
+| `board/laserPresentation.js` | `LASER_TIMING`, `laserEase`, `laserEnvelope` — the pods' descend / open / ignite / ascend envelope in SECONDS. ⚠️ Presentation only: no round clock and no RNG — active lanes and expiry are the engine's. |
+| `board/laserPresentationCheck.mjs` | The laser show against real engine state (`stageFxActivated` / `stageFxRoundTicked`): pods, lane markers and teardown. Run by `test:arena`. |
+| `board/arenaSmoke.js` | `createArenaSmoke` — 💨 smoke composited on the FOREGROUND canvas, above the CSS3D click surface, using that context's depth; no cross-context copy and no extra full-world render. |
+| `board/smokeVolume.js` | `createSmokePass` — the volumetric smoke shader pass (a tiled 3D noise texture) the compositor above draws with. |
+| `board/smokePresentation.js` | `SMOKE_LOOK` (Alex's "Heavy billows" dial-in, 2026-09-30), `SMOKE_TIMING`, `smokeViewerId`, `isSmokeHidden`, `smokeSelfId`, `smokeExtent`, `createSmokeTimeline` — what the smoke looks like and who it hides from. ⚠️ Seconds describe transitions only; the engine alone grows the radius and ends the show. |
+| `board/batRules.js` | `batSpawn`, `batTarget`, `batStep` — 🦇 pure bat rules: spawn off occupied hexes, hunt the biggest Fame star, then the slowest turn-taker, then the nearest Spirit (radix weights so Fame always outranks timing, and timing outranks distance), one hex per step. |
+| `board/batStage.js` | `createBatStage` — the bats as stage props built from geometry (scalloped wings, ears, ruby eyes) with a hex marker under each. |
+| `engine/systems/bats.js` | `activateBats`, `applyBatTurnTimed`, `applyBatsTicked`, `collectBatEntries` — the Bats stage effect in the engine: `BAT_COUNT` bats for `BAT_ROUNDS`; step onto one for +`BAT_FAN_GAIN` fans, let it reach you for `BAT_DAMAGE` Vibe (`data/stageEffects.js`). |
+| `engine/batsCheck.mjs` | `test:bats` (with `scripts/check-bats-journey.mjs`) — targeting order, stepping, the fan and Vibe payouts, serialisation and the stage props. |
+| `engine/batsJourneyCheck.jsx` | The real `Game` mounted with the Bats show running. |
+| `engine/systems/crumbling.js` | `activateCrumbling`, `tickCrumbling`, `abyssFpLoss`, `resolveAbyssEntries`, `respawnFromAbyss` — 🕳️ the Crumbling Stage: `CRUMBLING_HEXES_PER_ROUND` hexes fall per round, never anyone's footing, respawn point or rig; fall in and lose `ABYSS_FP_FRACTION` of your Fame and return to your starting hex next turn. ⚠️ Not in the live deck (`data/stageEffects.js`): engine and preview only until its board presentation is approved. |
+| `engine/crumblingCheck.mjs` | `test:crumbling` — the collapse, the abyss Fame loss, knockback into a hole, and replay. |
