@@ -99,45 +99,9 @@ import { applyUnlockClaim } from "../../music/stackSlots.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 
-/**
- * ⭐ 🗡️ SPEND `n` NOTES OFF A DRIVE STACK — Psycho Bushido's second price
- * (Alex, 2026-09-04f). Returns a NEW array; does not mutate.
- *
- * ⚠️ IT TAKES FROM THE FRONT, AND THE FIRST DRAFT OF THIS FUNCTION TOOK FROM THE
- * BACK. The reasoning for the back was that `music/stackSlots.js` derives the
- * root from `stack[0]`, so eating the root would re-point what the player is
- * hunting — which sounded like a side effect an attack should not have.
- *
- * 🎯 IT IS NOT A SIDE EFFECT. IT IS THE GAME'S EXISTING RULE. Every Swing in the
- * game already spends `SWING_DRIVE_SPEND` off the FRONT of the Drive stack
- * (`attackParams.js` → `driveStack.slice(SWING_DRIVE_SPEND)`), and
- * `stackSlots.js` documents that as deliberate: "spending your foundation hands
- * the root to the next note up, and your hunt on the board moves with it… the
- * design's own 'removing the root is how you re-point what you are hunting'."
- * Two directions for one stack inside one action — Bushido eating the tail and
- * its own strike eating the head — is precisely the kind of second convention
- * this repo keeps paying for. One stack, one direction.
- *
- * ⚠️ AND AN EMPTY DRIVE STACK IS A LEGAL STATE, NOT AN IMPOSSIBLE ONE. Any Swing
- * can already empty a two-note stack; `battleFlow` logs it as "drive exhausted
- * (base stats until committed)" and the next commit re-roots it. So this is not
- * §B10's "impossible rather than weak" exception, which is what the back-taking
- * draft was defending against.
- *
- * 🚩 WHAT THIS MEANS FOR THE ABILITY'S REAL PRICE, MEASURED RATHER THAN INTENDED:
- * a Bushido's strike IS a Swing, so the Swing's own `SWING_DRIVE_SPEND` lands on
- * top of this one. **A draw costs 4 notes of Drive stack where an ordinary Swing
- * costs 2** — and because this bill is paid BEFORE `attackParams` reads the
- * sheet, the chord powering the blow is computed from what is left. The ladder
- * pays more the farther you draw; the stack bill takes the chord that would have
- * paid alongside it. That is a real and interesting trade, it is uncosted, and
- * `SEQUENCING.md` §B10 says to record it and move on rather than tune it.
- */
-export function spendDriveStack(stack = [], n = 0) {
-  const src = Array.isArray(stack) ? stack : [];
-  if (n <= 0 || src.length === 0) return src;
-  return src.slice(Math.round(n));
-}
+// 🪦 `spendDriveStack` (Bushido's front-taking Drive bill) was deleted 2026-10-04:
+// nothing called it — `systems/bushido.js` `bushidoDrawPatch` takes from the TOP,
+// like every Drive spend since 2026-09-27.
 
 /** Kinds this file can actually run headlessly. */
 export const MODELLED_KINDS = new Set([

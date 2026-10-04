@@ -172,7 +172,7 @@ export const SONIC_POOL_MAX     = 4;                    // 1 base + 3 amp tiers
 // ready, and Db itself was cut (Alex: "the cooldowns and 'sacrifices' are the
 // gate, not another economy"). `UPGRADE_SHOP_DESIGN.md` is superseded.
 
-export const PSYCHO_BUSHIDO_CD        = 2;  // rounds, ticked in turnFlow — was 2
+export const PSYCHO_BUSHIDO_CD        = 2;  // rounds, ticked in turnFlow — the universal 2 (the 2026-09-04 respec's 4 is gone)
 export const PSYCHO_BUSHIDO_MIN_RANGE = 3;  // ⭐ closer than this is ILLEGAL, not merely bad
 export const PSYCHO_BUSHIDO_MAX_RANGE = 5;  // ⭐ farther than this is out of the lane
 // ⭐ FLAT, NOT "EVERYTHING YOU HAVE LEFT". The dash used to bill `apLeft`, which
