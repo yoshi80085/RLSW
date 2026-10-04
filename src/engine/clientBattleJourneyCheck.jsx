@@ -75,30 +75,41 @@ const vibe = spiritId => Number(document.querySelector(`[data-spirit-id="${spiri
   const startingDefenderVibe = vibe(defenderId);
   assert.equal(startingAttackerVibe, config.spirits[0].vibe, 'attacker Vibe is visible before combat');
   assert.equal(startingDefenderVibe, config.spirits[1].vibe, 'rival Vibe is visible before combat');
+  // ⚠️ REWRITTEN 2026-10-04: THE THRASH IS THE 3D CLASH NOW. This journey drove
+  // the classic BattleMeterOverlay — SKIP TO ROLL, two CLICK die spins, BACK TO
+  // GAME — but every live Thrash has been a `swingClash` since 2026-09-20 and
+  // the client hands that overlay `null` for one, so the screen this walked
+  // through is one no player reaches. `test:swing` owns the clash's own timing
+  // and sound; what this journey keeps is the AFTERMATH, end to end.
   await click(button('Thrash'));
   await click(document.querySelector(`[data-hex-num="${defenderHex.num}"]`));
-  assert.ok(document.querySelector('[data-battle-phase]'), 'Swing opens the battle overlay');
-  console.log('Opened battle overlay');
+  assert.ok(observedState.battle?.swingClash, 'the Thrash rolls the engine clash');
+  assert.ok(document.querySelector('[data-swing-phase]'), 'the clash plays on the 3D board');
+  assert.equal(document.querySelector('[data-battle-phase]'), null, '…and the archived 2D battle overlay stays shut');
+  const verdict = observedState.battle;
+  console.log('Opened the clash');
 
-  await click(button('SKIP TO ROLL'));
-  await phase('atk_die_spin');
-  console.log('Reached attacker die');
-  await click([...document.querySelectorAll('div')].find(el => el.textContent === 'CLICK'));
-  await phase('def_die_spin');
-  console.log('Reached defender die');
-  const diePrompts = [...document.querySelectorAll('div')].filter(el => el.textContent === 'CLICK');
-  await click(diePrompts.at(-1));
-  await phase('result');
-  console.log('Reached battle result');
-  await click(button('BACK TO GAME'));
-  console.log('Closed battle result');
+  for (const who of ['attacker', 'Rival']) {
+    const roll = await waitFor(() => document.querySelector('.sonic-roll-prompt button'), `the ${who} is asked to roll`);
+    await click(roll);
+  }
+  await waitFor(() => !document.querySelector('[data-swing-phase]'), 'the clash closes', 20000);
+  console.log('Closed the clash');
 
-  assert.ok(!document.querySelector('[data-battle-phase]'), 'battle overlay closes');
   assert.ok(observedState, 'client exposes the latest authoritative engine state');
-  assert.ok(observedState.spirits.find(s => s.id === attackerId).vibe < startingAttackerVibe,
-    'the deterministic whiff applies Vibe self-damage');
+  if (verdict.margin) {
+    const loser = verdict.attackerWon ? defenderId : attackerId;
+    const startOf = loser === attackerId ? startingAttackerVibe : startingDefenderVibe;
+    await waitFor(() => observedState.spirits.find(s => s.id === loser).vibe < startOf,
+      'the loser takes the clash damage');
+    assert.equal(observedState.spirits.find(s => s.id === loser).vibe, startOf - verdict.margin,
+      'the loser loses exactly the margin in Vibe');
+  } else {
+    assert.equal(vibe(attackerId), startingAttackerVibe, 'a tie costs nobody Vibe');
+    assert.equal(vibe(defenderId), startingDefenderVibe, '…on either side');
+  }
   assert.ok(document.querySelector('[data-tip-anchor="end-turn"]'), 'player returns to the action rail');
-  assert.equal(button('Thrash')?.disabled, true, 'the spent Action Token disables another Swing');
-  console.log('PASS: melody, Swing target, both dice, result, close, Vibe consequence, spent action');
+  assert.equal(button('Thrash')?.disabled, true, 'the spent Action Token disables another Thrash');
+  console.log(`PASS: melody, Thrash target, the clash (${verdict.margin ? 'margin ' + verdict.margin : 'a tie'}), close, Vibe consequence, spent action`);
 }
 process.exit(0);
