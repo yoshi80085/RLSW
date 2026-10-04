@@ -270,7 +270,11 @@ console.log('§4 the wiring');
   ok('the standee is ticked with the camera, so it can tip back', /standee\.frame\(time,\{knockedOut:knocked[^)]*cameraPos:camera\?\.position/.test(v));
   // ⚠️ The regression this guards: leaving the block's animation on the carrier
   // makes the group fight the sheet's own lean, fall and sway.
-  ok('…and the carrier stops animating it once it has', /standee\.frame\([\s\S]{0,200}?continue;/.test(v));
+  // 📌 Anchored on WHAT IT GUARDS, not a character window: the Bushido and riff
+  // poses grew the standee branch past 200 chars. What must hold is that the
+  // branch `continue`s BEFORE the block pawn's own damp / scale pulse / bob.
+  ok('…and the carrier stops animating it once it has',
+    /standee\.frame\([\s\S]*?continue;\s*\}\s*pawn\.rotation\.z=THREE\.MathUtils\.damp/.test(v));
   ok('the "SUSTAIN NEXT TURN" badge clears a standee\'s head', /pawn\.userData\.standee\?STANDEE\.height\+\.4:1\.85/.test(v));
 }
 ok('STANDEE_Y is the board deck the move tiles sit on', STANDEE_Y === 0.2);
