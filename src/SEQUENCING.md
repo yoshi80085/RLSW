@@ -26,6 +26,90 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
+## 62-spiritsheet. The Spirit window, rebuilt in the arena's look (previewed, dialled, ported) + one Enter, one act — 2026-10-07
+
+**Alex:** *"when I try and press enter to commit my Melody track - it effectively
+'ends' the whole turn - the action phase along with it"*; then *"Lets build out a
+new version of the Spirit window when clicking the Spirit's image in the player's
+HUD in gameplay. Right now, the old 2D version we built out before comes up, lets
+rebuild that to have the necessary information while keeping the current 'look'."*
+
+### ⏎ The Enter bug — FIXED
+- **Cause:** two `window` keydown listeners. The note-key one commits; the
+  browser then runs a microtask checkpoint before the End-Turn one, React flushes
+  the keydown's sync render there, and the effect refreshes the End-Turn ref — so
+  it read `turnStep === 'move_act'` on the very press that committed. 2026-10-04's
+  `e.repeat` guard only covered a HELD key.
+- **Fix:** `enterEndTurn` returns early on `e.defaultPrevented` — a key another
+  handler already took is never ours.
+- 🎓 **Why the suite missed it:** `noteKeysJourneyCheck`'s `press` ran every
+  listener inside ONE `act`, so React never flushed between them. It now runs one
+  `act` per listener (what a browser does), and asserts the Commit press leaves
+  the turn and the actor alone. Red on the old code, `test:notekeysjourney` **29** green.
+
+### 🪪 The Spirit window — the preview
+- His picks (AskUserQuestion): body (Vibe, lives, speed, hex), abilities +
+  cooldowns, status effects, sound + key detail, **and FP**; **same spot** beside
+  the pocket; the **seat-portrait head**.
+- `ui/spiritSheetModel.js` (pure: `SPIRIT_SHEET` levers + `sheetModel`) and
+  `ui/SpiritSheet.jsx` (one `Bracket`, SeatPortrait head, NoteHex stack chips).
+  **Not mounted by the game.** Every number is one another surface already shows
+  (readStack, nextStep, cooldownLeft, the old card's own Fame danger test).
+- New in this window, not on the old card: the Iwato curse, a blown amp, Sunbeam
+  blindness and the Mosh as statuses, each with turns left and its rule in one
+  line; "Next: add B → Power chord" per stack; the cursed key.
+- ⚠️ `SHEET_CSS` strips the spirit region's own chamfered box (`:has(.ss-root)`),
+  so there is ONE frame — the window-in-a-window lesson of 2026-09-12.
+- Preview: `.scratch/spirit-sheet-preview.html` (`npm run dev:spiritsheet`), the
+  double-click copy `…standalone.html` (`npm run build:spiritsheet`), and the
+  published Artifact **"Spirit Window Dial-in"**
+  (`https://claude.ai/artifact/5oCFwFvCS2Dyo1VMKYwFUk`). It mounts the REAL
+  `MatchSurface` (pocket, rail, dock, region box) with four states (fresh,
+  battered, cursed, crown-in-sight), 25 levers, localStorage, and a copy block
+  that marks changed-vs-default.
+- `test:spiritsheet` **36** (in `test:all`; 4 mutants, all caught). `test:arch`
+  green (3 rows added). `check:bundle` 0 warnings. Rendered in cloud Chromium at
+  1600×1000, all four states, ✕ closes, the card reopens, zero page errors.
+
+### ✅ PORTED at the dial-in (same day)
+Alex: 6 of 25 levers — `width` 480 → **426**, `sections` rules → **brackets**,
+`scrim` .5 → **.54**, `heroHeight` 118 → **105**, `statusDetail` always → **hover**,
+`abilityDetail` line → **hover**. *"Lets wire it in!"*
+- `SPIRIT_SHEET` carries them; `spiritSheetCheck` §0 pins all 25 (moved and kept).
+- Monolith `<HudRegion name="spirit">`: the old 2D card (426 lines) is replaced by
+  `SpiritSheet` fed by `sheetModel` (acting, its sheet, `fameToWin`, `turnFameCap`,
+  `fameThisTurnRef`, `HEX_BY_NUM[num].edge`, `respawnFlashes`, the KEY PLATE's
+  `nextKey` test). `actingDriveDice` is now ONE computation shared by the SOUND
+  plate's +N chip and the sheet.
+- The 2D-layout question answered itself: `board3D` has been `const true` since
+  the 2D board was archived (2026-09-22), so there is no classic layout to keep.
+- ✕ → `useHudClose()` (new, `MatchSurface`): the same selection the card toggles.
+- Kept from the old card, because other code reads them: the tutorial anchors
+  (fame-bar, vibe-bar, stat-knobs, ability-wallet, root-note, interval-legend,
+  and note-stock on the KEY's stock drawer in step 3 — still one copy in the DOM),
+  `data-spirit-id`/`data-vibe` (battle + replay journeys), the 'i' Field Guide
+  (`AbilityInfo`, loadoutUiCheck counts the buttons). `charId` keys the portrait
+  art (the seat id can be `cosmic_ronin#2`).
+- Imports trimmed: `AbilityWallet`, `StatKnob`, `ChannelStrip`/`StripSection`/
+  `TurnRail`/`KeyPlate`, `FAME_NEUTRAL`/`fameSet`/`fameFill`. The modules stay on
+  disk, marked "mounted nowhere" in ARCHITECTURE.md.
+- 🎓 **`test:render` §4 had been passing for the wrong reason.** It counted
+  `data-stat-knob-cap` as "the stack panels' amp knobs" — but the panels draw
+  `ArenaDial`; the two StatKnobs were the old card's. It now looks for the
+  panels' own `rlsw-dial-core-board-drive/sustain`. `loadoutUiCheck` reads
+  "2 RND" off the window (the old wallet said "2 rounds").
+- Green on Alex's machine: spiritsheet 75 · journey (opens it, ✕ closes it, the
+  card reopens it) · notekeysjourney 29 · loadoutui · battlejourney ·
+  replayjourney · arena · scalewheel 312 · render 13 · entrancejourney 29 ·
+  seatportrait 66 · dialtick 43 · swing · sonicjourney · shamisenjourney 27 ·
+  numpadjourney 23 · cardjourney 15 · pyrojourney 8 · marqueejourney 14 ·
+  riffarenajourney · crowdbubble 119 · arch · check:bundle 0 warnings.
+- Seen: the real `Game` mounted in jsdom (Testing Grounds, a burn + guard patched
+  on), the card clicked, the arena's markup rendered in cloud Chromium — 426 px,
+  beside the pocket, every section. ⏳ Not yet in a live match on his machine.
+- ⁉️ Still my calls: Code Injection's armed turns are not shown; the turn rail
+  is not carried over.
+
 ## 61-roninart. The Ronin's new drawing: Thrash1, Thrash2, hit, and a blank back — 2026-10-06
 
 **Alex:** *"I've replaced Cosmic_Ronin standee in the files - and with it, the 2

@@ -53,7 +53,9 @@ try {
  assert.ok(observed.noteStates[a].shadowIllusion);
  assert.deepEqual(observed.noteStates[b],otherBefore,'creating your shadow leaves the other Ronin’s shadow and wallet intact');
  assert.equal(observed.noteStates[b].shadowIllusion.hex,45);
- assert.ok(document.body.textContent.includes('2 rounds'));
+ // 🪪 The Spirit window (2026-10-07) reads a cooldown as pips + "2 RND" at Alex's
+ // dial-in (cdStyle 'pips'); the old wallet said "2 rounds". Read it off the window.
+ assert.ok(document.querySelector('[data-tip-anchor="ability-wallet"]').textContent.includes('2 RND'),'the Spirit window shows the 2-round cooldown');
  assert.deepEqual(observed.noteStates[a].unlockedSkills,['shukuchi','shadow_illusion']);
  console.log('✅ Loadout UI: three duplicate Ronins, two-choice limit, info dialog, match launch, cooldown-only activation, independent shadows, no shop');
 }finally{await act(async()=>root.unmount());dom.window.close();}

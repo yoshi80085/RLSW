@@ -14,7 +14,7 @@
 // So: the Ronin throws his DRIVE rig (no amp needed) with the range upgrading
 // d6 → d8; the Rival throws his SUSTAIN as a shield; the Ronin's kept dice hit it
 // one by one on the Sonic's own ledger; the damage is what gets THROUGH; the push
-// is the Sonic's (one hex per die through, along his facing, ring-outs allowed);
+// is the Sonic's (one hex per 2 strength through since 2026-10-07 — it was one per die — along his facing, ring-outs allowed);
 // a shield that holds costs the Ronin nothing more — no counter-blow.
 //
 // ⚠️ `bushidoCheck.mjs` holds the window, the lane and the bill, and it is red
@@ -30,7 +30,10 @@ import { makeRng } from "./rng.js";
 import { attackParams } from "./systems/attackParams.js";
 import { sonicRig, sustainRig } from "./systems/sonicRig.js";
 import { bushidoUpgrade, bushidoDrawPatch } from "./systems/bushido.js";
-import { applyAttackRerolled } from "./systems/combat.js";
+import { applyAttackRerolled, sonicPush } from "./systems/combat.js";
+import { battleConsequences, runBattleFlow } from "./systems/battleFlow.js";
+import { spiritWarped } from "./actions.js";
+import { SONIC_PUSH_PER_STRENGTH } from "../data/gameConstants.js";
 import { resolveSonicBarrage } from "./systems/sonicBarrage.js";
 import { PSYCHO_BUSHIDO_D8_LADDER, psychoBushidoD8s, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_STACK_COST } from "../data/gameConstants.js";
 import { HEX_BY_NUM, HEX_BY_QR } from "../board/hexMap.js";
@@ -174,7 +177,7 @@ for (const d of [3, 4, 5]) {
       rings++;                                   // pushed off the edge: the Sonic's ring-out
     } else {
       pushes++;
-      // ⭐ THE SONIC PUSH: straight on down his line, one hex per die through.
+      // ⭐ THE SONIC PUSH: straight on down his line, one hex per 2 strength through.
       const path = [1, 2, 3, 4, 5].map(k => laneAt(d + k));
       ok(path.includes(zero.num), `🌀 range ${d} seed ${seed}: pushed straight on down the lane (to ${zero.num})`);
       ok(zero.vibe < 9, '💥 …and hurt');
@@ -183,17 +186,40 @@ for (const d of [3, 4, 5]) {
   ok(holds > 0 && pushes > 0, `🎲 the kernel sees holds (${holds}) and pushes (${pushes})${rings ? ` and ring-outs (${rings})` : ''}`);
 }
 {
-  // The push is exactly the hits: replay one roll by hand and check the distance.
-  for (let seed = 1; seed <= 30; seed++) {
-    const st = boardAt(3, { zeroVibe:9 });
-    const move = drawOf(st);
-    // Roll exactly as the kernel will (same rng stream), via the reducer.
-    const res = applyBotAction(st, move, { rng:makeRng(seed * 7), view:{} });
-    const zero = spirit(res.state, ZERO);
-    const lane = [0, 1, 2, 3, 4, 5, 6, 7].map(k => laneAt(3 + k));
-    const steps = lane.indexOf(zero.num);
-    if (steps < 0) continue;                     // a ring-out or a respawn
-    ok(steps <= 5, `🌀 seed ${seed}: never pushed further than his dice could`);
+  // 💢 THE PUSH IS THE STRENGTH THROUGH, NOT THE DICE (Alex, 2026-10-07: "for
+  // every 2 points of damage, the Spirit gets pushed back 1 space. So 1-2 = 1
+  // space, 3-4 = 2 spaces, 5-6 = 3 spaces, 7-8 = 4 spaces...").
+  eq(SONIC_PUSH_PER_STRENGTH, 2, '💢 one hex per 2 strength through');
+  eq([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(sonicPush), [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5],
+    '💢 1–2 → 1, 3–4 → 2, 5–6 → 3, 7–8 → 4 … uncapped');
+  // 🐛 The play that found it: 13 against a 6 shield, thrown 5 then 8. The 5 is
+  // soaked, the 8 puts 7 through — one die, so it USED to push one hex.
+  const found = resolveSonicBarrage([5, 8], 6);
+  eq([found.strengthThrough, found.shots.filter(s => s.through > 0).length, sonicPush(found.strengthThrough)], [7, 1, 4],
+    '🐛 13 vs 6 thrown 5-then-8: 7 through on ONE die → 4 hexes now (was 1)');
+  eq(sonicPush(resolveSonicBarrage([8, 5], 6).strengthThrough), 4, '🎲 …and the throw order no longer changes the push');
+
+  // The whole aftermath, on the board: the kernel's own `battleConsequences`.
+  // ⚠️ The target is Intergalactic 0, who Rolls Hard — a shove of 2+ loses a hex.
+  for (const [kept, shield] of [[[1], 0], [[2], 0], [[3], 0], [[4], 0], [[5, 8], 6], [[6, 7], 6], [[8, 5], 6], [[3, 3, 3], 3], [[8, 8], 2]]) {
+    let st = boardAt(4);
+    st = applyAction(st, spiritWarped(RONIN, laneAt(3), 0), makeRng(1));
+    const ledger = resolveSonicBarrage(kept, shield);
+    const hitCount = ledger.shots.filter(s => s.through > 0).length;
+    const battle = { kind:'attack', attackKind:'bushido', sonicAttack:true, sonicVersion:2, bushido:true,
+      attackerId:RONIN, defenderId:ZERO, sonicFacing:0, shieldValue:shield, ...ledger, diceVals:kept,
+      diceHits:ledger.shots.map(s => s.through > 0), hitCount, attackerWon:hitCount > 0, margin:hitCount,
+      damage:ledger.strengthThrough, swingChordLeft:[], swingChordSpent:[] };
+    const logs = [];
+    const run = runBattleFlow(battleConsequences({ state:st, battle, chordOf:() => null, amps:[] }), st,
+      { applyAction:(s, a) => applyAction(s, a, makeRng(2)), onLog:l => logs.push(l) });
+    const want = sonicPush(ledger.strengthThrough), afterRollsHard = want > 1 ? want - 1 : want;
+    const line = logs.find(l => l.includes('KNOCKED BACK'));
+    ok(line?.includes(`KNOCKED BACK ${afterRollsHard} hex`),
+      `💢 [${kept}] vs ${shield}: ${ledger.strengthThrough} through → pushed ${want} (Rolls Hard → ${afterRollsHard}) — log: ${line}`);
+    const zero = spirit(run.state, ZERO);
+    const steps = [0, 1, 2, 3, 4, 5, 6, 7, 8].map(k => laneAt(4 + k)).indexOf(zero.num);
+    if (steps >= 0) eq(steps, afterRollsHard, `🌀 [${kept}]: ${steps} hexes straight down the lane`);
   }
 }
 

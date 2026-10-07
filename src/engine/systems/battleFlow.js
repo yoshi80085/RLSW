@@ -53,7 +53,7 @@ import {
 import { isPosing, poseRounds, posePayout } from "./limelight.js";
 import {
   thrashKnockback, sonicKnockback, chordFrayAmount, underdogBonus,
-  thrashFame, sonicFame, sonicVolleyFame, isRearHit,
+  thrashFame, sonicFame, sonicVolleyFame, isRearHit, sonicPush,
 } from "./combat.js";
 import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { PYRO_VERSION } from "../../data/stageEffects.js";
@@ -965,7 +965,8 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   // ⚡ A PSYCHO BUSHIDO RESOLVES THROUGH THIS SAME BRANCH (combat.js rolls it on
   // the Sonic's shield ledger): a shield that holds costs the Ronin nothing
   // more — the Rival was only bracing, so there is no counter-blow (Alex,
-  // 2026-10-01) — and a burst pushes like a Sonic, one hex per die through.
+  // 2026-10-01) — and a burst pushes like a Sonic: one hex per 2 strength
+  // through (`sonicPush`, Alex 2026-10-07 — it was one hex per die).
   if (sonicAttack && hitCount <= 0) {
     yield log(battle.bushido
       ? (battle.shieldRemaining === 0 && (battle.shieldValue ?? 0) > 0
@@ -1013,8 +1014,10 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   }
 
   // ── KNOCKBACK, routed by attack kind ──
+  // 💢 The staged Sonic and the Bushido push by the STRENGTH through the shield
+  // (`sonicPush`: 1–2 → 1, 3–4 → 2 …); the legacy Sonic keeps a hex per hit.
   const spaces = sonicAttack
-    ? hitCount
+    ? (battle.sonicVersion === 2 ? sonicPush(battle.strengthThrough) : hitCount)
     : thrashKnockback(margin);
   const shove = yield* knockback({
     state, fromId: attackerId, targetId: defenderId, spaces, amps,

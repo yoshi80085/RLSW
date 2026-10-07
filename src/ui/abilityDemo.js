@@ -54,6 +54,7 @@ import { SONIC_DICE, SONIC_GATE, BARRAGE_LAUNCH, BUSHIDO_BEATS, barrageContact }
 import { resolveSonicBarrage } from '../engine/systems/sonicBarrage.js';
 import { bushidoUpgrade } from '../engine/systems/bushido.js';
 import { keepBest } from '../engine/systems/dicePool.js';
+import { sonicPush } from '../engine/systems/combat.js';
 import { SPIRIT_DEFS } from '../data/spirits.js';
 import {
   SHUKUCHI_CD, SHUKUCHI_MAX_HOPS, SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
@@ -168,13 +169,14 @@ export function bushidoScenario(name = 'r4') {
   const sus = keepBest(S.sustainFaces, S.sustain, KEEP);
   const shieldValue = sus.vals.reduce((a, v) => a + v, 0);
   const ledger = resolveSonicBarrage(drive.vals, shieldValue);
-  const push = ledger.shots.filter(s => s.through > 0).length;
+  // 💢 the engine's push: one hex per 2 strength through (Alex, 2026-10-07)
+  const push = sonicPush(ledger.strengthThrough);
   const battle = {
     key:`demo-${name}`, bushido:true, sonicVersion:2, bushidoDist:S.dist,
     dicePool:drive.pool, diceVals:drive.vals, droppedDicePool:drive.droppedPool, droppedDiceVals:drive.droppedVals,
     sustainPool:sus.pool, sustainRolls:sus.vals, sustainDroppedPool:sus.droppedPool, sustainDropped:sus.droppedVals,
     shieldValue, shots:ledger.shots, breakIndex:ledger.breakIndex, strengthThrough:ledger.strengthThrough,
-    damage:ledger.strengthThrough, hitCount:push,
+    damage:ledger.strengthThrough, hitCount:ledger.shots.filter(s => s.through > 0).length,
   };
   return { name, dist:S.dist, base:S.drive, pool, faces, drive, sus, sustainFaces:S.sustainFaces, sustainPool:S.sustain,
     shieldValue, ledger, push, battle, d8s:pool.filter((s, i) => s !== S.drive[i]).length };
@@ -584,7 +586,7 @@ export function createAbilityDemo({ look = {}, reduced = () => globalThis.matchM
           ronin.group.position.copy(seq >= plan.arrive / 1000 ? to : from); ronin.group.rotation.x = 0; ronin.group.rotation.z = 0; ronin.group.scale.setScalar(1);
           ronin.frame(t, { acting:true, reduced:red, cameraPos:st.camera.position });
         }
-        // the push: one hex back along the lane per die that got through — the Sonic's
+        // the push: one hex back along the lane per 2 strength through — the Sonic's (`sonicPush`)
         if (!pushed && push > 0 && seq >= pushAt) {
           pushed = true;
           for (let i = 0; i < push; i++) steps.step(rival.group, { id:'Metalness_Monster', from:key(...laneCell(dist + i)), to:key(...laneCell(dist + i + 1)),

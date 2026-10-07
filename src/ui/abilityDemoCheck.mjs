@@ -80,7 +80,7 @@ for (const name of SCENARIO_ORDER) {
   ok(Math.min(...b.drive.vals) >= Math.max(...b.drive.droppedVals), `${name}: kept the best Drive`);
   ok(b.shieldValue === b.sus.vals.reduce((a, v) => a + v, 0), `${name}: the shield is his kept Sustain`);
   ok(JSON.stringify(b.ledger) === JSON.stringify(resolveSonicBarrage(b.drive.vals, b.shieldValue)), `${name}: the shield's ledger`);
-  ok(b.push === b.ledger.shots.filter(s => s.through > 0).length, `${name}: pushed a hex per die through`);
+  ok(b.push === Math.ceil(b.ledger.strengthThrough / 2), `${name}: pushed a hex per 2 strength through (${b.ledger.strengthThrough} → ${b.push})`);
   ok(b.battle.bushido && b.battle.bushidoDist === b.dist && b.battle.damage === b.ledger.strengthThrough, `${name}: the battle the visuals get`);
   verdicts[name] = b.ledger.strengthThrough;
 }

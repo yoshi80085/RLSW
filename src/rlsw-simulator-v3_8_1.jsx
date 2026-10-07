@@ -59,7 +59,6 @@ import { GameOverOverlay } from "./ui/GameOverOverlay.jsx";
 import { GameStyles } from "./ui/GameStyles.jsx";
 import { CadenceToast } from "./ui/CadenceToast.jsx";
 import { BattleMeterOverlay } from "./ui/BattleMeterOverlay.jsx";
-import { AbilityWallet } from "./ui/AbilityWallet.jsx";
 import { SignatureAbilities } from "./ui/SignatureAbilities.jsx";
 import { TestingGrounds } from "./ui/TestingGrounds.jsx";
 import { EventModal } from "./ui/EventModal.jsx";
@@ -85,12 +84,15 @@ import { NeonStrikeFX } from "./ui/NeonStrikeFX.jsx";
 import { LifePips } from "./ui/ScoreTrackOverlay.jsx";
 import { TopMenu } from "./ui/TopMenu.jsx";
 import { FameRace } from "./ui/FameRace.jsx";
-import { StatKnob } from "./ui/StatKnob.jsx";
 import { ChordStackPanel, CommitTrackPanel, COMMIT_OVERLAY,
          StackNest, stackSeatPos,
          poolSeatPos, poolNestHeight, usePoolColumns } from "./ui/NoteCommitOverlay.jsx";
 // 🎛️ The column beside the character card — turn rail, key plate, abilities.
-import { ChannelStrip, StripSection, TurnRail, KeyPlate, SPIRIT_CARD, CHANNEL_STRIP } from "./ui/ChannelStrip.jsx";
+// 🪪 The channel strip itself went with the old Spirit card (2026-10-07); two of its
+// constants still steer the Turn column and the stock drawer's first state.
+import { SPIRIT_CARD, CHANNEL_STRIP } from "./ui/ChannelStrip.jsx";
+import { SpiritSheet } from "./ui/SpiritSheet.jsx";
+import { sheetModel } from "./ui/spiritSheetModel.js";
 import { detectSpiritStyle, gesturesFor } from "./music/spiritStyle.js";
 import { ActionRail, RailBtn, ACTION_RAIL } from "./ui/ActionRail.jsx";
 import { ToneFader } from "./ui/ToneFader.jsx";
@@ -186,7 +188,7 @@ import { riffStats, RIFF_BOTH_PAID_QUALITY, RIFF_CLOSE_QUALITY_GAP } from "./eng
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
   smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame,
-  sonicDamage, sonicKnockback, sonicFame,
+  sonicDamage, sonicKnockback, sonicFame, sonicPush,
   chordFrayAmount, isRearHit, REAR_ARC, REAR_FRAY_BONUS, frayFromSustain,
 } from "./engine/systems/combat.js";
 import {
@@ -212,7 +214,7 @@ import { commitMelodyEconomy, MIC_VOICE_ROLL_PASS } from "./engine/systems/melod
 import { STYLE_DEFS, styleOf } from "./data/styles.js";
 // ⭐ Gold means Fame. One table, shared with ui/FameRace.jsx so the header track
 // and the HUD bar cannot drift into two different golds — see data/fameTheme.js.
-import { FAME, FAME_CONTESTED, FAME_NEUTRAL, fameSet, fameFill } from "./data/fameTheme.js";
+import { FAME, FAME_CONTESTED } from "./data/fameTheme.js";
 import {
   BOT_PERSONALITIES, BOT_PERSONA_KEYS, BOT_RIFF_PROFILE,
   botAssignPersona, botPickTarget as _botPickTarget, botHexScore as _botHexScore,
@@ -7899,7 +7901,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // throws a shield; his Drive rig — the range turning d6s into d8s, two at 3,
     // three at 4, four at 5 (`bushidoUpgrade`) — hits it one die at a time on
     // the Sonic's ledger; the strength that gets through is the damage, the push
-    // is the Sonic's (one hex per die through, along his facing), and a shield
+    // is the Sonic's (one hex per 2 strength through, along his facing), and a shield
     // that holds costs him nothing more. It plays on the Sonic's staged roll —
     // the Rival raises the shield, he throws, charges on his dice, rumbles, and
     // draws on the launch beat (`startSonicPresentation`, `bushidoStrikeVisuals`).
@@ -8300,7 +8302,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // button that fires itself after 5 s, and a remote human's press
       // arrives as a CUE with a timeout behind it.
       const scene={...verdict,sonicId,sonicAttack:true,remoteView,phase:'sonic_armed_rival',
-        viewer:battleViewer(verdict),sonicFame:verdict.hitCount,knockback:verdict.hitCount};
+        viewer:battleViewer(verdict),sonicFame:verdict.hitCount,knockback:sonicPush(verdict.strengthThrough)};
       battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
       const isCurrent=()=>battleStateRef.current?.sonicId===sonicId;
       const mark=fields=>{if(!isCurrent())return;const next={...battleStateRef.current,...fields};battleStateRef.current=next;setBattleState(next);};
@@ -8312,7 +8314,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         if(!isCurrent()||battleCardRef.current?.adopted)return null;
         battleCardRef.current.adopted=true;
         verdict={...verdict,...next};plan=planOf(verdict);
-        mark({...next,sonicFame:next.hitCount,knockback:next.hitCount});
+        mark({...next,sonicFame:next.hitCount,knockback:sonicPush(next.strengthThrough)});
         const n=verdict.diceVals.length;
         return {label:`Roll ${n}`,sub:`${n} Drive ${n===1?'die':'dice'} against a ${verdict.shieldValue} shield`};
       }};
@@ -11902,6 +11904,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     })()
     : null;
 
+  // 🎲 The dice past the Drive dial, and why (sonicRig.js drivePowerBreakdown).
+  // ONE computation for the SOUND plate's +N chip and the Spirit window's, so
+  // the two cannot disagree. ⚠️ Not at eleven — the amp SETS the throw there,
+  // so a "+1" would lie.
+  const actingDriveDice = (() => {
+    if (!acting || actingNoteState?.atEleven) return { driveBonus: 0, driveWhy: null };
+    const why = drivePowerBreakdown(actingNoteState ?? {}, acting.id, homeSpotlightDrive(engineState, acting.id));
+    return { driveBonus: why.power - why.dial, driveWhy: drivePowerNote(why) };
+  })();
+
   return (
     <div className={`${beginnerEnabled ? 'beginner-glow' : ''}${board3D ? ' immersive-match' : ''}`} style={{ fontFamily:"'Share Tech Mono','Courier New',monospace",
       background:"radial-gradient(ellipse at 50% -10%, #0a1226 0%, #050810 55%)",
@@ -12236,11 +12248,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           drive: spiritChord(acting.id, actingDriveStack).drive,
           // 🎲 The dice past the dial, and why (sonicRig.js drivePowerBreakdown).
           // ⚠️ Not at eleven — the amp SETS the throw there, so a "+1" would lie.
-          ...(() => {
-            if (actingNoteState?.atEleven) return { driveBonus: 0, driveWhy: null };
-            const why = drivePowerBreakdown(actingNoteState ?? {}, acting.id, homeSpotlightDrive(engineState, acting.id));
-            return { driveBonus: why.power - why.dial, driveWhy: drivePowerNote(why) };
-          })(),
+          ...actingDriveDice,
           sustain: spiritChord(acting.id, actingSustainStack).sustain,
           noteCount: canAct ? noteStock.length - usedStockIdx.length : null,
           // 🔑 THE ROOT, FOR THE POCKET'S BADGE. ⚠️ `rootIsNext` IS THE SAME TEST
@@ -12522,430 +12530,42 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         <div className="match-hud-column">
           <HudRegion name="spirit">
 
-          {/* ── ACTIVE SPIRIT — full portrait card ── */}
+          {/* ── 🪪 THE SPIRIT WINDOW (Alex, 2026-10-07: "rebuild that to have the
+              necessary information while keeping the current 'look'") — at his
+              dial-in, `SPIRIT_SHEET` in ui/spiritSheetModel.js.
+              🪦 THE OLD 2D CARD STOOD HERE: a skewed portrait column, the Fame bar,
+              two StatKnobs, the Vibe/SPD bars, the status badges, and the CHANNEL
+              STRIP (the turn rail, the KEY plate and its stock drawer, the ability
+              wallet). Everything it said is in the sheet except the turn rail,
+              which the phase rail at the top of the arena already prints. Its
+              tutorial anchors (fame-bar, vibe-bar, stat-knobs, ability-wallet,
+              root-note, interval-legend, and note-stock on the drawer) moved with
+              it; `data-spirit-id` / `data-vibe` too — suites read them.
+              ⚠️ Every number goes through `sheetModel`, so this block only GATHERS;
+              a rule found here instead of there is a second copy waiting to drift. */}
           {acting && (() => {
             const s = acting;
-            const ns = noteStates[s.id] ?? {};
-            // 📌 THE FRAME IS A RECTANGLE ON PURPOSE — there is no transform on the
-            // card. Alex looked at a skewed card and turned it down: the blue edge
-            // stands straight and every raked edge lives INSIDE it. See SPIRIT_CARD.
-            return (
-              <div className="card" data-spirit-id={s.id} data-vibe={s.vibe} style={{
-                borderLeft:`3px solid ${s.color}`,
-                background:"#0d1528",
-                boxShadow:`0 0 14px ${s.color}33, inset 0 0 20px ${s.color}0a`,
-                marginBottom:SPIRIT_CARD.gap, padding:0, overflow:"hidden",
-              }}>
-                <NeonStrikeFX color={s.color}/>
-                {/* Two-column card: loadout (left) · portrait + stats (right).
-                    DOM order keeps portrait first; CSS `order` renders it on the
-                    right. flexWrap lets the columns stack on very narrow panels. */}
-                <div style={{display:"flex", flexWrap:"wrap", alignItems:"stretch"}}>
-                {/* ── RIGHT COLUMN — stats OVER a faded portrait ──
-                    The Spirit fills the whole column as a dimmed backdrop;
-                    name header and stat bars float on top. A vertical wash
-                    keeps text readable (dark top/bottom) while the middle
-                    band stays clear so the Spirit shows through. */}
-                {/* 🃏 THE SECOND SLAB. It rakes by the same angle as the strip's
-                    faceplate, so the join between the two columns is a constant-width
-                    seam rather than a wedge. `marginRight` lifts its raked corner off
-                    the card's right edge, so the cut reads as intended rather than as
-                    the frame shaving it.
-                    ⚠️ ONE UN-SKEW LAYER, NEVER TWO — the art and the content each get
-                    the counter-skew ONCE, below. Two would shear them the other way,
-                    which reads as a rendering bug, not a design. */}
-                <div style={{width:238, flexShrink:0, order:2, marginLeft:"auto",
-                  position:"relative", overflow:"hidden",
-                  minHeight:SPIRIT_CARD.portraitMinH,
-                  marginRight:SPIRIT_CARD.inset,
-                  transform:SPIRIT_CARD.tilt ? `skewX(${SPIRIT_CARD.tilt}deg)` : undefined}}>
-
-                {/* Faded portrait backdrop. ⚠️ THE WIDTH OVERSHOOT IS LOAD-BEARING:
-                    un-skewing the art walks its own edges inward, and a bare band of
-                    card background down one side of the Spirit reads as a broken
-                    image rather than as a raked panel. */}
-                <img src={s.imageSrc} alt={s.name}
-                  style={{position:"absolute", top:0, bottom:0, height:"100%",
-                    width:`${SPIRIT_CARD.artWidth}%`,
-                    left:`${(100 - SPIRIT_CARD.artWidth) / 2}%`,
-                    objectFit:"cover", objectPosition:"top center", display:"block",
-                    opacity:0.42,
-                    transform:SPIRIT_CARD.tilt ? `skewX(${-SPIRIT_CARD.tilt}deg)` : undefined}}/>
-                {/* readability wash + spirit-color tint */}
-                <div style={{position:"absolute", inset:0, pointerEvents:"none",
-                  background:"linear-gradient(180deg, #0d1528e6 0%, #0d152880 24%, #0d152840 50%, #0d1528a8 72%, #0d1528f0 100%)"}}/>
-                <div style={{position:"absolute", inset:0, pointerEvents:"none",
-                  background:`radial-gradient(130% 100% at 50% 100%, transparent 55%, ${s.color}10 100%)`,
-                  borderLeft:`1px solid ${s.color}22`}}/>
-
-                {/* CONTENT — floats over the art */}
-                <div style={{position:"relative", display:"flex", flexDirection:"column", height:"100%",
-                  transform:SPIRIT_CARD.tilt ? `skewX(${-SPIRIT_CARD.tilt}deg)` : undefined}}>
-                {/* Header: name / style · NOW / Fame.
-                    ⚠️ THE HORIZONTAL PADDING IS THE SHEAR'S SLACK, not taste. Skew
-                    rotates the box but lays content out in the pre-skew rectangle, so
-                    without it the Spirit's name walks past the raked edge and
-                    `overflow:hidden` eats its first letter. See SPIRIT_CARD.slack. */}
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",
-                  gap:6, padding:`${SPIRIT_CARD.padY}px ${8 + SPIRIT_CARD.slack}px 5px`}}>
-                  <div style={{minWidth:0}}>
-                    <div style={{fontSize:11,fontWeight:700,color:s.color,lineHeight:1.2}}>
-                      {s.name}
-                      {engineRef.current.headliner === s.id ? " 👑" : ""}
-                      {s.knockedOut ? " 💀" : s.vibe===0 ? " ⚠️" : ""}
-                    </div>
-                    <div style={{fontSize:7,color:"#3a5a7a",marginTop:1,letterSpacing:1}}>{s.style}</div>
-                    <div style={{fontSize:7,color:"#3a5a7a",marginTop:2}}>
-                      Hex <span style={{color:HEX_BY_NUM[s.num]?.edge?"#ff4444":"#c0d0e0"}}>
-                        #{s.num}{HEX_BY_NUM[s.num]?.edge?" ⚠":""}
-                      </span>
-                      {mode==="team" && <span style={{marginLeft:5}}>· Team {teams?.a.includes(s.corner)?"A":"B"}</span>}
-                    </div>
-                  </div>
-                  <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:2,flexShrink:0}}>
-                    <span style={{fontSize:7,color:"#f6ad55",fontWeight:700}}>▶ NOW</span>
-                  </div>
-                </div>
-
-                {/* clear window — the Spirit shows through here */}
-                <div style={{flex:1, minHeight:SPIRIT_CARD.clearWindow}}/>
-
-                {/* Stats — overlaid at the bottom, over the faded art. Same slack as
-                    the header, for the same reason and at the opposite corner. */}
-                <div style={{padding:`${SPIRIT_CARD.padY}px ${8 + SPIRIT_CARD.slack}px 7px`,
-                  textShadow:"0 1px 3px #000c"}}>
-                  {/* Vibe bar removed — shown on board standee + purple maxVibe bar below */}
-                  {/* ⭐ Fame — the win condition, front and centre.
-                      This is NOT a stat line. It's the scoreboard, so it gets
-                      its own block: marquee readout, a thick track (its Stage-FX
-                      notches went with the Fame trigger, 2026-09-29), and the per-turn cap pips
-                      underneath. Goes white-hot as you close on the crown and
-                      red when a rival is close enough to take it off you. */}
-                  {(() => {
-                    const fp        = ns.fame ?? 0;
-                    const pct       = Math.min(100, (fp / fameToWin) * 100);
-                    // Banked this turn window — lives on a ref, but every grant
-                    // dispatches FAME_CHANGED in the same tick, so the re-render
-                    // that follows always reads a fresh value.
-                    const banked    = fameThisTurnRef.current?.[s.id] ?? 0;
-                    const rivalBest = Math.max(0, ...spirits.filter(o => o.id !== s.id)
-                                        .map(o => noteStates?.[o.id]?.fame ?? 0));
-                    const lead      = fp - rivalBest;
-                    // In striking distance of the crown with a rival right on
-                    // your heels. Nothing mechanical hangs off it — the bar just
-                    // should feel like a warning, because the race is that close.
-                    const danger    = fp >= fameToWin - 4 && lead < FAME_RACE_CONTESTED_LEAD;
-                    const hot       = pct >= 75;
-                    /* 🎨 ONE TERNARY, AT THE TOP — same rule as ui/FameRace.jsx.
-                       `P` is the whole Fame palette in the state this bar is in,
-                       and `fameFill` owns the ramp so the hot and rest variants
-                       cannot drift apart. data/fameTheme.js. */
-                    const P         = fameSet(danger);
-                    const fill      = fameFill({ hot, contested: danger });
-                    const accent    = P.value;
-                    return (
-                      <div data-tip-anchor="fame-bar" style={{marginTop:6, marginBottom:2}}
-                        title={danger
-                          ? `⭐${fp} / ${fameToWin} — only a ${lead}-point lead. One good turn from a rival and the crown changes hands.`
-                          : `Fame Points — first to ${fameToWin} wins the game!`}>
-
-                        {/* Marquee readout */}
-                        <div style={{display:"flex",alignItems:"baseline",justifyContent:"space-between",marginBottom:3}}>
-                          <span style={{fontSize:8,letterSpacing:1.6,fontWeight:800,color:accent,
-                            animation: hot && !danger ? "fame-crown 1.8s ease-in-out infinite" : undefined,
-                            textShadow:`0 0 6px ${FAME.glow}55`}}>
-                            ⭐ FAME
-                          </span>
-                          <span style={{display:"flex",alignItems:"baseline",gap:1}}>
-                            <span style={{fontSize:17,fontWeight:900,lineHeight:1,color:accent,
-                              textShadow:`0 0 9px ${P.numGlow}99, 0 1px 2px #000`}}>{fp}</span>
-                            <span style={{fontSize:9,fontWeight:700,color:FAME.label}}>/{fameToWin}</span>
-                          </span>
-                        </div>
-
-                        {/* Track */}
-                        <div style={{position:"relative",height:11,borderRadius:6,overflow:"hidden",
-                          background:P.ground,
-                          border:`1px solid ${P.edge}`,
-                          boxShadow: danger ? undefined : `inset 0 1px 3px #000a, 0 0 8px ${FAME.glow}22`,
-                          animation: danger ? "fame-danger 1.1s ease-in-out infinite" : undefined}}>
-
-                          {/* Fill */}
-                          <div style={{position:"absolute",inset:0,width:`${pct}%`,background:fill,
-                            borderRadius:"5px 3px 3px 5px",
-                            boxShadow:`0 0 10px ${danger ? "#ff5500cc" : `${FAME.glow}aa`}`,
-                            transition:"width .45s cubic-bezier(.2,.9,.3,1)"}}>
-                            {/* travelling sheen — the stage lights sweeping the bar */}
-                            {pct > 4 && (
-                              <div style={{position:"absolute",top:0,bottom:0,width:"28%",
-                                background:`linear-gradient(90deg,transparent,${FAME_NEUTRAL.sheen},transparent)`,
-                                animation:"fame-sheen 2.6s linear infinite"}}/>
-                            )}
-                          </div>
-                        </div>
-
-                        {/* ⛔ Per-turn cap pips — how much more the crowd will take */}
-                        <div style={{display:"flex",alignItems:"center",gap:3,marginTop:4}}>
-                          {/* 🎸 No window in Battle of the Bands (∞) — no meter to draw. */}
-                          {Number.isFinite(turnFameCap) && <>
-                          <span style={{fontSize:6,letterSpacing:.8,color:"#5a6a7a",fontWeight:700}}>THIS TURN</span>
-                          <div style={{display:"flex",gap:2.5}}>
-                            {Array.from({length: turnFameCap}, (_, i) => {
-                              const lit = i < banked;
-                              return (
-                                <span key={i} style={{fontSize:7,lineHeight:1,
-                                  color: lit ? FAME.mark : FAME_NEUTRAL.pipUnlit,
-                                  textShadow: lit ? `0 0 6px ${FAME.glow}cc` : undefined,
-                                  animation: lit ? "fame-pip-pop .32s ease-out" : undefined}}>★</span>
-                              );
-                            })}
-                          </div>
-                          {banked >= turnFameCap && (
-                            <span style={{fontSize:6,fontWeight:700,color:FAME_NEUTRAL.capped,letterSpacing:.5}}>
-                              ⛔ CAPPED
-                            </span>
-                          )}
-                          </>}
-                          {danger && (
-                            <span style={{marginLeft:"auto",fontSize:6,fontWeight:800,letterSpacing:.6,
-                              color:"#ff8855",textShadow:"0 0 6px #ff440088"}}>
-                              🔥 NECK AND NECK
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })()}
-                  {/* 🎛️ Drive & Sustain come from the player's Chord Stack now (not a static sheet) */}
-                  <div data-tip-anchor="stat-knobs" style={{display:"flex",gap:9,marginTop:5,alignItems:"center"}}>
-                    {/* boost = every live modifier on this stat, summed — pattern-boost tempDrive/
-                        tempSustain, so the dial always reflects the stat you'd actually fight
-                        with right now. */}
-                    <StatKnob label="DRIVE" value={spiritChord(s.id, ns.driveStack ?? []).drive}
-                      boost={(ns.tempDrive ?? 0) + (ns.moshDrive ?? 0)} color="#ff6644"/>
-                    <StatKnob label="SUSTAIN" value={spiritChord(s.id, ns.sustainStack ?? []).sustain} boost={(ns.tempSustain ?? 0)} color="#44aaff"/>
-                    <div style={{flex:1,display:"flex",flexDirection:"column",gap:5}}>
-                      <div data-tip-anchor="vibe-bar">
-                        {/* ❤️ LIVES RIDE THE VIBE LABEL. They are not a second health
-                            readout — Vibe is the bar you lose THIS knockdown, lives are
-                            how many knockdowns are left in you, and the second number is
-                            meaningless without the first. Two tutorial pages already aim
-                            `vibe-bar` at exactly this pairing (~2316, ~2317).
-                            📌 `marginLeft:auto` on the count is what keeps the x/y hard
-                            right after the pips joined the row — the old
-                            `justifyContent:space-between` would have spread three
-                            children instead of two and floated the pips into the gap. */}
-                        <div style={{display:"flex",alignItems:"center",gap:5,marginBottom:1}}>
-                          <span style={{fontSize:7,color:"#cc66ff"}}>💗 VIBE</span>
-                          <LifePips lives={s.lives} startingLives={startingLives} color={s.color} size={5}/>
-                          <span style={{fontSize:7,color:"#cc66ff",marginLeft:"auto"}}>{s.vibe}/{s.maxVibe ?? 5}</span>
-                        </div>
-                        <div className="bar"><div className="bar-f" style={{width:`${((s.maxVibe??5)/8)*100}%`,background:"#8844cc"}}/></div>
-                      </div>
-                      <div>
-                        <div style={{display:"flex",justifyContent:"space-between",marginBottom:1}}>
-                          <span style={{fontSize:7,color:"#44cc88"}}>⚡ SPD</span>
-                          <span style={{fontSize:7,color:"#44cc88"}}>{Math.min(5, s.speed ?? 5)}</span>
-                        </div>
-                        <div className="bar"><div className="bar-f" style={{width:`${(Math.min(5,s.speed??5)/5)*100}%`,background:"#22aa66"}}/></div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                </div>{/* end overlay content */}
-                </div>{/* end right column */}
-
-                {/* ── LEFT COLUMN — loadout: badges · crew & gear · skills ── */}
-                <div style={{flex:1, minWidth:170, order:1, display:"flex", flexDirection:"column",
-                  borderRight:`1px solid ${s.color}22`}}>
-                {/* Status badges */}
-                {((ns.tempSustain??0)>0||(ns.mojoDrain??0)>0||ns.stagger||(ns.burn?.turnsLeft??0)>0||respawnFlashes[s.id]||ns.instrumentDropped||ns.tripped||ns.dazed||(ns.elevenTurns??0)>0) && (
-                  <div style={{display:"flex",gap:3,flexWrap:"wrap",padding:"4px 8px",borderTop:`1px solid ${s.color}22`}}>
-                    {(ns.elevenTurns??0)>0&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a1400",border:"1px solid #ffcc44",color:"#ffcc44"}}>
-                        🎚️ GOES TO 11 — {ns.elevenTurns}t
-                      </span>)}
-                    {/* ⚡ EDGE display — REMOVED (system cut) */}
-                    {/* (bonus revoice badge removed — stack commit system) */}
-                    {/* +atk removed — already shown on Drive knob boost */}
-                    {(ns.tempSustain??0)>0&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#001a2a",border:"1px solid #44aaff",color:"#88ccff"}}>
-                        🛡️ +{ns.tempSustain} def
-                      </span>)}
-                    {(ns.mojoDrain??0)>0&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#05101a",border:"1px solid #1155ff66",color:"#4499ff"}}>
-                        💧 MOJO {ns.mojoDrain}t
-                      </span>)}
-                    {ns.stagger&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0e00",border:"1px solid #ff880066",color:"#ff8800"}}>
-                        ⚡ STAGGER {ns.stagger.turnsLeft}t
-                      </span>)}
-                    {(ns.burn?.turnsLeft??0)>0&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#2a0800",border:"1px solid #ff552288",color:"#ff7744"}}>
-                        🔥 BURNING {ns.burn.turnsLeft}t
-                      </span>)}
-                    {/* B1 — SHIELDED and BURN ARMED badges removed with their triggers */}
-                    {ns.tripped&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#0a1a0a",border:"1px solid #88ff8866",color:"#aaffaa"}}>
-                        🌀 TRIPPED — half move
-                      </span>)}
-                    {ns.dazed&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0a1a",border:"1px solid #ff88ff66",color:"#ffaaff"}}>
-                        😵 DAZED — move misdirected
-                      </span>)}
-                    {ns.instrumentDropped&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#1a0808",border:"1px solid #ff444466",color:"#ff6666"}}>
-                        🎸💥 DROPPED — Drive -1
-                      </span>)}
-                    {respawnFlashes[s.id]&&(
-                      <span style={{fontSize:7,padding:"1px 5px",borderRadius:3,background:"#0a2a10",border:"1px solid #44ff8866",color:"#44ff88"}}>
-                        ✨ RESPAWN
-                      </span>)}
-                  </div>
-                )}
-                {/* ── 🎛️ THE CHANNEL STRIP ────────────────────────────────────────
-                    🪦 THREE SECTIONS CAME OUT OF HERE ON 2026-08-28, and the reasons
-                    are worth keeping because each is a different kind of dead weight:
-
-                    🎴 MOD CARDS / TRANSPOSE — a control that existed to rescue a bad
-                    opening hand, on a game whose opening hand is DEALT to guarantee a
-                    playable one (a purple and a pink note are always present on turn
-                    one). It was a fix for a problem the design already prevents, so it
-                    could only ever be pressed by someone who did not need it.
-                    ⚠️ THE ENGINE STILL GRANTS IT. `economy.js` seeds
-                    `modCards: [starter-transpose]` and `turnFlow.js` still refreshes
-                    it every turn; that state is now INERT — nothing renders it and
-                    `playModCard` is gone. Ripping it out is an engine change with
-                    suite coverage (`turnFlowCheck` §mod-card refresh) and wants its
-                    own pass, not a drive-by inside a HUD edit.
-
-                    ✨ STYLE (Shred / Groove / …) — a label with no mechanism behind
-                    it in the game as it stands. A word that changes nothing does not
-                    earn a titled section; the spirit's name and portrait already say
-                    who you are.
-
-                    🌳 SKILLS — a LIST of things whose buttons are already on screen,
-                    below. A menu of the menu. Owning a skill is visible the moment you
-                    look at what you can press.
-
-                    🎯 WHAT GOES HERE INSTEAD: the turn rail (① CHORD ② MELODY
-                    ③ MOVE & ACT, one lamp lit, each carrying its own one-line state)
-                    and the key plate (root, mode, and the interval map).
-
-                    The rail because gating the board panels to their own steps took
-                    the step signal off the board and it has to live somewhere.
-
-                    The key plate for a smaller reason than I first wrote down, and the
-                    correction is worth keeping: I claimed `4th=G 5th=A tri=G#…` was
-                    trapped in step 2 and invisible in step 1. ⚠️ THAT WAS WRONG — I
-                    checked the rendered markup and the legend is gated
-                    `turnStep !== 'move_act'`, so it is up in BOTH building steps. What
-                    is actually wrong with it is smaller and still real: it is a
-                    wrapping row of 7px text tucked under the step panel, so it reads
-                    as a footnote to that panel rather than as the reference table you
-                    consult, and it does vanish in step 3. A plate gives it a fixed
-                    place to be looked up.
-
-                    🎛️ IT IS BUILT — `ChannelStrip.jsx`, at the values Alex landed on
-                    2026-08-29. Everything below is DATA; the chrome is in that file.
-                    ⚠️ HE DIALLED STRIP WIDTH 286 AND CANNOT HAVE IT: measured at five
-                    viewport widths, this column is 238px at every one of them (the
-                    HUD grid is minmax(430,480) and the portrait beside it is a fixed
-                    238). My preview mocked the card wider than the card is. The strip
-                    flexes to the column instead; see `CHANNEL_STRIP.designWidth`. ── */}
-                {/* 📌 The strip's foot is the seat's two abilities and their
-                    cooldowns (`AbilityWallet`). 🪦 It drew a Db count and an
-                    UPGRADES button above them until Db was cut, 2026-10-02. */}
-                <ChannelStrip foot={<AbilityWallet ns={ns}/>}>
-                  <StripSection title="THIS TURN">
-                    {/* 🎚️ THE THREE STEPS, and the one live number each one is really
-                        about. ⚠️ THESE ARE THE HUD'S OWN NUMBERS, not a second source:
-                        `stackCommitsThisTurn` against the budget, the track length
-                        against its 8 seats, and the engine's `moveStepsLeft`. If any
-                        of them ever disagrees with the panel it names, the panel is
-                        right and this is the bug. */}
-                    <TurnRail
-                      current={turnStep === 'chord' ? 1 : turnStep === 'melody' ? 2 : 3}
-                      steps={[
-                        { name:'CHORD STACKS', color:DRIVE_C,
-                          state:`${Math.max(0, STACK_COMMIT_BUDGET - (ns.stackCommitsThisTurn ?? 0))} of ${STACK_COMMIT_BUDGET} commits left` },
-                        { name:'BUILD MELODY', color:'#aa88ff',
-                          state:`${melodyLine.length} of 8 notes placed` },
-                        { name:'MOVE & ACT',   color:'#44ff88',
-                          state:`${moveStepsLeft} AP · ${actionTokenUsed ? 'no action' : '1 action'} left` },
-                      ]}/>
-                  </StripSection>
-                  <StripSection title="KEY" accent="#7fb0ff">
-                    {/* 🔑 ⚠️ THE COLOURS ARE THE NOTE CHIPS' OWN — 4th violet, 5th pink,
-                        and ONE amber for all three unlock-gated discords, exactly as
-                        the stock renders them. This plate is the legend for those
-                        chips; a legend in different colours from the thing it explains
-                        is worse than no legend at all. */}
-                    {/* 🔑 THE PLATE'S FOOT CARRIES THE ↻ FLIP WARNING, and that is
-                        the whole reason this is a computed node and not the one-line
-                        string it started as. ⚠️ The retired `derived-mode` block owned
-                        this signal, and it is the one thing under the portrait that
-                        the plate did NOT already say — so deleting that block without
-                        rehoming this would have silently dropped a real mechanic.
-                        Mode is derived at TURN START only (deriving mid-turn would
-                        respell the stock under notes already placed), so a player who
-                        stacks a ♭3 right now sees nothing change and concludes the
-                        feature is broken. This is what tells them when it lands. */}
-                    {/* 🔑 STEP-AWARE, Alex 2026-08-29. ⚠️ THE TWO HALVES OF "THE KEY"
-                        TURN OVER AT DIFFERENT MOMENTS, and that is the whole reason
-                        this is computed rather than passed straight through:
-                          · the ROOT flips at COMMIT — `melodyCommit` writes the
-                            track's last note straight into `rootNote`, so by step 3
-                            this plate is already printing next round's letter;
-                          · the MODE flips at TURN START — `turnFlow` derives it from
-                            the Drive Stack, so during step 3 the plate is still
-                            printing the mode you are leaving.
-                        Left alone, step 3 shows next round's root against this
-                        round's mode: a chord that will never be played, with nothing
-                        marking it as a mixture. So from the commit onward the plate
-                        prints BOTH halves of the next key and says so on the badge.
-                        📌 It reads `hasConfirmed`, not just the step — the step can
-                        advance without a committed track, and an uncommitted track
-                        has not moved the root yet. */}
-                    {(() => {
-                    const nextKey = turnStep === 'move_act' && hasConfirmed;
-                    const plateMode = scaleMode;
-                    const plateIvs  = nextKey ? getIntervalNotes(rootNote, plateMode) : intervals;
-                    const unusedLeft = (noteStock ?? [])
-                      .filter((_, i) => !usedHas(usedStockIdx, i)).length;
-                    return (
-                    <KeyPlate root={rootNote} mode={plateMode}
-                      next={nextKey}
-                      stock={nextKey ? stockGrid : null}
-                      stockOpen={stockDrawer}
-                      stockLeft={unusedLeft}
-                      onStock={() => setStockDrawer(v => !v)}
-                      note={(() => {
-                        if (nextKey) return (<>
-                          <div style={{color:"#ff99dd"}}>
-                            ↻ your track ended on {rootNote} — that opens the next round
-                          </div>
-                          <div style={{marginTop:3}}>
-                            Your {scaleMode} palette stays with you
-                          </div>
-                        </>);
-                        return <>Your clean palette: {scaleMode}</>;
-                      })()}
-                      intervals={[
-                        ['4th', plateIvs.fourth,        '#cc55ff'],
-                        ['5th', plateIvs.fifth,         '#ff55aa'],
-                        ['tri', plateIvs.tritone,       UNLOCKED_DISCORD.text],
-                        ['M3',  plateIvs.majorThird,    UNLOCKED_DISCORD.text],
-                        ['m7',  plateIvs.minorSeventh,  UNLOCKED_DISCORD.text],
-                      ]}/>
-                    ); })()}
-                  </StripSection>
-                </ChannelStrip>
-                <div style={{flex:1}}/>{/* push loadout content to top */}
-                </div>{/* end left column */}
-                </div>{/* end two-column row */}
-              </div>
-            );
+            const ns = actingNoteState ?? {};
+            const nextKey = turnStep === 'move_act' && hasConfirmed;   // the KEY PLATE's own test
+            const model = sheetModel({
+              spirit: s, ns, startingLives, fameToWin, turnFameCap,
+              // Banked this turn window — lives on a ref, but every grant
+              // dispatches FAME_CHANGED in the same tick, so the re-render that
+              // follows always reads a fresh value. (The old card's note.)
+              fameBanked: fameThisTurnRef.current?.[s.id] ?? 0,
+              rivalBestFame: Math.max(0, ...spirits.filter(o => o.id !== s.id).map(o => noteStates?.[o.id]?.fame ?? 0)),
+              edgeHex: !!HEX_BY_NUM[s.num]?.edge,
+              headliner: engineRef.current.headliner === s.id,
+              respawn: !!respawnFlashes[s.id],
+              keyIsNext: nextKey,
+              ...actingDriveDice,
+            });
+            return <SpiritSheet model={model} imageSrc={s.imageSrc}
+              turnLabel={`${canAct ? 'YOUR TURN' : 'TURN'} · ${String(engineState.turn.count).padStart(2, '0')}`}
+              stock={nextKey ? {
+                grid: stockGrid, open: stockDrawer, onToggle: () => setStockDrawer(v => !v),
+                left: (noteStock ?? []).filter((_, i) => !usedHas(usedStockIdx, i)).length,
+              } : null} />;
           })()}
 
           </HudRegion>
@@ -13592,7 +13212,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:actingHue}}
                     style={{borderColor: canDash ? actingHue : actingHueDim, color: canDash ? actingHueLight : actingHueDim}}
                     disabled={!canDash}
-                    title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The Rival throws his Sustain as a shield and you must burst through it — what gets through is the damage, and pushes him back one hex per die. The farther the draw, the bigger your dice: ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} of your d6s become d8s at ${PSYCHO_BUSHIDO_MIN_RANGE}, ${psychoBushidoD8s(4)} at 4, ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
+                    title={`Psycho Bushido — draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT and strike. The Rival throws his Sustain as a shield and you must burst through it — what gets through is the damage, and pushes him back one hex for every 2 points through. The farther the draw, the bigger your dice: ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} of your d6s become d8s at ${PSYCHO_BUSHIDO_MIN_RANGE}, ${psychoBushidoD8s(4)} at 4, ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ Too close and you cannot draw at all, and any body in the lane blocks it. Costs ${PSYCHO_BUSHIDO_AP_COST} AP and ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack. ${PSYCHO_BUSHIDO_CD}-round cooldown.`}
                     onClick={() => {
                       if (action === 'psycho_bushido') { setAction(null); }
                       else if (canDash) { setAction('psycho_bushido'); addLog('🌀 PSYCHO BUSHIDO — click a rival in your line of sight to dash-strike!'); }

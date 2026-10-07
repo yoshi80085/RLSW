@@ -12,7 +12,7 @@ import { spendArmedPatch, applyCard, handOf } from './marqueeCards.js';
 import {
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
   THRASH_DAMAGE_CAP, THRASH_WHIFF_DMG, THRASH_PUSH_THRESHOLD,
-  SONIC_VIBE_CAP,
+  SONIC_VIBE_CAP, SONIC_PUSH_PER_STRENGTH,
 } from "../../data/gameConstants.js";
 import { CORNERS } from "../../data/corners.js";
 import { cornerFacing } from "../../board/boardHelpers.js";
@@ -83,6 +83,21 @@ export function sonicKnockback(margin, vibe, maxVibe) {
   const vibeRatio = Math.max(0, 1 - (vibe / Math.max(1, maxVibe)));
   const vibeKB    = Math.floor(vibeRatio * 2);
   return Math.min(5, baseKB + vibeKB);
+}
+
+/**
+ * 💢 THE SHIELD PUSH — the staged Sonic's and Psycho Bushido's knockback.
+ * ⭐ Alex, 2026-10-07: "The push-back should be determined by how many 'points
+ * of damage' go through, rather than number of dice. In this way - a d8 push
+ * should be much larger than a d1 push … for every 2 points of damage, the
+ * Spirit gets pushed back 1 space. So 1-2 = 1 space, 3-4 = 2 spaces, 5-6 = 3
+ * spaces, 7-8 = 4 spaces..." → ceil(through / 2), UNCAPPED (ring-outs allowed).
+ * 🐛 Why: it used to be one hex per die through, and the shield soaks the dice
+ * in THROW order — a 13-vs-6 draw thrown 5 then 8 pushed ONE hex.
+ * 📌 The legacy (v1) Sonic keeps one hex per hit: its per-die contacts ride it.
+ */
+export function sonicPush(strengthThrough) {
+  return Math.ceil(Math.max(0, strengthThrough ?? 0) / SONIC_PUSH_PER_STRENGTH);
 }
 
 /**
@@ -271,8 +286,8 @@ export function applyAttackRolled(state, action, rng) {
   // it is a Bushido (so the show draws lightning, not ring beams), and the
   // per-lap Sonic tally is not charged — this was not a Sonic.
   // 📌 The knockback is the Sonic's on purpose (Alex: "the same as it would
-  // during a Sonic attack") — one hex per die through, along his facing,
-  // ring-outs allowed — and that lives in `battleConsequences`, untouched.
+  // during a Sonic attack") — one hex per 2 strength through (`sonicPush`,
+  // 2026-10-07), along his facing, ring-outs allowed — in `battleConsequences`.
   if (kind === 'sonic' || kind === 'bushido') {
     const bushido = kind === 'bushido';
     const modern=bushido||action.sonicVersion===2;

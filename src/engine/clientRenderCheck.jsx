@@ -69,10 +69,16 @@ ok('the chord-stack anchor survived the split', /<[^>]+data-tip-anchor="chord-st
 ok('the Commit Track is NOT up during step 1', !/<[^>]+data-tip-anchor="commit-track"/.test(html));
 
 console.log('\n§4 the amp knob is on the stack panels');
-// Each cap exposes a semantic marker so presentation changes do not make this
-// render-presence check depend on one exact border alpha.
-const caps = (html.match(/data-stat-knob-cap/g) || []).length;
-ok('at least one amp knob per stack panel', caps >= 2, `found ${caps} knob cap borders`);
+// 🪦 THIS USED TO COUNT `data-stat-knob-cap` — StatKnob's marker — and it was
+// passing for the wrong reason. The stack panels have drawn `ArenaDial` since
+// it replaced StatKnob there (NoteCommitOverlay.jsx §🪦); the only two StatKnobs
+// left on the page were the old 2D Spirit card's DRIVE/SUSTAIN pair. That card
+// went 2026-10-07 (the Spirit window), the count fell to 0, and the stale target
+// showed. It now counts what the panels really draw: their `board-<side>` dial.
+// ⚠️ BY ITS ID, not by `rlsw-dial` — the pocket's SOUND plate draws two of those
+// too, and counting them would pass this check for the wrong reason again.
+const caps = ['drive', 'sustain'].filter(side => html.includes(`id="rlsw-dial-core-board-${side}"`)).length;
+ok('at least one amp knob per stack panel', caps >= 2, `found ${caps} of 2 stack-panel ArenaDials (board-drive, board-sustain)`);
 const slots = (html.match(/data-stack-slot=/g) || []).length;
 ok('both stacks rendered their slots', slots > 0, `found ${slots} slot elements`);
 

@@ -64,6 +64,16 @@ try {
   await click(document.querySelector('.match-player-card')); // 🎡 Spirit details: the card's ＋ (the nav's middle chip is Scale now)
   assert.equal(document.querySelector('[data-hud-region="turn"]').hidden, true);
   assert.equal(document.querySelector('[data-hud-region="spirit"]').hidden, false);
+  // 🪪 The Spirit window (2026-10-07): it is the ACTING Spirit's sheet, and its ✕
+  // closes through the arena's own selection — then the card opens it again.
+  const sheet = document.querySelector('[data-hud-region="spirit"] .ss-root');
+  assert.ok(sheet, 'the Spirit window is the new sheet, not the old 2D card');
+  assert.equal(sheet.dataset.spiritId, observedState.acting, 'the sheet is the acting Spirit\'s');
+  assert.ok(sheet.textContent.includes('FAME') && sheet.textContent.includes('ABILITIES'), 'the sheet drew its sections');
+  await click(sheet.querySelector('.ss-close'));
+  assert.equal(document.querySelector('[data-hud-region="spirit"]').hidden, true, 'its ✕ closes the window');
+  await click(document.querySelector('.match-player-card'));
+  assert.equal(document.querySelector('[data-hud-region="spirit"]').hidden, false, '…and the card opens it again');
   await click(panelButton('Rivals'));
   assert.equal(document.querySelector('[data-hud-region="rivals"]').hidden, false);
   await click(panelButton('Turn'));

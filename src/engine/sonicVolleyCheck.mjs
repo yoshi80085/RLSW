@@ -143,7 +143,8 @@ function play(state, { hooks = {}, fx = [] } = {}) {
   }
 }
 
-// A absorbed volley has no retaliation; a connecting volley shoves once per hit.
+// A absorbed volley has no retaliation; a connecting volley shoves a hex per 2
+// strength through (Alex, 2026-10-07 — it was once per hit).
 {
   const before = fresh();
   const miss = play(applyAttackRolled(before, shot(), draws([1, 1, 2, 3, 4, 5, 4, 3]))).state;
@@ -151,7 +152,9 @@ function play(state, { hooks = {}, fx = [] } = {}) {
   eq(miss.noteStates[ATTACKER].fame, 0, 'no attacking Fame on an absorbed volley');
   eq(miss.noteStates[DEFENDER].fame, 0, 'no counterattack Fame for defending');
   const hit = play(applyAttackRolled(before, shot(), draws([6, 6, 5, 1, 4, 5, 4, 3]))).state;
-  eq(target(hit).num, lane[4].num, 'three beams through shove exactly three hexes');
+  // 6,6 soak the 12 shield (5+4+3); 5, 1 and 4 get through: 10 strength on three beams.
+  eq(hit.battle?.strengthThrough ?? 10, 10, 'ten strength gets through on three beams');
+  eq(target(hit).num, lane[6].num, 'ten strength through shoves five hexes (one per 2), not three (one per beam)');
   eq(target(hit).vibe, 11, 'the volley chips once after its shove');
   eq(hit.noteStates[DEFENDER].sustainStack, sustain, 'consequences cannot immediately fray Sustain');
   ok(hit.noteStates[ATTACKER].fame >= 3, 'hit-count Fame passes through the shared reward pipeline');
@@ -203,14 +206,14 @@ for(const {q,r} of axialNeighbors(0,0)){
   const angle=Math.atan2((r+q/2)*ROW_SPACING,q*COL_SPACING);
   const before=fresh();
   before.spirits=before.spirits.map(s=>({...s,num:s.id===ATTACKER?55:56,facing:angle}));
-  const rolled=applyAttackRolled(before,shot({dicePool:[6],defStat:0,sonicChordNotes:['C','E','G']}),draws([6]));
+  const rolled=applyAttackRolled(before,shot({dicePool:[6],defStat:0,sonicChordNotes:['C','E','G']}),draws([2]));  // 2 through → one hex
   eq(rolled.battle.sonicFacing,angle,'the attacking facing is frozen');
   rolled.spirits=rolled.spirits.map(s=>s.id===ATTACKER?{...s,facing:angle+Math.PI}:s);
   // Put the attacker outside the shove destination without changing its snapshot.
   rolled.spirits[0]={...rolled.spirits[0],num:7};
   const events=[];
   const after=play(rolled,{fx:events}).state;
-  eq(target(after).num,straightNeighborInDirection(HEX_BY_NUM[56],angle).num,'one hit moves one hex along original facing');
+  eq(target(after).num,straightNeighborInDirection(HEX_BY_NUM[56],angle).num,'2 strength through moves one hex along original facing');
   eq(events.filter(e=>e.name==='sonicBarrageLanded').map(e=>e.spiritId),[DEFENDER],'contact boundary precedes the shove');
 }
 

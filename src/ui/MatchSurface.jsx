@@ -114,7 +114,10 @@ export function MatchSurface({ immersive, riffArena = false, spirit, turnNumber,
   const select = next => setSelection({ owner, panel: next === panel ? null : next });
   // Tutorials can point at any original HUD anchor, including collapsed details.
   // Show all panels during a walkthrough so its internal page changes stay valid.
-  const context = { immersive, panel, tutorial, id };
+  // 🪪 `close` lets a region's own ✕ (the Spirit window, 2026-10-07) shut it
+  // through the SAME selection the card's click toggles — no second open flag.
+  const close = () => setSelection({ owner, panel: null });
+  const context = { immersive, panel, tutorial, id, close };
   /* 🪦 THE "NOW" WINDOW IS GONE, 2026-09-12, AND THIS IS WHAT IT KNEW.
    * It was a third bracket at bottom-centre whose headline was the STEP NAME —
    * which the phase rail above already prints, and which the step-3 drawer
@@ -218,6 +221,11 @@ export function MatchSurface({ immersive, riffArena = false, spirit, turnNumber,
       {children}
     </div>
   </SurfaceContext.Provider>;
+}
+
+/** The open region's close, or null outside a MatchSurface (a preview, a test). */
+export function useHudClose() {
+  return useContext(SurfaceContext).close ?? null;
 }
 
 export function HudRegion({ name, children }) {

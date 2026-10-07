@@ -937,6 +937,11 @@ export const THRASH_WHIFF_DMG        = 1;   // losing attacker only takes this m
 export const THRASH_PUSH_THRESHOLD   = 1;   // margin needed before Thrash pushes 1 hex — any successful hit shoves the target
 // Sonic (ranged) — keep-highest pool, FP/push focused, minimal Vibe damage.
 export const SONIC_VIBE_CAP          = 2;   // max Vibe damage from a Sonic hit
+// ⭐ Alex, 2026-10-07: "The push-back should be determined by how many 'points of
+// damage' go through, rather than number of dice … for every 2 points of damage,
+// the Spirit gets pushed back 1 space. So 1-2 = 1 space, 3-4 = 2 spaces …"
+// Staged Sonic AND Psycho Bushido: one hex per this much strength THROUGH the shield.
+export const SONIC_PUSH_PER_STRENGTH = 2;
 export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from main/pit ring
 // Hexes crossed by the animated lightning bolt on the board art (measured from
 // board_lightning_animated.png against the hex grid; #56 Limelight also under

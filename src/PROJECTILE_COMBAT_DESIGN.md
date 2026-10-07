@@ -679,7 +679,7 @@ standing.**
 | `combat.js` `applyAttackRolled` | `shieldValue = max(0, defStat)` | rolls the Sustain pool off the seeded rng; ⚠️ **two draws now happen where one did** — replay cursors move |
 | `combat.js` `applyAttackRerolled` | re-draws attacker vs a fixed shield | ⁉️ **UNDECIDED: does Code Injection re-roll the shield too?** Its own doc says it *"rewrites the RIVAL'S roll, never your own defence"* — written when the defender had no roll. **Rule on it or the reroll is ambiguous.** |
 | `attackParams.js` sonic branch | `defStat` = a scalar chord sustain | must emit a **`sustainPool`**; ⛔ no `sustainRig()` exists — see §3.6.5 |
-| `battleFlow.js` `spaces = hitCount` | one hex per hit, stepped mid-flight | `pushes`, resolved as **one combined shove after the barrage lands** ⭐ so the target does not slide out from under airborne projectiles |
+| `battleFlow.js` `spaces = hitCount` | one hex per hit, stepped mid-flight | `pushes`, resolved as **one combined shove after the barrage lands** ⭐ so the target does not slide out from under airborne projectiles. ⭐ **2026-10-07: the distance is `sonicPush` — ⌈strength through ÷ 2⌉, not the hit count** |
 | `battleFlow.js` `knockback` `sonicHits` | `fx('sonicContact', …)` per shove step | contacts decouple from shove steps entirely |
 | `combat.js` `sonicDamage(margin)` | `min(2, …)`, cap-shaped | `floor(through / 3)` |
 | `combat.js` `sonicVolleyFame(hitCount)` | keyed to hit count | 🆕 must also carry Alex's **diminishing FP for repeat attacks on one target in a round** |
