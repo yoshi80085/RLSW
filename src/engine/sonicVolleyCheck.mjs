@@ -4,7 +4,9 @@ import assert from 'node:assert/strict';
 import { makeInitialState } from './state.js';
 import { makeRng } from './rng.js';
 import { applyAction } from './reduce.js';
-import { attackRolled, attackRerolled, damageApplied, knockdownResolved } from './actions.js';
+import { attackRolled, attackRerolled, damageApplied, knockdownResolved, turnStarted } from './actions.js';
+import { isWaiting, isRingedOut, isEntranceHex } from './systems/entrance.js';
+import { RING_OUT_FP } from '../data/gameConstants.js';
 import { applyAttackRolled, applyAttackRerolled, sonicVolleyFame } from './systems/combat.js';
 import { startTurnNotes } from './systems/turnFlow.js';
 import { battleConsequences, knockback, runBattleFlow } from './systems/battleFlow.js';
@@ -161,14 +163,43 @@ function play(state, { hooks = {}, fx = [] } = {}) {
 }
 
 // Sonic can ring out; other attacks keep the existing hard board edge.
+// 🔊 RING-OUT (Alex, 2026-10-07): back to the pad, beamed on at his next turn;
+// "A Ring out is the same as a Knock Out" — a life, 1 FP, Vibe back, no notes,
+// no fans — and the Spirit who did it is paid extra.
 for (const elimination of ['on', 'off']) {
   const fx = [];
-  const state = play(applyAttackRolled(fresh({ edge: true, elimination }), shot(), draws([6, 6, 5, 1, 4, 5, 4, 3])), { fx }).state;
-  eq(target(state).lives, elimination === 'on' ? 2 : 3, 'ring-outs respect the elimination mode');
-  eq(target(state).num, 12, 'ring-out uses the normal home respawn');
-  eq(target(state).vibe, 12, 'the fresh respawn never takes the old volley chip');
+  const start = fresh({ edge: true, elimination });
+  start.noteStates[DEFENDER] = { ...start.noteStates[DEFENDER], fame: 5, diehards: 3 };
+  const state = play(applyAttackRolled(start, shot(), draws([6, 6, 5, 1, 4, 5, 4, 3])), { fx }).state;
+  const t = target(state);
+  eq(t.lives, elimination === 'on' ? 2 : 3, `🔊 [${elimination}] a ring-out costs a life, like a knockdown (when lives are spent)`);
+  eq([t.num, isWaiting(t), isRingedOut(t)], [null, true, true], '🔊 …he is off the board, waiting on his pad');
+  ok(isEntranceHex(state, 12), '🔊 …and his home hex is reserved for his return');
+  eq(t.vibe, t.maxVibe, '🔊 …Vibe restored (the volley chip never lands on a Spirit who left)');
+  eq(t.knockdownCount ?? 0, 1, '🔊 …and it counts as a knockdown');
+  eq(state.noteStates[DEFENDER].fame, 4, '💸 the slight FP drain: −1');
+  eq(state.noteStates[DEFENDER].recoveryNotesOwed ?? 0, 0, '🎸 no notes owed to get up');
+  eq(state.noteStates[DEFENDER].diehards, 3, '🎪 his crowd stays put');
   ok(fx.some(effect => effect.name === 'ringOut'), 'the edge crossing emits its own presentation cue');
-  ok(state.noteStates[ATTACKER].fame > 0, 'the connecting volley still earns Fame after ring-out');
+  ok(state.noteStates[ATTACKER].fame >= RING_OUT_FP, `⭐ the Spirit who rang him out is paid (≥ ${RING_OUT_FP} FP)`);
+  // His own next turn: beamed back on, exactly the way he first came in — minus the opening gift.
+  const back = applyAction({ ...state, acting: DEFENDER }, turnStarted(DEFENDER), makeRng(3));
+  const b = target(back);
+  eq([b.num, isWaiting(b)], [12, false], '🔊 his next turn starts with him back on his home hex');
+  eq(back.noteStates[DEFENDER].diehards, 3, '🎪 …with the crowd he had (no second +2)');
+  eq([back.turn.lastEntrance?.spiritId, back.turn.lastEntrance?.fans, back.turn.lastEntrance?.ringOut], [DEFENDER, 0, 1],
+    '🎬 …reported as a ring-out return for the client\'s beam-down and hop');
+}
+// 🔊 Someone standing on his home hex when he comes back: the nearest free hex, never a shove.
+{
+  const start = fresh({ edge: true });
+  const state = play(applyAttackRolled(start, shot(), draws([6, 6, 5, 1, 4, 5, 4, 3]))).state;
+  const squat = { ...state, spirits: state.spirits.map(s => s.id === ATTACKER ? { ...s, num: 12 } : s) };
+  const back = applyAction({ ...squat, acting: DEFENDER }, turnStarted(DEFENDER), makeRng(3));
+  const b = target(back);
+  ok(b.num != null && b.num !== 12, `🔊 home hex taken → he lands beside it (#${b.num})`);
+  eq(back.turn.lastEntrance?.contested, undefined, '🔊 …uncontested');
+  eq(back.spirits.find(s => s.id === ATTACKER).num, 12, '🔊 …and the squatter is not moved');
 }
 {
   const state = fresh({ edge: true });
@@ -177,7 +208,7 @@ for (const elimination of ['on', 'off']) {
     { applyAction: (s, action) => applyAction(s, action, rng) });
   eq(target(stop.state), target(state), 'ordinary knockback still stops at the stage edge');
   const out = play(applyAttackRolled(fresh({ edge: true, lives: 1 }), shot(), draws([6, 6, 5, 1, 4, 5, 4, 3]))).state;
-  eq(target(out).knockedOut, true, 'last-life ring-out follows normal elimination');
+  eq(target(out).knockedOut, true, '🔊 a last-life ring-out is a knockout, like any knockdown');
 }
 
 // Hazards interrupt the shove even when no-elimination respawns at the same hex.

@@ -176,11 +176,13 @@ export function decideWinner(spirits, { attackerId = null, hasWinner = false } =
 export function resolveKnockdown(spirit, corners = CORNERS, { elimination = true } = {}) {
   const livesLeft = elimination ? (spirit.lives ?? 1) - 1 : (spirit.lives ?? 1);
   if (livesLeft > 0) {
-    const homeNum   = spirit.corner ? corners[spirit.corner]?.homeNum : spirit.num;
-    const newFacing = spirit.corner ? cornerFacing(homeNum) : spirit.facing;
+    // 🤕 HE GETS UP WHERE HE FELL (Alex, 2026-10-07): *"The standee 'falls down'
+    // on the spot - a few fans come out to the stage and 'help him' up - loses FP
+    // in the process, Vibe is restored. A life is lost. He gets back up where he
+    // got knocked down."* No trip home any more; hex and facing are kept.
     return {
       respawned: true, livesLeft,
-      next: { ...spirit, lives: livesLeft, num: homeNum, facing: newFacing, vibe: spirit.maxVibe },
+      next: { ...spirit, lives: livesLeft, vibe: spirit.maxVibe },
     };
   }
   return { respawned: false, livesLeft: 0, next: { ...spirit, lives: 0, knockedOut: true } };

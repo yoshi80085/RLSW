@@ -25,6 +25,8 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
       waiting:!!s.entrance,
       vibe:s.vibe,maxVibe:s.maxVibe,fallen:!!noteStates[s.id]?.fallen,
       hitBackCount:s.hitBackCount??0,
+      // 🤕 Moves on every knockdown — the arena plays the fans helping him up (knockdownHelpers.js).
+      knockdownCount:s.knockdownCount??0,
       // 🎭 A bot's landing is quieter (standeeSteps, STANDEE_MOVE.botVol) — `cpu` is
       // the client's own bot flag (`isBot`).
       bot:!!s.cpu,

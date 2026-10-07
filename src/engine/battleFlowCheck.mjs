@@ -167,12 +167,33 @@ const battle = (over = {}) => ({
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5. FAME_PER_TURN_CAP — overflow is DISCARDED, not banked (handoff §2).
+// 5·0 ⛔ NO FP TURN LIMIT (Alex, 2026-10-07: "There is NO FP turn limit anymore").
+//    In a real game every grant banks in full, however many land in one turn.
+//    The ceiling MACHINERY below is still pinned, under the bench's `fameCap`
+//    instrument (CAP = 4), because measurement runs still clip with it.
+// ═════════════════════════════════════════════════════════════════════════════
+const CAP = 4, DUEL_CAP = 8;
+const capped = seed => { const s0 = freshState(seed); return { ...s0, config: { ...s0.config, fameCap: CAP } }; };
+{
+  ok(FAME_PER_TURN_CAP === Infinity && RIFF_FP_TURN_CAP === Infinity, '⛔ the per-turn FP caps are gone');
+  let cur = freshState(2024), window = {};
+  const before = cur.noteStates.cosmic_ronin.fame ?? 0;
+  for (let i = 0; i < 5; i++) {
+    const r = drive(st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 3, reason: 'test', amplify: false, fameThisTurn: window }), cur);
+    cur = r.state; window = r.result.fameThisTurn;
+    eq(r.result.clipped, 0, `⛔ grant ${i + 1} of the turn loses nothing`);
+  }
+  eq((cur.noteStates.cosmic_ronin.fame ?? 0) - before, 15, '⛔ 5 × 3 FP in one turn banks all 15');
+  const duel = drive(st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 20, reason: 'riff-off win', amplify: false, duel: true }), freshState(2024));
+  eq(duel.result.granted, 20, '⛔ …and a duel banks its whole payout');
+}
+// ═════════════════════════════════════════════════════════════════════════════
+// 5. CAP — overflow is DISCARDED, not banked (handoff §2).
 //    The cap applies AFTER the crowd multiplier, so a big crowd cannot be used
 //    to smuggle FP past the ceiling.
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  let s = freshState(2024);
+  let s = capped(2024);
   const before = s.noteStates.cosmic_ronin.fame ?? 0;
   let window = {};
   let cur = s;
@@ -185,7 +206,7 @@ const battle = (over = {}) => ({
     window = r.result.fameThisTurn;
   }
   const gained = (cur.noteStates.cosmic_ronin.fame ?? 0) - before;
-  eq(gained, FAME_PER_TURN_CAP, `5 × 3 FP in one turn banks only ${FAME_PER_TURN_CAP} — the rest is lost to the noise`);
+  eq(gained, CAP, `5 × 3 FP in one turn banks only ${CAP} — the rest is lost to the noise`);
 
   // ── ORDER, not just the ceiling ──
   // The multiplier must be applied BEFORE the cap. A single 1 FP deed with a
@@ -194,7 +215,7 @@ const battle = (over = {}) => ({
   // silently make the fan multiplier a no-op — the exact failure §3.6's
   // "compounding lead" case depends on NOT happening, and one that leaves the
   // headline cap assertion above green.
-  let fanned = freshState(2024);
+  let fanned = capped(2024);
   fanned = applyAction(fanned, { type: 'NOTE_SHEET_PATCHED', spiritId: 'Metalness_Monster',
     patch: { diehards: 6, casuals: 20 } });
   const mult = crowdMultiplier(6, 20, 0);
@@ -204,11 +225,11 @@ const battle = (over = {}) => ({
   const loud  = drive(st => grantFame({ state: st, spiritId: 'Metalness_Monster', fp: 1, reason: 'x' }), fanned);
   ok(loud.result.granted > plain.result.granted,
      'the crowd multiplies BEFORE the cap — 1 FP with a big crowd beats 1 FP with none');
-  ok(loud.result.granted <= FAME_PER_TURN_CAP, 'amplified FP is still clipped at the turn cap');
+  ok(loud.result.granted <= CAP, 'amplified FP is still clipped at the turn cap');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
-// 5a. 🎤 THE DUEL'S OWN CEILING — `RIFF_FP_TURN_CAP`, added 2026-08-18.
+// 5a. 🎤 THE DUEL'S OWN CEILING — `DUEL_CAP`, added 2026-08-18.
 //
 // ⚠️ THE THING TO PIN IS THAT IT IS A HIGHER CAP AND NOT AN EXEMPTION, because
 // the two are indistinguishable from a payout that happens to be small. Measured
@@ -217,17 +238,17 @@ const battle = (over = {}) => ({
 // `awardRiffFame` was arithmetic nobody could collect (§6.6.9).
 // ═════════════════════════════════════════════════════════════════════════════
 {
-  ok(RIFF_FP_TURN_CAP > FAME_PER_TURN_CAP,
+  ok(DUEL_CAP > CAP,
      '🎤 the duel ceiling is HIGHER than the general one, or none of this means anything');
 
   // A duel-sized payout clears the general cap…
   const big = drive(
     st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 20, reason: 'riff-off win',
-                      amplify: false, cap: RIFF_FP_TURN_CAP }),
-    freshState(2024),
+                      amplify: false, duel: true }),
+    capped(2024),
   );
-  eq(big.result.granted, RIFF_FP_TURN_CAP,
-     `🎤 a duel banks up to ${RIFF_FP_TURN_CAP} in one turn, not ${FAME_PER_TURN_CAP}`);
+  eq(big.result.granted, DUEL_CAP,
+     `🎤 a duel banks up to ${DUEL_CAP} in one turn, not ${CAP}`);
 
   // …and it is still a CAP: the overflow is discarded exactly like the general
   // one, which is what stops the belt, the stage FX and a comeback multiplier
@@ -249,9 +270,9 @@ const battle = (over = {}) => ({
   // And the default is unchanged, so every existing caller is untouched.
   const plainCap = drive(
     st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 20, reason: 'x', amplify: false }),
-    freshState(2024),
+    capped(2024),
   );
-  eq(plainCap.result.granted, FAME_PER_TURN_CAP,
+  eq(plainCap.result.granted, CAP,
      '🎤 `cap` defaults to the general ceiling — the duel opted in, nothing else did');
 }
 
@@ -271,10 +292,10 @@ const battle = (over = {}) => ({
   // it is what makes "discarded" a complete account rather than a sample.
   const over = drive(
     st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 10, reason: 'x', amplify: false }),
-    freshState(2024),
+    capped(2024),
   );
-  eq(over.result.granted, FAME_PER_TURN_CAP, '📏 the grant banks the cap…');
-  eq(over.result.clipped, 10 - FAME_PER_TURN_CAP, '📏 …and REPORTS the rest instead of dropping it silently');
+  eq(over.result.granted, CAP, '📏 the grant banks the cap…');
+  eq(over.result.clipped, 10 - CAP, '📏 …and REPORTS the rest instead of dropping it silently');
   eq(over.result.granted + over.result.clipped, over.result.uncapped,
      '📏 granted + clipped === uncapped — the account is complete, not a sample');
 
@@ -283,7 +304,7 @@ const battle = (over = {}) => ({
   // quiet case has to be explicit too.
   const under = drive(
     st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 1, reason: 'x', amplify: false }),
-    freshState(2024),
+    capped(2024),
   );
   eq(under.result.clipped, 0, '📏 a grant that fits reports clipped 0, not undefined');
 
@@ -292,8 +313,8 @@ const battle = (over = {}) => ({
   // most: it is a whole payout the rules awarded and nobody ever saw.
   const full = drive(
     st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 3, reason: 'late deed',
-                      amplify: false, fameThisTurn: { cosmic_ronin: FAME_PER_TURN_CAP } }),
-    freshState(2024),
+                      amplify: false, fameThisTurn: { cosmic_ronin: CAP } }),
+    capped(2024),
   );
   eq(full.result.granted, 0, '📏 a payout into a full window banks nothing…');
   eq(full.result.clipped, 3, '📏 …and the whole 3 FP is reported as discarded');
@@ -302,19 +323,19 @@ const battle = (over = {}) => ({
   // is the difference from `fx` — the harness passes no `onLedger` and must
   // still get the numbers.
   const run = runBattleFlow(
-    grantFame({ state: freshState(2024), spiritId: 'cosmic_ronin', fp: 10, reason: 'x', amplify: false }),
-    freshState(2024),
+    grantFame({ state: capped(2024), spiritId: 'cosmic_ronin', fp: 10, reason: 'x', amplify: false }),
+    capped(2024),
     { applyAction: (st, a) => applyAction(st, a, makeRng(1)) },
   );
   ok(Array.isArray(run.ledger), '📏 runBattleFlow always returns a ledger array');
   eq(run.ledger.length, 1, '📏 one entry per grant');
   eq(run.ledger[0].name, 'fame', '📏 …named for what it measures');
-  eq(run.ledger[0].clipped, 10 - FAME_PER_TURN_CAP, '📏 …carrying the discard the caller would otherwise have to parse out of a log line');
+  eq(run.ledger[0].clipped, 10 - CAP, '📏 …carrying the discard the caller would otherwise have to parse out of a log line');
 
   // ⚠️ A LEDGER EFFECT IS NOT A RULE. Driving the same generator with the entries
   // dropped must produce the same STATE — otherwise the measurement channel has
   // become load-bearing and the client (which skips them) plays a different game.
-  const base = freshState(2024);
+  const base = capped(2024);
   const withLedger = drive(
     st => grantFame({ state: st, spiritId: 'cosmic_ronin', fp: 2, reason: 'x', amplify: false }), base);
   eq(withLedger.state.noteStates.cosmic_ronin.fame - (base.noteStates.cosmic_ronin.fame ?? 0),
@@ -358,12 +379,15 @@ const battle = (over = {}) => ({
 
 // ═════════════════════════════════════════════════════════════════════════════
 // 6. KNOCKDOWN — Vibe to 0 spends a life, taxes 1 FP, and puts them straight
-//    back up. No turn is skipped.
+//    back up WHERE THEY FELL, fans helping (Alex, 2026-10-07). No fans lost,
+//    no turn skipped, no notes owed.
 // ═════════════════════════════════════════════════════════════════════════════
 {
   let s = freshState(606);
   s = applyAction(s, { type: 'FAME_CHANGED', spiritId: 'intergalactic_0', amount: 5 });
   const livesBefore = s.spirits.find(x => x.id === 'intergalactic_0').lives;
+  const numBefore = s.spirits.find(x => x.id === 'intergalactic_0').num;
+  s = applyAction(s, { type: 'NOTE_SHEET_PATCHED', spiritId: 'intergalactic_0', patch: { diehards: 5, casuals: 7 } });
 
   const { state, trace } = drive(
     st => vibeDamage({ state: st, targetId: 'intergalactic_0', dmg: 99,
@@ -373,10 +397,11 @@ const battle = (over = {}) => ({
   const z = state.spirits.find(x => x.id === 'intergalactic_0');
   eq(z.lives, livesBefore - 1, 'a knockdown spends one life');
   eq(state.noteStates.intergalactic_0.fame, 4, 'the knockdown tax is exactly 1 FP');
-  ok(z.vibe > 0, 'they get straight back up with Vibe restored');
-  ok(trace.includes('hook:demolishFans'), 'the crowd scatters where they fell');
-  ok(trace.indexOf('hook:demolishFans') < trace.indexOf('action:KNOCKDOWN_RESOLVED'),
-     'fans scatter on the hex they FELL on — before respawn relocates them');
+  eq(z.vibe, z.maxVibe, 'they get straight back up with Vibe restored');
+  eq(z.num, numBefore, '🤕 …on the hex they were knocked down on, not their home corner');
+  ok(!trace.includes('hook:demolishFans'), '🎪 no demolition: the crowd stays');
+  eq(`${state.noteStates.intergalactic_0.diehards}/${state.noteStates.intergalactic_0.casuals}`, '5/7', '🎪 …not one fan lost');
+  ok(!state.noteStates.intergalactic_0.fallen && !(state.noteStates.intergalactic_0.recoveryNotesOwed > 0), '🤕 no getting-up notes owed');
 }
 
 // ═════════════════════════════════════════════════════════════════════════════

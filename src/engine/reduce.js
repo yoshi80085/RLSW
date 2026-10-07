@@ -27,11 +27,12 @@ import {
   SLIME_DROPPED, SLIME_DECAYED, SLIME_CLEARED, SPIRIT_SLID, SLIME_CALLED, ELEVEN_CALLED,
   POSE_SET, POSE_ROUND_BANKED,
   SANDBOX_SEAT_TAKEN, SANDBOX_REFILLED,
+  RING_OUT,
 } from "./actions.js";
 import { restoreRng } from "./rng.js";
 import { applyBatsTicked, applyBatTurnTimed, collectBatEntries } from './systems/bats.js';
 import { resolveAbyssEntries } from './systems/crumbling.js';
-import { isWaiting, isEntranceHex } from './systems/entrance.js';
+import { isWaiting, isEntranceHex, applyRingOut } from './systems/entrance.js';
 import { applyMarqueeCardWon, applyMarqueeCardArmed } from "./systems/marqueeCards.js";
 import {
   applyTurnStarted, applyTurnEnded, applyTurnSkipped,
@@ -144,6 +145,7 @@ function reduce(state, action, rng) {
     // -- Phase 5c: spirit combat-ownership --
     case DAMAGE_APPLIED:         return applyDamageApplied(state, action);
     case KNOCKDOWN_RESOLVED:     return applyKnockdownResolved(state, action);
+    case RING_OUT:               return applyRingOut(state, action);
     case WINNER_DECLARED:        return applyWinnerDeclared(state, action);
 
     // -- Phase 5c: noteStates ownership bridge --

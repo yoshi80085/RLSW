@@ -4,7 +4,7 @@ import { playUnlockHit } from "./audio/unlockSfx.js";
 import { playSpiritFx, playSpiritSting, stopSpiritSting } from "./audio/spiritSting.js";
 import { SeatUnlockBurst } from "./ui/SeatUnlockBurst.jsx";
 import { OpeningActOverlay } from "./ui/OpeningActOverlay.jsx";
-import { openingSchedule, entranceAt, openingDoneAt } from "./board/openingAct.js";
+import { openingSchedule, entranceAt, openingDoneAt, RING_OUT_BEAM_MS } from "./board/openingAct.js";
 import { playOpeningBoom } from "./audio/openingActSfx.js";
 import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
 import { playBarrageChord, playBarrageFoley, playSustainChord, playShieldChord, playChordClash, barrageDelay } from './audio/sonicBarrageAudio.js';
@@ -635,8 +635,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
      defined ×2 (`RIFF_FP_TURN_CAP`), the same scaling `battleFlow.grantFame`
      applies. */
   const turnFameCap   = famePerTurnCap(engineState);
-  const fameCapFor    = (kind) => kind === 'riff'
-    ? turnFameCap * (RIFF_FP_TURN_CAP / FAME_PER_TURN_CAP) : turnFameCap;
+  // ⛔ No FP turn limit since 2026-10-07 — both constants are Infinity, and ∞/∞
+  // is NaN, so the duel's ×2 is written out (∞ × 2 is still ∞; a bench `fameCap` doubles).
+  const fameCapFor    = (kind) => kind === 'riff' ? turnFameCap * 2 : turnFameCap;
 
   /* 🗓️ Stage FX no longer ride Fame (2026-09-29): they fire on a round schedule
      — round 7, then every 5 — decided in the engine (`stageFxScheduled`, asked
@@ -2064,7 +2065,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const entranceHoldRef = useRef(null);
   const openingSchedRef = useRef(null);
   const openingTimersRef = useRef([]);
-  const openingEntrySeenRef = useRef(engineState.turn?.lastEntrance?.spiritId ?? null);
+  // 🔊 Keyed by Spirit, turn AND ring-out count: a Spirit rung out comes back
+  // through the same entrance again, so the id alone would swallow its return.
+  const entryKey = e => (e?.spiritId ? `${e.spiritId}:${e.count ?? 0}:${e.ringOut ?? 0}` : null);
+  const openingEntrySeenRef = useRef(entryKey(engineState.turn?.lastEntrance));
   const openingGaveUpRef = useRef(false);
   function openingLater(ms, fn) {
     const id = setTimeout(fn, Math.max(0, ms));
@@ -2081,6 +2085,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function publishOpening(sched) {
     openingSchedRef.current = sched;
     setOpeningSched(sched);
+  }
+  // 🔊 The schedule a ring-out's beam-down hangs on: the intro's, or — in a match
+  // that never had one (Testing Grounds, a reconnect) — an empty one long over,
+  // with no Bardbarian (`noGod`).
+  function openingBase(now) {
+    const past = now - 60000;
+    return openingSchedRef.current ?? { startMs: past, endMs: past, thunderAt: past, cameraUntil: past, seats: {}, noGod: true };
   }
   // 🎬 Called once the arena is on screen (BoardViewport `onArenaReady`).
   function startOpening() {
@@ -2137,22 +2148,49 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // Seat one's entrance is part of the intro's own schedule.
   const lastEntrance = engineState.turn?.lastEntrance;
   useEffect(() => {
-    const id = lastEntrance?.spiritId;
-    if (!id || openingEntrySeenRef.current === id) return;
-    openingEntrySeenRef.current = id;
+    const id = lastEntrance?.spiritId, key = entryKey(lastEntrance);
+    if (!id || openingEntrySeenRef.current === key) return;
+    openingEntrySeenRef.current = key;
     const now = performance.now(), entry = entranceAt(id, now);
-    const cur = openingSchedRef.current;
-    if (cur) publishOpening({ ...cur, seats: { ...cur.seats, [id]: { ...(cur.seats[id] ?? {}), ...entry } } });
+    // 🔊 A ring-out's return plays the same riff and hop, from the pad it was
+    // beamed down onto — with or without an intro this match — and its stand
+    // keeps the crowd it already had (`keepFans`).
+    const back = lastEntrance.ringOut != null;
+    const cur = openingSchedRef.current ?? (back ? openingBase(now) : null);
+    const corner = engineRef.current.spirits.find(s => s.id === id)?.corner;
+    if (cur) publishOpening({ ...cur, seats: { ...cur.seats,
+      [id]: { corner, ...(cur.seats[id] ?? {}), ...entry, ...(back ? { keepFans: true } : {}) } } });
     openingSound('riff', id);
     entranceHoldRef.current = { id, until: entry.doneAt };
     openingLater(entry.stepAt - now, () => openingSound('step'));
     openingLater(entry.doneAt - now, () => setOpeningTick(n => n + 1));
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [lastEntrance?.spiritId, lastEntrance?.count]);
+  }, [lastEntrance?.spiritId, lastEntrance?.count, lastEntrance?.ringOut]);
+  // 🔊 RING-OUT → BEAMED DOWN (Alex, 2026-10-07: *"come back exactly the way they
+  // come in - get beamed down into their 'safe' spot"*). The engine put the
+  // Spirit back on its pad (`entrance.applyRingOut`); the picture lets it fly off
+  // the stage first, then drops it onto the pad through the opening act's own
+  // landing (shaft, crash, rings). Read off the state, so every screen sees it.
+  const ringSeenRef = useRef(Object.fromEntries(engineState.spirits.map(s => [s.id, s.entrance?.ringOut ?? 0])));
+  const ringKey = engineState.spirits.map(s => `${s.id}:${s.entrance?.ringOut ?? 0}`).join('|');
+  useEffect(() => {
+    const now = performance.now();
+    let sched = null;
+    for (const s of engineState.spirits) {
+      const n = s.entrance?.ringOut;
+      if (n == null || (ringSeenRef.current[s.id] ?? 0) >= n) continue;
+      ringSeenRef.current[s.id] = n;
+      sched = sched ?? openingBase(now);
+      sched = { ...sched, seats: { ...sched.seats, [s.id]: { corner: s.corner, landingAt: now + RING_OUT_BEAM_MS, ringOut: n } } };
+      openingLater(RING_OUT_BEAM_MS, () => openingSound('crash'));
+    }
+    if (sched) publishOpening(sched);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ringKey]);
   // Stands still empty on screen: seats whose entrance has not landed yet.
   const openingNow = performance.now();
   const fansHeld = openingSched ? new Set(Object.entries(openingSched.seats)
-    .filter(([, s]) => s.doneAt != null && openingNow < s.doneAt).map(([id]) => id)) : null;
+    .filter(([, s]) => s.doneAt != null && openingNow < s.doneAt && !s.keepFans).map(([id]) => id)) : null;
   // 🔥 The exorcism's moment on the Scale Wheel: `{ spiritId, key }` for a few
   // seconds after a melody lifts the Iwato curse (the wheel burns clean).
   const [exorciseFx, setExorciseFx] = useState(null);
@@ -2657,7 +2695,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     knockdown: {
       title: '😵 Knock Down!',
       pages: [
-        { body: 'A spirit\'s Vibe hit zero — KNOCKED DOWN. The bill: 1 life gone, −1 FP, and part of the crowd bolts (some straight to whoever did the flattening). They respawn at their home corner with full Vibe... after sitting out one turn to think about it.', anchor: 'vibe-bar' },
+        { body: 'A spirit\'s Vibe hit zero — KNOCKED DOWN. The bill: 1 life gone and −1 FP. A few of their fans run out and help them back up right where they fell, Vibe full again. Blasted off the edge of the stage? Same bill — they are beamed back down onto their pad and step on again next turn.', anchor: 'vibe-bar' },
         { body: 'Burn through ALL your lives and it\'s a true KO — out of the game, merch table\'s on the left. Watch your Vibe bar. Retreating to heal isn\'t cowardice, it\'s set management.', anchor: 'vibe-bar' },
       ],
     },
@@ -6590,52 +6628,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
   }
 
-  // Demolition — a public beating in the centre scatters the crowd.
-  function demolishFans(targetId, attackerId, hexNum) {
-    const ring = hexRingFromCenter(hexNum);
-    if (ring !== 'main' && ring !== 'pit') return; // only humiliations in the spotlight count
-    const ns = noteStates[targetId];
-    if (!ns) return;
-    // 😎 DIVINE MISSION blessing — shrug off this demolition, then the blessing is spent.
-    if (ns.divineShield) {
-      dispatch(fansChanged(targetId, { divineShield: 0 }));
-      const blessed = spirits.find(s => s.id === targetId)?.name;
-      addLog(`🛡️ ${blessed} is on a mission from God — the demolition just bounces off. Blessing spent.`);
-      flashFanFx(targetId, 'gain', 0);
-      return;
-    }
-    let diehards = ns.diehards ?? FAN_DIEHARD_START;
-    let casuals  = ns.casuals ?? 0;
-    // Assigned Diehards are safe backstage — only unassigned ones can be shaken
-    // (CREW_SYSTEM_DESIGN.md §2: "Knockdown fan-flee and Demolition's Diehard
-    // shake only touch the crowd, never assigned fans").
-    const assignedCount = (ns.assignments ?? []).length;
-    const unassignedDiehards = Math.max(0, diehards - assignedCount);
-    // Shake up to 2 *unassigned* Diehards down into Casuals — their faith wavers.
-    const shaken = Math.min(2, unassignedDiehards);
-    diehards -= shaken; casuals += shaken;
-    // 7–10 Casuals flee.
-    const flee = Math.min(casuals, FAN_FLEE_MIN + drawSeededInt(FAN_FLEE_MAX - FAN_FLEE_MIN + 1));
-    casuals -= flee;
-    // Some defect straight to the demolisher; the rest pool as Unsure on the centre.
-    const toVictor = (attackerId && attackerId !== targetId) ? Math.min(FAN_DEFECT_TO_VICTOR, flee) : 0;
-    const toUnsure = flee - toVictor;
-    dispatch(fansChanged(targetId, { diehards, casuals, centerStreak: 0, fanLag: FAN_RECOVERY_LAG }));
-    {
-      const atkNs = engineRef.current.noteStates[attackerId];
-      if (toVictor > 0 && atkNs) {
-        dispatch(fansChanged(attackerId, { casuals: addCasuals(atkNs, toVictor) }));
-      }
-    }
-    if (toUnsure > 0) setUnsurePool(p => p + toUnsure);
-    const tgtName = spirits.find(s => s.id === targetId)?.name;
-    addLog(`💔 ${tgtName} is humiliated centre-stage! ${flee} fans bail (${shaken}♥ shaken) — ${toUnsure} go Unsure${toVictor ? `, ${toVictor} defect to the victor` : ''}.`);
-    flashFanFx(targetId, 'scatter', flee);
-    // 🎥 swing the camera to the humiliated act's home crowd as it bleeds fans
-    const tgtHomeNum = CORNERS[spirits.find(s => s.id === targetId)?.corner]?.homeNum;
-    if (tgtHomeNum != null) focusOnHex(tgtHomeNum, 1300, 0.55);
-    if (toVictor > 0) flashFanFx(attackerId, 'gain', toVictor);
-  }
+  // 🎪 DEMOLITION — RETIRED 2026-10-07 (Alex: *"no fans get lost anymore - from
+  // anything (unless specified) Knock Outs don't lose fans"*). It scattered the
+  // crowd of a Spirit knocked down centre stage. The battle hook still names it,
+  // so it stays as a no-op: nothing that calls it can take a fan.
+  function demolishFans() {}
 
   // 🎤 A crowd-worthy DEED (a resolved cadence, a landed riff, etc. — anything
   // melodic/expressive, never a battle win) wins fans — scaled by the deed's
@@ -6854,9 +6851,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       addLog(`💥 ${tgt.name} is KNOCKED DOWN! (${newLives} life${newLives !== 1 ? 's' : ''} left)`);
       showTip('knockdown');
 
-      // 🎤 FAN ECONOMY — a knockdown in the spotlight scatters the crowd. tgt.num
-      // is still the hex they fell on (respawn moves them after this).
-      setTimeout(() => demolishFans(targetId, attackerId, tgt.num), 0);
+      // 🎪 No fans are lost on a knockdown any more (Alex, 2026-10-07) — the
+      // spotlight demolition that scattered the crowd here is retired.
 
       // 6️⃣ BERSERK ends here, either way round:
       //   · the Monster put someone on the floor — the charge landed, glory, done
@@ -6873,8 +6869,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
       // Respawn at corner with full Vibe — position/facing/vibe via the engine
       // KNOCKDOWN_RESOLVED action (runs the resolveKnockdown kernel — Phase 5c).
-      // Knock Down penalty: lose 1 FP (never below 0). The Spirit gets straight
-      // back up in their home corner with full Vibe — no turn is skipped.
+      // Knock Down penalty: lose 1 FP (never below 0). 🤕 A few fans help him up
+      // WHERE HE FELL with full Vibe (Alex, 2026-10-07) — no turn is skipped.
       // 💀 AZRAEL — if MetalNess himself is downed, his streak resets to zero.
       dispatch(fameChanged(targetId, -1)); // Knock Down penalty: −1 FP (engine floors at 0)
       setNoteStates(nsPrev => {
@@ -6885,7 +6881,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           knockStreak: 0,
         }};
       });
-      addLog(`💸 ${tgt.name} loses 1 FP and gets straight back up in their home corner!`);
+      addLog(`💸 ${tgt.name} loses 1 FP — a few fans run out and help them back up where they fell.`);
       // Flash respawn
       setRespawnFlashes(rf => ({ ...rf, [targetId]: true }));
       setTimeout(() => setRespawnFlashes(rf => ({ ...rf, [targetId]: false })), 1200);
@@ -10966,7 +10962,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             setNoteStates(nsPrev => nsPrev[tgtId]
               ? { ...nsPrev, [tgtId]: { ...nsPrev[tgtId], recovering: false } }
               : nsPrev);
-            addLog(`💸 ${tgt.name} loses 1 FP and gets straight back up in their home corner!`);
+            addLog(`💸 ${tgt.name} loses 1 FP — a few fans run out and help them back up where they fell.`);
             setRespawnFlashes(prev => ({ ...prev, [tgtId]: true }));
             setTimeout(() => setRespawnFlashes(prev => { const n = { ...prev }; delete n[tgtId]; return n; }), 1200);
           }

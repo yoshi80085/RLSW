@@ -601,14 +601,16 @@ const legacyAttack = (...args) => {
     decideWinner([sp("a"), sp("b", { knockedOut: true })], { attackerId: "a" }).winnerId,
     "a", "the surviving attacker takes it");
 
-  // resolveKnockdown — respawn to home corner with full Vibe, one life spent
+  // resolveKnockdown — up WHERE HE FELL with full Vibe, one life spent (Alex, 2026-10-07)
   const cornerId = Object.keys(CORNERS)[0];
   const home = CORNERS[cornerId].homeNum;
   const downed = { id: "wildaxe", lives: 3, num: 42, facing: 3, corner: cornerId, maxVibe: 10, vibe: 0 };
   const kd = resolveKnockdown(downed, CORNERS);
   assert.equal(kd.respawned, true);
   assert.equal(kd.livesLeft, 2);
-  assert.equal(kd.next.num, home, "respawns at home corner");
+  assert.equal(kd.next.num, 42, "gets back up where he was knocked down (not his home corner)");
+  assert.equal(kd.next.facing, 3, "…facing the way he fell");
+  assert.notEqual(home, 42);
   assert.equal(kd.next.vibe, 10, "restored to full Vibe");
   assert.equal(kd.next.knockedOut ?? false, false, "still in the game");
 
@@ -801,9 +803,10 @@ const legacyAttack = (...args) => {
   assert.equal(seed.spirits.find(s => s.id === "wildaxe").vibe, 10, "applyAction never mutates input");
   assert.equal(applyAction(seed, damageApplied("ghost", 3)).spirits.length, 2, "damage to an unknown id is a no-op");
 
-  // KNOCKDOWN_RESOLVED — respawn (lives > 1): life spent, home corner, full Vibe, still in
+  // KNOCKDOWN_RESOLVED — (lives > 1): life spent, up WHERE HE FELL, full Vibe, still in (2026-10-07)
   const w = applyAction(seed, knockdownResolved("wildaxe")).spirits.find(s => s.id === "wildaxe");
-  assert.deepEqual([w.lives, w.num, w.vibe, w.knockedOut ?? false], [2, home, 10, false], "respawn: home corner, full Vibe, one life spent");
+  const fellOn = seed.spirits.find(s => s.id === "wildaxe").num;
+  assert.deepEqual([w.lives, w.num, w.vibe, w.knockedOut ?? false], [2, fellOn, 10, false], "knockdown: up on the spot, full Vibe, one life spent");
   // KNOCKDOWN_RESOLVED — KO (last life): knockedOut, lives 0, body stays where it fell
   const koState = applyAction(seed, knockdownResolved("vera"));
   const v = koState.spirits.find(s => s.id === "vera");
@@ -967,15 +970,17 @@ const legacyAttack = (...args) => {
   w = tick(floorHex, { centerStreak: 3, outerStreak: 2, casuals: 6 }).noteStates.wildaxe;
   assert.deepEqual([w.centerStreak, w.outerStreak, w.casuals], [0, 0, 6], "floor resets both streaks, keeps the crowd");
 
-  // outer edge: streak builds; decay bites only once it reaches FAN_BORED_AFTER
+  // outer edge: the streak still builds — but since 2026-10-07 no fan is ever
+  // lost to it (Alex: "no fans get lost anymore - from anything"); FAN_DECAY is 0.
   w = tick(backHex, { outerStreak: 0, casuals: 6 }).noteStates.wildaxe;
   assert.deepEqual([w.outerStreak, w.casuals], [1, 6], "first outer turn: no decay yet");
   t = tick(backHex, { outerStreak: FAN_BORED_AFTER - 1, casuals: 6 });
   w = t.noteStates.wildaxe;
-  assert.deepEqual([w.outerStreak, w.casuals], [FAN_BORED_AFTER, 6 - FAN_DECAY], "grace exhausted: casuals drift");
-  assert.equal(t.turn.lastFanTick.lost, FAN_DECAY, "report carries the loss");
-  w = tick(backHex, { outerStreak: FAN_BORED_AFTER, casuals: 1 }).noteStates.wildaxe;
-  assert.equal(w.casuals, 0, "decay floors at 0");
+  assert.equal(FAN_DECAY, 0, "🎪 no fans drift off the cheap seats any more");
+  assert.deepEqual([w.outerStreak, w.casuals], [FAN_BORED_AFTER, 6], "grace exhausted: the crowd still stays");
+  assert.equal(t.turn.lastFanTick.lost, 0, "report carries no loss");
+  w = tick(backHex, { outerStreak: FAN_BORED_AFTER + 5, casuals: 1 }).noteStates.wildaxe;
+  assert.equal(w.casuals, 1, "however long he lingers");
 
   // no sheet → no-op; deterministic + replayable
   assert.equal(applyAction(base, fansTicked("nobody")).noteStates, base.noteStates, "no sheet → no-op");

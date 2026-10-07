@@ -33,6 +33,8 @@ import { wrapClashStandees, STICK_STANDEE } from './swingStandee.js';
 import { directorShot, placeBattleDice, frontSide, BATTLE_DIRECTOR } from './battleDirector.js';
 import { grandstandPlacement } from './cosmicFans.js';
 import { createOpeningActStage } from './openingActStage.js';
+import { createKnockdownHelpers } from './knockdownHelpers.js';
+import { FAN_STYLES } from './arenaCrowd.js';
 import { padPoint } from './openingAct.js';
 
 export function arenaPoint(num, height=.18) {
@@ -148,6 +150,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   // pads, the crash landings and the hop onto the home hex. Owns a pawn only
   // while its seat waits, falls or steps on — `pose` below, like the pyro reaction.
   const opening=createOpeningActStage(root);
+  // 🤕 THE KNOCKDOWN (knockdownHelpers.js, Alex 2026-10-07): he falls on the spot
+  // and a few of his fans run out of his stand and help him back up.
+  const koHelpers=createKnockdownHelpers(root,{pointFor:arenaPoint,release:o=>releaseArenaObject(o)});
   let curseLight={dim:0,shake:0,tint:0,tintColor:null};
   let riff=null;
   const clearRiff=()=>{riff?.dispose();riff=null;};
@@ -564,6 +569,11 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           shoved:pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount,bot:!!spirit.bot,color:spirit.color});
       if(pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount){pawn.userData.wobbleUntil=clock+1.7;poseHit(pawn);}
       pawn.userData.hitBackCount=spirit.hitBackCount;
+      // 🤕 A knockdown where he stands (not a ring-out, not his last life): the helpers.
+      if(pawn.userData.knockdownCount!=null&&(spirit.knockdownCount??0)>pawn.userData.knockdownCount
+        &&spirit.num!=null&&!spirit.waiting&&!spirit.knockedOut)
+        koHelpers.start(spirit.id,{num:spirit.num,corner:spirit.corner,color:spirit.color,style:FAN_STYLES[characterId(spirit.id)]??null});
+      pawn.userData.knockdownCount=spirit.knockdownCount??0;
       pawn.userData.num=spirit.num;pawn.userData.vibe=spirit.vibe;pawn.userData.maxVibe=spirit.maxVibe;
       pawn.userData.knockedOut=!!spirit.knockedOut||!!spirit.fallen;
       pawn.userData.active=spirit.id===next.actingId;
@@ -739,6 +749,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       bats.tick(time,{reduced});
       const openNow=performance.now();
       opening.tick(openNow,{reduced});
+      koHelpers.tick(openNow,{reduced});
       for(const [pawnId,pawn] of pawns) {
         const target=pawn.userData.target;
         if(pawn.userData.hitUntil!=null&&clock>=pawn.userData.hitUntil){pawn.userData.hitUntil=null;pawn.userData.standee?.setPose(null);}
@@ -768,7 +779,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           const turn=pawn.userData.targetFacing;
           pawn.rotation.y=THREE.MathUtils.damp(pawn.rotation.y,turn,14,dt);
         }
-        const knocked=pawn.userData.knockedOut;
+        // 🤕 While his fans are helping him up, how far over he is (0..1) wins.
+        const helped=koHelpers.down(pawnId,openNow);
+        const knocked=helped??pawn.userData.knockedOut;
         const wobble=reduced?0:Math.max(0,(pawn.userData.wobbleUntil??0)-time)/1.7
           *knockbackWobble(pawn.userData.vibe,pawn.userData.maxVibe)*Math.sin(time*23);
         const standee=pawn.userData.standee;
@@ -941,12 +954,12 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0),shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics(),opening:opening.diagnostics(),openingBusy:opening.busy(performance.now())}),
+    diagnostics:()=>({koHelpers:koHelpers.live,rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0)+koHelpers.live,shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics(),opening:opening.diagnostics(),openingBusy:opening.busy(performance.now())}),
     /** 🎸 The opening act's lens while the intro runs, else null (openingActStage.camera). */
     openingCamera:(now,aspect,reduced)=>opening.camera(now,aspect,{reduced}),
     /** 🎸 0..1 — how much of the intro's own look (bloom, exposure) is on. */
     openingEnvelope:()=>opening.envelope,
-    dispose(){disposed=true;opening.dispose();bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    dispose(){disposed=true;opening.dispose();koHelpers.dispose();bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     // 🎆 The hit's share of the lens (shake + zoom punch) and the mortars' sprite scale.
     pyroCamera:reduced=>pyro.camera(reduced),
     resize:h=>pyro.resize(h),

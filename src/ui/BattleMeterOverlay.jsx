@@ -661,7 +661,7 @@ export function BattleMeterOverlay({
                     </div>
                     <div style={{fontSize:8.5, color:'#8aa5c5', marginBottom:14, lineHeight:1.6}}>
                       Drop it and the crowd's watching. Win = they love you.<br/>
-                      <span style={{color:'#ff6655'}}>Lose = 1.5× Vibe damage + fans cringe and walk.</span>
+                      <span style={{color:'#ff6655'}}>Lose = 1.5× Vibe damage.</span>
                     </div>
                     <div style={{display:'flex', gap:10, justifyContent:'center'}}>
                       <button onClick={() => pickOneLiner(true)} style={bigBtn('#ff6600')}>
@@ -697,7 +697,7 @@ export function BattleMeterOverlay({
                     </div>
                     <div style={{fontSize:8.5, color:'#8aa5c5', marginBottom:14, lineHeight:1.6}}>
                       {atkDropped ? `${defender?.name} — fire back, or let it slide?` : `${defender?.name} — drop a line of your own?`}<br/>
-                      <span style={{color:'#ff6655'}}>Same deal: lose with a line out = 1.5× damage + fans walk.</span>
+                      <span style={{color:'#ff6655'}}>Same deal: lose with a line out = 1.5× damage.</span>
                     </div>
                     <div style={{display:'flex', gap:10, justifyContent:'center'}}>
                       <button onClick={() => respondOneLiner(true)} style={bigBtn('#ff6600')}>

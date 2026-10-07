@@ -294,6 +294,12 @@ export function knockdownResolved(targetId) {
   return { type: KNOCKDOWN_RESOLVED, targetId };
 }
 
+/** 🔊 RING_OUT — blasted off the stage: back to the waiting pad (entrance.js). */
+export const RING_OUT = "RING_OUT";
+export function ringedOut(spiritId) {
+  return { type: RING_OUT, spiritId };
+}
+
 /**
  * Phase 5c — record the match winner. The boss-aware decision is the pure
  * `decideWinner` kernel (which the client/server runs to get the id); this action

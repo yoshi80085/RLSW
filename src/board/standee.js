@@ -359,8 +359,12 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
     /**
      * @param time seconds · `knockedOut` / `acting` from the frame · `cameraPos`
      * a THREE.Vector3 (omit it and the sheet simply never tips back).
+     * 🤕 `knockedOut` may also be a NUMBER 0..1 — how far over he is, for the
+     * knockdown's fall and the fans lifting him (`knockdownHelpers.js`).
      */
     frame(time, { knockedOut = false, acting = false, reduced = false, cameraPos = null, lift = 0 } = {}) {
+      const kd = typeof knockedOut === 'number' ? Math.max(0, Math.min(1, knockedOut)) : (knockedOut ? 1 : 0);
+      knockedOut = kd >= 0.5;
       const sway = reduced || !T.bob ? 0 : Math.sin(time * 1.6 + group.position.x) * T.bob;
       let steep = 0;
       if (cameraPos) {
@@ -369,12 +373,12 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
         steep = steepPitch(elev, T);
       }
       const lean = THREE.MathUtils.degToRad(T.lean) + steep + sway * 0.4;
-      const ko = knockedOut ? THREE.MathUtils.degToRad(T.koTilt) : 0;
+      const ko = THREE.MathUtils.degToRad(T.koTilt) * kd;
       for (const m of [panel, edge, art]) {
         m.rotation.x = -lean - ko;
-        m.position.y = 0.02 - T.sink + (knockedOut ? 0.05 + T.sink : 0);
+        m.position.y = 0.02 - T.sink + kd * (0.05 + T.sink);
       }
-      shadow.material.opacity = T.shadow * (knockedOut ? 0.6 : 1);
+      shadow.material.opacity = T.shadow * (1 - 0.4 * kd);
       // 📌 IN THE AIR (a hop, a lift): the shadow and the acting ring stay on the
       // deck and the shadow shrinks — without this they rise with the piece and
       // nothing reads as height. `lift` is in the group's own (squashed) units.

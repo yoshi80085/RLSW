@@ -33,6 +33,7 @@ import { bushidoUpgrade, bushidoDrawPatch } from "./systems/bushido.js";
 import { applyAttackRerolled, sonicPush } from "./systems/combat.js";
 import { battleConsequences, runBattleFlow } from "./systems/battleFlow.js";
 import { spiritWarped } from "./actions.js";
+import { isRingedOut } from "./systems/entrance.js";
 import { SONIC_PUSH_PER_STRENGTH } from "../data/gameConstants.js";
 import { resolveSonicBarrage } from "./systems/sonicBarrage.js";
 import { PSYCHO_BUSHIDO_D8_LADDER, psychoBushidoD8s, PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_STACK_COST } from "../data/gameConstants.js";
@@ -173,14 +174,18 @@ for (const d of [3, 4, 5]) {
     if (!moved) {
       holds++;
       eq(zero.vibe, 9, '🛡️ a held shield: the Rival is untouched');
-    } else if (zero.num === CORNERS.purple.homeNum) {
-      rings++;                                   // pushed off the edge: the Sonic's ring-out
+    } else if (zero.num == null) {
+      // pushed off the edge: the Sonic's ring-out — back on his pad (2026-10-07)
+      ok(isRingedOut(zero) && zero.lives === (after.config.elimination === 'off' ? 3 : 2) && zero.knockdownCount === 1,
+        `🔊 range ${d} seed ${seed}: rung out — counted as a knockdown (a life when lives are spent) — waiting on his pad`);
+      rings++;
     } else {
       pushes++;
       // ⭐ THE SONIC PUSH: straight on down his line, one hex per 2 strength through.
       const path = [1, 2, 3, 4, 5].map(k => laneAt(d + k));
       ok(path.includes(zero.num), `🌀 range ${d} seed ${seed}: pushed straight on down the lane (to ${zero.num})`);
-      ok(zero.vibe < 9, '💥 …and hurt');
+      // 🤕 …and hurt — or knocked down by it, back up on the spot at full Vibe (2026-10-07)
+      ok(zero.vibe < 9 || (zero.knockdownCount ?? 0) > 0, '💥 …and hurt');
     }
   }
   ok(holds > 0 && pushes > 0, `🎲 the kernel sees holds (${holds}) and pushes (${pushes})${rings ? ` and ring-outs (${rings})` : ''}`);

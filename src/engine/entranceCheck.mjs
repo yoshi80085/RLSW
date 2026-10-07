@@ -21,7 +21,7 @@ import { runMatch, playTurn, startSpiritTurn, harnessHooks, matchConfig, POLICIE
 import { makeRng } from './rng.js';
 import { knockback, runBattleFlow } from './systems/battleFlow.js';
 import { bushidoBlockers } from './systems/bushido.js';
-import { ENTRANCE_FANS, entranceHexes, isWaiting, openingActOn } from './systems/entrance.js';
+import { ENTRANCE_FANS, entranceHexes, isWaiting, isRingedOut, openingActOn } from './systems/entrance.js';
 import { HEX_BY_NUM, HEX_BY_QR } from '../board/hexMap.js';
 import { axialNeighbors, straightNeighborInDirection, angleTo } from '../board/hexGeometry.js';
 import { SPIRIT_DEFS, PLAYABLE_ORDER } from '../data/spirits.js';
@@ -163,6 +163,7 @@ for (const count of [2, 3, 4]) {
 // ═════════════════════════════════════════════════════════════════════════════
 // 5. ⭐ WHOLE MATCHES. Bots at 2/3/4 seats, checked after every turn.
 // ═════════════════════════════════════════════════════════════════════════════
+let ringReturns = 0;
 function audit(count, seed, policyName) {
   const rng = makeRng(seed >>> 0);
   let state = makeInitialState(matchConfig(table(count), { openingAct: true }), seed >>> 0);
@@ -173,7 +174,10 @@ function audit(count, seed, policyName) {
   const startVibe = Object.fromEntries(state.spirits.map(s => [s.id, s.vibe]));
   for (let turn = 0; turn < count * 4 && !state.winner && state.acting; turn++) {
     const seat = state.acting;
-    const waitingBefore = state.spirits.some(s => s.id === seat && isWaiting(s));
+    const waitingBefore = state.spirits.some(s => s.id === seat && isWaiting(s) && !isRingedOut(s));
+    // 🔊 A ring-out (2026-10-07) also waits on the pad, but returns with the crowd it had.
+    const ringedBefore = state.spirits.find(s => s.id === seat && isRingedOut(s));
+    const fansBefore = state.noteStates[seat]?.diehards ?? 0;
     state = startSpiritTurn(state, rng);
     const me = sp(state, seat);
     ok(!isWaiting(me) && me.num != null, `${count}p/${seed}: ${seat} is on stage when its turn begins`);
@@ -183,25 +187,36 @@ function audit(count, seed, policyName) {
       eq(state.turn.lastEntrance?.contested, undefined, `${count}p/${seed}: ${seat}'s home hex was free`);
       eq(state.noteStates[seat].diehards, ENTRANCE_FANS, `${count}p/${seed}: ${seat} enters with exactly two fans`);
     }
+    if (ringedBefore) {
+      ringReturns++;
+      eq([state.turn.lastEntrance?.spiritId, state.turn.lastEntrance?.fans], [seat, 0], `${count}p/${seed}: ${seat} returns from a ring-out, no new fans`);
+      eq(state.noteStates[seat].diehards, fansBefore, `${count}p/${seed}: ${seat} keeps the crowd it had`);
+      eq(me.lives, ringedBefore.lives, `${count}p/${seed}: a ring-out cost ${seat} no life`);
+    }
     const t = playTurn(state, v, policies[seat], ctx);
     state = t.state; v = t.view;
     const reserved = entranceHexes(state.spirits);
     for (const s of state.spirits) {
-      if (isWaiting(s)) {
+      if (isRingedOut(s)) {
+        eq(s.num, null, `${count}p/${seed} t${turn}: rung-out ${s.id} is off the board`);
+      } else if (isWaiting(s)) {
         eq(s.num, null, `${count}p/${seed} t${turn}: waiting ${s.id} is still off the board`);
         eq(s.vibe, startVibe[s.id], `${count}p/${seed} t${turn}: waiting ${s.id} took no damage`);
         eq(state.noteStates[s.id].diehards ?? 0, 0, `${count}p/${seed} t${turn}: waiting ${s.id} has no fans`);
         eq(state.noteStates[s.id].fame ?? 0, 0, `${count}p/${seed} t${turn}: waiting ${s.id} has no Fame`);
         eq(state.damageLedger?.[s.id]?.taken ?? 0, 0, `${count}p/${seed} t${turn}: nothing was dealt to waiting ${s.id}`);
       } else if (!s.knockedOut) {
-        ok(!reserved.has(s.num), `${count}p/${seed} t${turn}: ${s.id} is not standing on a reserved hex`);
+        // 🔊 …unless he was already standing there when its owner was rung out.
+        const ringHome = state.spirits.some(w => isRingedOut(w) && w.entrance.homeNum === s.num);
+        ok(!reserved.has(s.num) || ringHome, `${count}p/${seed} t${turn}: ${s.id} is not standing on a reserved hex`);
       }
     }
   }
-  ok(state.spirits.every(s => !isWaiting(s)), `${count}p/${seed}: by the end of round one everyone has entered`);
+  ok(state.spirits.every(s => !isWaiting(s) || isRingedOut(s)), `${count}p/${seed}: by the end of round one everyone has entered`);
   ok(Object.values(entries).every(k => k === 1), `${count}p/${seed}: each Spirit entered exactly once`);
 }
 for (const count of [2, 3, 4]) for (const seed of [1, 2, 3, 5, 8, 13]) for (const p of ['searcher', 'random']) audit(count, seed, p);
+console.log(`  🔊 ring-out returns seen in the audited matches: ${ringReturns}`);
 
 // And the bench end to end: a full match with the act on finishes like any other.
 {
@@ -244,6 +259,69 @@ for (const count of [2, 3, 4]) for (const seed of [1, 2, 3, 5, 8, 13]) for (cons
     const d = Math.hypot(pad.x - home.x, pad.z - home.z);
     ok(d > .5 && d < 2, `${corner}: the pad is just off the board, beside the home hex (${d.toFixed(2)})`);
   }
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// 7. 🔊 RING-OUT (Alex, 2026-10-07): *"The player that gets knocked off can come
+//    back exactly the way they come in - get beamed down into their 'safe' spot
+//    on the board"* — the pad, and on stage again at his own next turn.
+// ═════════════════════════════════════════════════════════════════════════════
+{
+  const { ringedOut } = await import('./actions.js');
+  const st0 = makeInitialState(matchConfig(table(3), {}), 77);
+  const [a, b] = st0.spirits;
+  const home = CORNERS[b.corner].homeNum;
+  const st = { ...st0, noteStates: { ...st0.noteStates, [b.id]: { ...st0.noteStates[b.id], diehards: 4 } } };
+  const out = applyAction(st, ringedOut(b.id), makeRng(1));
+  const w = sp(out, b.id);
+  eq([w.num, isWaiting(w), isRingedOut(w), w.entrance.homeNum, w.entrance.fans], [null, true, true, home, 0],
+    '🔊 rung out: off the board, waiting on his pad, coming back to his home hex with no new fans');
+  eq([w.vibe, w.lives], [sp(st, b.id).vibe, sp(st, b.id).lives], '🔊 …no Vibe and no life spent');
+  ok(entranceHexes(out.spirits).has(home), '🔊 …his home hex is reserved while he is away');
+  eq(applyAction(out, ringedOut(b.id), makeRng(1)), out, '🔊 …and a second ring-out while away does nothing');
+  const acts = legalActions({ ...out, acting: a.id }, a.id, {});
+  ok(!acts.some(x => x.targetId === b.id), '🔊 nobody can target him on the pad');
+  eq(sp(applyAction(out, spiritPatched(b.id, { num: 56 }), makeRng(1)), b.id).num, null, '🔊 a patch cannot drop him back early');
+  const back = applyAction({ ...out, acting: b.id }, turnStarted(b.id), makeRng(1));
+  eq([sp(back, b.id).num, isWaiting(sp(back, b.id))], [home, false], '🔊 his next turn: beamed back on, on his home hex');
+  eq(back.noteStates[b.id].diehards, 4, '🔊 …with the crowd he had');
+  eq([back.turn.lastEntrance.fans, back.turn.lastEntrance.ringOut], [0, 1], '🔊 …reported as a ring-out return');
+  const again = applyAction(applyAction(back, ringedOut(b.id), makeRng(1)), turnStarted(b.id), makeRng(1));
+  eq(again.turn.lastEntrance.ringOut, 2, '🔊 a second ring-out is a second, distinct return');
+
+  // 🎬 The picture: the opening act's own landing, on a schedule with no intro.
+  const THREE = await import('three');
+  const { createOpeningActStage } = await import('../board/openingActStage.js');
+  const root = new THREE.Group(), stage = createOpeningActStage(root, { loader: { load: () => ({}) } });
+  const now = 100000, past = now - 60000, landingAt = now + act.RING_OUT_BEAM_MS;
+  const sched = { startMs: past, endMs: past, thunderAt: past, cameraUntil: past, noGod: true,
+    seats: { [b.id]: { corner: b.corner, landingAt, ringOut: 1 } } };
+  stage.update(sched, [{ id: b.id, color: '#ff8800', waiting: true }]);
+  stage.tick(now);
+  eq(stage.diagnostics().god, false, '🎬 no Bardbarian for a ring-out');
+  eq(stage.diagnostics().pads, 1, '🎬 …just his pad');
+  const pawn = new THREE.Object3D();
+  ok(stage.pose(b.id, pawn, now) && pawn.visible === false, '🎬 gone while he flies off the stage');
+  ok(stage.busy(landingAt - 300), '🎬 the arena keeps drawing for the beam-down');
+  stage.pose(b.id, pawn, landingAt - 300);
+  ok(pawn.visible && pawn.position.y > 1, '🎬 then he falls out of the sky…');
+  stage.pose(b.id, pawn, landingAt + 2000);
+  const pad = act.padPoint(b.corner);
+  ok(Math.hypot(pawn.position.x - pad.x, pawn.position.z - pad.z) < .01, '🎬 …onto his pad');
+  const entry = act.entranceAt(b.id, landingAt + 5000);
+  stage.update({ ...sched, seats: { [b.id]: { ...sched.seats[b.id], ...entry, keepFans: true } } }, [{ id: b.id, color: '#ff8800', waiting: false }]);
+  stage.pose(b.id, pawn, entry.doneAt - 1);
+  const h = act.homePoint(b.corner);
+  ok(Math.hypot(pawn.position.x - h.x, pawn.position.z - h.z) < .1, '🎬 and on his turn hops back onto his home hex');
+  stage.dispose();
+
+  // 🖥️ The client hangs the beam-down and the return on that clock.
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../rlsw-simulator-v3_8_1.jsx', import.meta.url), 'utf8');
+  ok(/landingAt: now \+ RING_OUT_BEAM_MS/.test(src) && /openingSound\('crash'\)/.test(src), '🖥️ a ring-out is beamed down onto the pad with the crash');
+  ok(/noGod: true/.test(src), '🖥️ …even in a match that had no intro');
+  ok(/entryKey\(lastEntrance\)/.test(src) && /lastEntrance\?\.ringOut\]/.test(src), '🖥️ a return is a new entrance, not the first one again');
+  ok(/!s\.keepFans/.test(src), '🖥️ his stand keeps its crowd through the hop');
 }
 
 console.log(`Opening act (entrance): ${n} checks passed.`);

@@ -116,7 +116,7 @@ export function statusRows(ns = {}, { respawn = false } = {}) {
     add('guard', '🛡️', `+${ns.tempSustain} SUSTAIN`, null, 'Extra Sustain until your next turn.', 'good');
   if ((ns.moshDrive ?? 0) > 0)
     add('mosh', '🤘', `MOSH +${ns.moshDrive} DRIVE`, null, 'Stands until you call the next pit.', 'good');
-  if (respawn) add('respawn', '✨', 'RESPAWNED', null, 'Back on your home hex.', 'good');
+  if (respawn) add('respawn', '✨', 'BACK UP', null, 'Your fans got you back on your feet, Vibe full.', 'good');
   return rows;
 }
 

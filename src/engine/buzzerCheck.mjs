@@ -166,8 +166,9 @@ const st = (over = {}, count = 2) =>
 
 // ═══ 6. THE MODE CHANGES THE CAP, WHICH IS WHY THE SCALE IS SO BIG ══════════
 {
-  ok(famePerTurnCap(st()) > famePerTurnCap(st({ winCondition: 'fame' })),
-     '🎤 a score game runs on a looser per-turn cap than a race');
+  // ⛔ 2026-10-07 (Alex): "There is NO FP turn limit anymore" — in either mode.
+  ok(famePerTurnCap(st()) === Infinity && famePerTurnCap(st({ winCondition: 'fame' })) === Infinity,
+     '⛔ no per-turn FP cap in a score game OR a race');
 }
 
 console.log(`✅ buzzerCheck — ${n} assertions passed`);

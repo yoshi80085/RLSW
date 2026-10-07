@@ -551,7 +551,11 @@ export function fameScaleFor(playerCount, roundLimit = ROUND_LIMIT_DEFAULT) {
 // flows through grantFame, which clamps the TOTAL a spirit can earn inside one
 // turn window (any spirit's turn) to this. Overflow is DISCARDED — the crowd can
 // only scream so loud.
-export const FAME_PER_TURN_CAP = 4;
+// ⛔ GONE (Alex, 2026-10-07): *"There is NO FP turn limit anymore. That should
+// have been taken out before I think."* Infinity in BOTH modes now — the race
+// lost its catch-up brake too. The name stays because ~40 call sites and the
+// bench instrument (`config.fameCap`, which still clips a measurement run) read it.
+export const FAME_PER_TURN_CAP = Infinity;
 
 // 🎸 BATTLE OF THE BANDS — the per-turn cap is a MODE-DEPENDENT rule, and the
 // two modes want opposite things from it. `WIN_CONDITIONS_DESIGN.md` §4.4:
@@ -785,7 +789,9 @@ export const FAN_CASUAL_START    = 0;
 export const EXCITE_PER_CASUAL   = 14;    // performance excitement to draw 1 new Casual fan
 export const LOYALTY_PER_DIEHARD = 24;    // performance loyalty to harden 1 Casual -> Diehard
 export const FAN_GAIN_BY_RING    = { main: 2, pit: 1, floor: 1, back: 0 }; // casuals gained on a clean commit, by zone
-export const FAN_DECAY           = 2;     // casuals bored off per turn once the outer-edge grace runs out
+// ⛔ 0 since 2026-10-07 (Alex: *"no fans get lost anymore - from anything (unless
+// specified)"*). The outer-edge streak still counts; it just costs nobody a fan.
+export const FAN_DECAY           = 0;     // casuals bored off per turn once the outer-edge grace runs out (none now)
 export const FAN_BORED_AFTER     = 3;     // consecutive turns in the OUTER ring before fans start drifting off
 export const FAN_PROMOTE_EVERY   = 3;     // consecutive centre-perform turns to harden 1 casual -> diehard
 export const FAN_RECOVERY_LAG    = 3;     // your turns locked out of crowd-gain after a demolition
@@ -942,6 +948,14 @@ export const SONIC_VIBE_CAP          = 2;   // max Vibe damage from a Sonic hit
 // the Spirit gets pushed back 1 space. So 1-2 = 1 space, 3-4 = 2 spaces …"
 // Staged Sonic AND Psycho Bushido: one hex per this much strength THROUGH the shield.
 export const SONIC_PUSH_PER_STRENGTH = 2;
+// 🔊 RING-OUT (Alex, 2026-10-07): "The player that gets knocked off can come
+// back exactly the way they come in - get beamed down into their 'safe' spot on
+// the board … The player that knocks off another player should get rewarded
+// extra FP." → off the board onto the pad, back on at their own next turn.
+// Since the same day: *"A Ring out is the same as a Knock Out"* — a life, this
+// FP, Vibe restored, no notes, no fans (`entrance.applyRingOut`).
+export const RING_OUT_FP      = 2;   // paid to the Spirit who blasted them off
+export const RING_OUT_FP_LOSS = 1;   // the drain on the Spirit who went off
 export const SONIC_LIMELIGHT_FP      = 1;   // bonus FP when Sonic fires from main/pit ring
 // Hexes crossed by the animated lightning bolt on the board art (measured from
 // board_lightning_animated.png against the hex grid; #56 Limelight also under

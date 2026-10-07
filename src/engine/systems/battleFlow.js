@@ -46,7 +46,7 @@ import { characterId } from "../../data/spiritIdentity.js";
 // Every draw goes through the `rng` handed to the interpreter, via an action.
 
 import {
-  damageApplied, knockdownResolved, fameChanged,
+  damageApplied, knockdownResolved, fameChanged, ringedOut,
   noteSheetPatched, thrashTokensSpawned, randomBatchDrawn,
   spiritsSynced, headlinerChanged, posed, poseRoundBanked, pyroChargeStruck,
 } from "../actions.js";
@@ -66,7 +66,7 @@ import {
 } from "../../data/gameConstants.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
 import { isEntranceHex } from "./entrance.js";
-import { SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND } from "../../data/gameConstants.js";
+import { SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND, RING_OUT_FP, RING_OUT_FP_LOSS } from "../../data/gameConstants.js";
 
 // ── Sunbeam (Intergalactic 0) ────────────────────────────────────────────────
 // Transcribed from rlsw-simulator-v3_8_1.jsx:555-558 at extraction, and this file
@@ -363,11 +363,25 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRi
         if (!falling || falling.knockedOut) break;
         yield log(`🔊 ${falling.name} is blasted OFF THE STAGE!`);
         yield fx('ringOut', { spiritId: targetId, fromHexNum: curNum, angle });
-        const result = yield* vibeDamage({
-          state, targetId, dmg: falling.vibe ?? 0,
-          sourceLabel: 'Sonic ring-out', attackerId: fromId, fameThisTurn,
-        });
-        return { path, ringOut: true, endedByKnockdown: true, fameThisTurn: result.fameThisTurn };
+        // 🔊 RING-OUT (Alex, 2026-10-07): *"A Ring out is the same as a Knock
+        // Out"* — a life, 1 FP, Vibe restored, no notes, no fans lost — except
+        // WHERE he comes back: his waiting pad, beamed back on at his own next
+        // turn exactly as he first came in (`entrance.applyRingOut`). The Spirit
+        // who knocked him off is paid extra FP. A last life ends his match.
+        const paid = yield* grantFame({ state, spiritId: fromId, fp: RING_OUT_FP,
+          reason: `rang ${falling.name} out`, fameThisTurn });
+        const elimination = state.config?.elimination !== 'off';
+        const livesLeft = elimination ? (falling.lives ?? 1) - 1 : (falling.lives ?? 1);
+        if (elimination) yield log(`💥 ${falling.name} is RUNG OUT! (${livesLeft} life${livesLeft !== 1 ? 's' : ''} left)`);
+        if (elimination && livesLeft <= 0) {
+          yield hook('knockOut', { spiritId: targetId });
+          return { path, ringOut: true, endedByKnockdown: true, fameThisTurn: paid.fameThisTurn ?? fameThisTurn };
+        }
+        state = yield act(ringedOut(targetId));
+        state = yield act(fameChanged(targetId, -RING_OUT_FP_LOSS));
+        yield patch(targetId, { recovering: false, knockStreak: 0 });
+        yield log(`💸 ${falling.name} loses ${RING_OUT_FP_LOSS} FP and is beamed back to their pad — on stage again at the start of their next turn.`);
+        return { path, ringOut: true, endedByKnockdown: true, fameThisTurn: paid.fameThisTurn ?? fameThisTurn };
       }
       yield log(`💥 ${target.name} slams into the edge of the stage at #${curNum}!`);
       break;
@@ -479,7 +493,7 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRi
  * carried above `FAME_PER_TURN_CAP` by one banks nothing from anything else that
  * turn. Default is the general cap, so every existing caller is unchanged.
  */
-export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameThisTurn = {}, cap = FAME_PER_TURN_CAP }) {
+export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameThisTurn = {}, cap = FAME_PER_TURN_CAP, duel = false }) {
   if (fp <= 0) return { granted: 0, fameThisTurn };
 
   const ns       = nsOf(state, spiritId);
@@ -515,7 +529,10 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
   // `RIFF_FP_TURN_CAP` keeps its defined ×2 relationship in both modes (and
   // `Infinity × 2` is still Infinity, which is the right answer).
   const baseCap     = famePerTurnCap(state);
-  const capScale    = baseCap === FAME_PER_TURN_CAP ? 1 : baseCap / FAME_PER_TURN_CAP;
+  // ⛔ 2026-10-07: the general cap is Infinity, so the old `baseCap / FAME_PER_TURN_CAP`
+  // scale is ∞/∞ (NaN) or x/∞ (0). The base is now the ceiling outright — ∞ in every
+  // real game, finite only under the bench's `fameCap` — and a duel (`duel`) keeps
+  // its defined ×2 of it. An explicit FINITE `cap` from a caller still wins.
 
   // 📏 `config.fameWindowScale` — THE SECOND INSTRUMENT, AND IT MEASURES A RULE
   // CHANGE RATHER THAN A CONSTANT. Same posture as `fameCap` above: undefined in
@@ -536,7 +553,7 @@ export function* grantFame({ state, spiritId, fp, reason, amplify = true, fameTh
   // stop meaning what the constants say they mean.
   const k           = state.config?.fameWindowScale ?? 0;
   const windowScale = k ? 1 + k * (crowd - 1) : 1;
-  const effCap      = (capScale === 1 && windowScale === 1) ? cap : cap * capScale * windowScale;
+  const effCap      = (Number.isFinite(cap) ? cap : (duel ? baseCap * 2 : baseCap)) * windowScale;
   // 📌 A scaled window is fractional. The ledger keeps the real number; only
   // the player-facing line rounds, and with no instrument set it is an integer
   // and the string is byte-identical to what it always was.
@@ -755,7 +772,7 @@ export function* awardRiffFame({ state, winnerId, loserId, verdict, fameThisTurn
   const tag = `riff-off win by ${margin}${round >= 2 ? ' R2' : ''}${rider ? ' +👑' : ''}${fxBonus ? ' +🎇' : ''}`;
   // 🎤 The duel banks against its own ceiling — see `RIFF_FP_TURN_CAP`. Without
   // it every term above this line is arithmetic nobody can collect.
-  let res = yield* grantFame({ state, spiritId: winnerId, fp: amount, reason: tag, fameThisTurn, cap: RIFF_FP_TURN_CAP });
+  let res = yield* grantFame({ state, spiritId: winnerId, fp: amount, reason: tag, fameThisTurn, cap: RIFF_FP_TURN_CAP, duel: true });
   fameThisTurn = res.fameThisTurn;
   if (fxBonus) yield hook('gainFans', { spiritId: winnerId, n: 1, reason: '🎇 stage effects spectacle' });
 
@@ -777,7 +794,7 @@ export function* awardRiffFame({ state, winnerId, loserId, verdict, fameThisTurn
       res = yield* grantFame({
         state, spiritId: loserId, fp: loserFp,
         reason: 'a losing set worth paying for', fameThisTurn,
-        cap: RIFF_FP_TURN_CAP,
+        cap: RIFF_FP_TURN_CAP, duel: true,
       });
     }
   }
@@ -865,7 +882,8 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
   const fellOn   = tgt.num;   // respawn moves them after this; the crowd scatters where they FELL
   const livesStr = elimination ? ` (${newLives} life${newLives !== 1 ? 's' : ''} left)` : '';
   yield log(`💥 ${tgt.name} is KNOCKED DOWN!${livesStr}`);
-  yield hook('demolishFans', { targetId, attackerId, hexNum: fellOn });
+  // 🎪 NO FANS ARE LOST (Alex, 2026-10-07: *"Knock Outs don't lose fans"*). The
+  // demolition hook that scattered the crowd is no longer called from here.
 
   // 6️⃣ CUT — Berserk used to end here, either way round: the charge landed, or
   // the cannons won. 🔊 Goes to 11 has no such exit, and that is a real
@@ -883,13 +901,15 @@ export function* vibeDamage({ state, targetId, dmg, sourceLabel, attackerId = nu
     return { knockedDown: true, knockedOut: true, fameThisTurn };
   }
 
-  // Straight back up in the home corner at full Vibe — no turn is skipped.
+  // 🤕 Back up WHERE HE FELL at full Vibe, a few of his fans helping him up
+  // (Alex, 2026-10-07) — no trip home, no turn skipped, no getting-up notes.
   // Knock-down tax is 1 FP (the engine floors at 0). Azrael's streak resets.
   // Not rebound to `state`: the interpreter owns the running state and nothing
   // below re-reads it. Anything added after these MUST take the yield's return.
   yield act(fameChanged(targetId, -1));
-  yield patch(targetId, { recovering: false, fallen: true, recoveryNotesOwed: 2, knockStreak: 0 });
-  yield log(`💸 ${tgt.name} loses 1 FP and stays down in their home corner until next turn. Getting up costs 2 notes.`);
+  yield patch(targetId, { recovering: false, knockStreak: 0 });
+  yield log(`💸 ${tgt.name} loses 1 FP — a few fans run out and help them back up where they fell.`);
+  yield fx('knockdown', { spiritId: targetId, hexNum: fellOn });
   yield fx('respawnFlash', { spiritId: targetId });
   yield act(knockdownResolved(targetId));
 

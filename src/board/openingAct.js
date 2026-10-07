@@ -35,6 +35,8 @@ export const FIRST_LANDING = 4.2;
 export const FALL_LEAD = .8;      // a standee is visible this long before it lands
 export const AFTER_LAST = 2.8;    // the last landing settles before seat one's riff
 export const STEP_SECONDS = .85;  // the hop from the pad onto the home hex
+// 🔊 A ring-out flies off the stage, then is beamed down onto its pad this long after.
+export const RING_OUT_BEAM_MS = 1800;
 export const smooth = n => { const p = Math.max(0, Math.min(1, n)); return p * p * (3 - 2 * p); };
 export const clamp = (n, lo = 0, hi = 1) => Math.max(lo, Math.min(hi, n));
 

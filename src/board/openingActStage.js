@@ -71,7 +71,8 @@ export function createOpeningActStage(root, { loader = new THREE.TextureLoader()
     update(next, spirits = []) {
       if (disposed) return;
       opening = next ?? null;
-      if (opening) summon();
+      // 🔊 A ring-out's beam-down hangs on a schedule with no intro (`noGod`): no Bardbarian.
+      if (opening && !opening.noGod) summon();
       const want = new Set(Object.keys(opening?.seats ?? {}));
       for (const [id, seat] of seats) if (!want.has(id)) { dropSeat(seat); seats.delete(id); }
       for (const id of want) {
@@ -84,10 +85,10 @@ export function createOpeningActStage(root, { loader = new THREE.TextureLoader()
     },
     /** Advance the storm and the landings. `now` is performance.now(). */
     tick(now, { reduced = false } = {}) {
-      if (disposed || !opening || !god) { if (god) god.group.visible = false; shake = 0; envelope = 0; return; }
+      if (disposed || !opening) { if (god) god.group.visible = false; shake = 0; envelope = 0; return; }
       const s = { ...OPENING_ACT, reduced };
       const t = (now - opening.startMs) / 1000, end = (opening.endMs - opening.startMs) / 1000;
-      envelope = god.update(t, s, end);
+      envelope = god ? god.update(t, s, end) : 0;
       shake = 0;
       for (const seat of seats.values()) {
         const info = opening.seats[seat.id], pose = seatPose(info, now, { reduced, waiting: seat.waiting });
@@ -156,7 +157,8 @@ export function createOpeningActStage(root, { loader = new THREE.TextureLoader()
     busy(now) {
       if (!opening) return false;
       if (now < opening.endMs + 3000) return true;
-      return [...seats.values()].some(seat => { const i = opening.seats[seat.id]; return i?.doneAt && now < i.doneAt + 300; });
+      return [...seats.values()].some(seat => { const i = opening.seats[seat.id];
+        return (i?.doneAt && now < i.doneAt + 300) || (i?.landingAt && now > i.landingAt - 1200 && now < i.landingAt + 1600); });
     },
     /**
      * The intro's lens (the preview's 'cinematic' camera): a wide establishing

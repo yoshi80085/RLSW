@@ -189,52 +189,11 @@ export function harnessHooks({ rng, crowd = { unsure: 0 } }) {
       return deed.patch ? act(state, fansChanged(e.spiritId, deed.patch)) : state;
     },
 
-    // 💔 A public beating in the spotlight scatters the crowd — and hands some
-    // of it straight to the winner, which is why this is a Fame swing and not
-    // just a punishment.
-    //
-    // ⚠️ IT ONLY FIRES IN THE CENTRE (`main`/`pit`). A knockdown in the cheap
-    // seats costs the loser nothing, because nobody saw it — that gate is the
-    // whole reason the middle of the board is dangerous rather than merely good.
-    demolishFans: (state, e) => {
-      const ring = hexRingFromCenter(e.hexNum);
-      if (ring !== 'main' && ring !== 'pit') return state;
-      const ns = state.noteStates?.[e.targetId];
-      if (!ns) return state;
-      // 😎 A DIVINE MISSION blessing eats the whole demolition, and is spent.
-      if (ns.divineShield) return act(state, fansChanged(e.targetId, { divineShield: 0 }));
-
-      let diehards = ns.diehards ?? FAN_DIEHARD_START;
-      let casuals  = ns.casuals ?? 0;
-      // ⚠️ ASSIGNED Diehards are backstage and cannot be shaken — only the crowd
-      // out front wavers. Reading `assignments` rather than the raw count is the
-      // difference between a crew being worth having and being a liability.
-      const unassigned = Math.max(0, diehards - ((ns.assignments ?? []).length));
-      const shaken = Math.min(2, unassigned);
-      diehards -= shaken; casuals += shaken;
-
-      // The one seeded draw in this hook. ⚠️ IT MOVES THE STREAM: every bench
-      // number after this date is drawn from a different sequence than before
-      // it, so a win-rate difference across 2026-09-01 is not a policy result.
-      const flee = Math.min(casuals, FAN_FLEE_MIN + Math.floor(rng() * (FAN_FLEE_MAX - FAN_FLEE_MIN + 1)));
-      casuals -= flee;
-
-      const toVictor = (e.attackerId && e.attackerId !== e.targetId) ? Math.min(FAN_DEFECT_TO_VICTOR, flee) : 0;
-      const toUnsure = flee - toVictor;
-
-      let next = act(state, fansChanged(e.targetId,
-        { diehards, casuals, centerStreak: 0, fanLag: FAN_RECOVERY_LAG }));
-      const atk = next.noteStates?.[e.attackerId];
-      if (toVictor > 0 && atk) {
-        next = act(next, fansChanged(e.attackerId,
-          { casuals: Math.min(FAN_CASUAL_CAP, (atk.casuals ?? 0) + toVictor) }));
-      }
-      // The rest go loose on the centre for whoever plays there next. See
-      // `HARNESS_GAPS.unsurePoolLatency` — this box is the harness's copy of a
-      // client slice, and `playTurn` folds it into `view` at turn start.
-      crowd.unsure += toUnsure;
-      return next;
-    },
+    // 🎪 DEMOLITION IS RETIRED (Alex, 2026-10-07: *"no fans get lost anymore -
+    // from anything (unless specified) Knock Outs don't lose fans"*). It scattered
+    // a crowd knocked down centre stage; `vibeDamage` no longer calls it, and it
+    // stays as a no-op so nothing that still names it can take a fan.
+    demolishFans: (state) => state,
 
     declareWinner: (state, e) => act(state, winnerDeclared(e.spiritId)),
     knockOut: (state, e) => {

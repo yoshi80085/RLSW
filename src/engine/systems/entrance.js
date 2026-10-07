@@ -32,6 +32,10 @@
 
 import { cornerFacing } from '../../board/boardHelpers.js';
 import { FAN_DIEHARD_START } from '../../data/gameConstants.js';
+import { CORNERS } from '../../data/corners.js';
+import { HEX_BY_NUM, HEX_BY_QR } from '../../board/hexMap.js';
+import { axialNeighbors } from '../../board/hexGeometry.js';
+import { isPosing, applyPoseSet } from './limelight.js';
 
 /** Fans a Spirit gains when it steps on stage — the Diehards every seat used
  *  to START with, so a match with the opening act still ends turn one of each
@@ -88,20 +92,81 @@ export function seatWaiting(sp) {
 export function applySpiritEntered(state, { spiritId }) {
   const sp = state.spirits.find(s => s.id === spiritId);
   if (!sp?.entrance) return state;
-  const { homeNum, facing } = sp.entrance;
+  const { homeNum, facing, ringOut = null } = sp.entrance;
+  // 🔊 A ring-out comes back with the crowd it had — the two Diehards are the
+  // opening act's once-a-match gift (`entrance.fans` 0, written by `applyRingOut`).
+  const fans = sp.entrance.fans ?? ENTRANCE_FANS;
+  const occupied = num => state.spirits.some(s => s.id !== spiritId && !s.knockedOut && s.num === num);
   const occupant = state.spirits.find(s => s.id !== spiritId && !s.knockedOut && s.num === homeNum);
+  // 🔊 Unlike the opening act, a ring-out's home hex was NOT reserved all match:
+  // someone may have been standing on it when he went off. He lands on the
+  // nearest free hex instead (never a shove, never a wait).
+  const landNum = ringOut != null && occupant ? (nearestFreeHex(state, homeNum, spiritId) ?? homeNum) : homeNum;
   const ns = state.noteStates?.[spiritId];
   return {
     ...state,
     spirits: state.spirits.map(s => s.id === spiritId
-      ? { ...s, num: homeNum, facing: facing ?? cornerFacing(homeNum), entrance: null } : s),
-    ...(ns ? { noteStates: { ...state.noteStates,
-      [spiritId]: { ...ns, diehards: (ns.diehards ?? 0) + ENTRANCE_FANS } } } : {}),
+      ? { ...s, num: landNum, facing: facing ?? cornerFacing(homeNum), entrance: null } : s),
+    ...(ns && fans ? { noteStates: { ...state.noteStates,
+      [spiritId]: { ...ns, diehards: (ns.diehards ?? 0) + fans } } } : {}),
     turn: { ...state.turn,
-      lastEntrance: { spiritId, homeNum, fans: ENTRANCE_FANS, count: state.turn?.count ?? 0,
-        ...(occupant ? { contested: occupant.id } : {}) } },
+      lastEntrance: { spiritId, homeNum:landNum, fans, count: state.turn?.count ?? 0,
+        ...(ringOut != null ? { ringOut } : {}),
+        ...(occupied(landNum) ? { contested: occupant?.id ?? true } : {}) } },
   };
 }
+
+/** The free hex nearest `num` (rings outward): no live body, not reserved. */
+function nearestFreeHex(state, num, selfId) {
+  const start = HEX_BY_NUM[num];
+  if (!start) return null;
+  const reserved = entranceHexes(state.spirits);
+  const taken = n => reserved.has(n) || state.spirits.some(s => s.id !== selfId && !s.knockedOut && s.num === n);
+  const seen = new Set([num]), queue = [start];
+  while (queue.length) {
+    const h = queue.shift();
+    if (!taken(h.num)) return h.num;
+    for (const { q, r } of axialNeighbors(h.q, h.r)) {
+      const n = HEX_BY_QR[`${q},${r}`];
+      if (n && !seen.has(n.num)) { seen.add(n.num); queue.push(n); }
+    }
+  }
+  return null;
+}
+
+/**
+ * 🔊 RING-OUT (Alex, 2026-10-07: *"The player that gets knocked off can come
+ * back exactly the way they come in - get beamed down into their 'safe' spot on
+ * the board"*). Blasted off the stage, the Spirit goes back to WAITING on its
+ * pad — `num` null, its home hex reserved — and steps on again at its own next
+ * TURN_STARTED, exactly as it first entered (`applySpiritEntered`). Costs what
+ * a knockdown costs (a life, Vibe back to full — Alex: "A Ring out is the same as
+ * a Knock Out"), no notes, no fans; the FP drain and the attacker's bonus are
+ * `battleFlow.knockback`'s. A pose ends (he left the hex).
+ * `entrance.ringOut` is a running count, so every return is a fresh entrance
+ * the client can tell apart from the last one.
+ */
+export function applyRingOut(state, { spiritId }) {
+  const sp = state.spirits.find(s => s.id === spiritId);
+  if (!sp || sp.knockedOut || sp.entrance) return state;
+  const homeNum = (sp.corner ? CORNERS[sp.corner]?.homeNum : null) ?? sp.num;
+  const ringOut = (sp.ringOuts ?? 0) + 1;
+  // 🔊 "A Ring out is the same as a Knock Out" (Alex, 2026-10-07): a life (when
+  // the match spends them), Vibe restored, and it counts as a knockdown. The
+  // last-life case never gets here — `battleFlow.knockback` eliminates instead.
+  const elimination = state.config?.elimination !== 'off';
+  const lives = elimination ? Math.max(0, (sp.lives ?? 1) - 1) : sp.lives;
+  const dropped = isPosing(state, spiritId) ? applyPoseSet(state, { spiritId, on: false }) : state;
+  return {
+    ...dropped,
+    spirits: dropped.spirits.map(s => s.id === spiritId ? { ...s, num: null, ringOuts: ringOut, abyssPending: null,
+      lives, vibe: s.maxVibe ?? s.vibe, knockdownCount: (s.knockdownCount ?? 0) + 1,
+      entrance: { homeNum, facing: cornerFacing(homeNum), fans: 0, ringOut } } : s),
+  };
+}
+
+/** Was this Spirit blasted off (as opposed to waiting for its first turn)? */
+export const isRingedOut = sp => sp?.entrance?.ringOut != null;
 
 /** Seat every Spirit waiting and empty its crowd. Used by `makeInitialState`. */
 export function openingActSeats(spirits, noteStates) {
