@@ -65,6 +65,7 @@ import {
   SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
+import { isEntranceHex } from "./entrance.js";
 import { SWING_DRIVE_SPEND, THRASH_DEFENDER_SPEND } from "../../data/gameConstants.js";
 
 // ── Sunbeam (Intergalactic 0) ────────────────────────────────────────────────
@@ -371,9 +372,12 @@ export function* knockback({ state, fromId, targetId, spaces, amps = [], allowRi
       yield log(`💥 ${target.name} slams into the edge of the stage at #${curNum}!`);
       break;
     }
+    // 🎸 A reserved home hex stops a shove like a body — its Spirit has not
+    // entered yet, and nobody may be pushed onto it (`systems/entrance.js`).
     const occupied =
       state.spirits.some(s => !s.knockedOut && s.id !== targetId && s.num === nextHex.num) ||
-      amps.some(a => a.hexNum === nextHex.num);
+      amps.some(a => a.hexNum === nextHex.num) ||
+      isEntranceHex(state, nextHex.num);
     if (occupied) {
       yield log(`💥 ${target.name} crashes to a stop at #${curNum}!`);
       break;

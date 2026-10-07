@@ -31,6 +31,7 @@ import {
 import { restoreRng } from "./rng.js";
 import { applyBatsTicked, applyBatTurnTimed, collectBatEntries } from './systems/bats.js';
 import { resolveAbyssEntries } from './systems/crumbling.js';
+import { isWaiting, isEntranceHex } from './systems/entrance.js';
 import { applyMarqueeCardWon, applyMarqueeCardArmed } from "./systems/marqueeCards.js";
 import {
   applyTurnStarted, applyTurnEnded, applyTurnSkipped,
@@ -93,6 +94,18 @@ function reduce(state, action, rng) {
   // Stale movement callbacks cannot pull a fallen Spirit out of the abyss.
   if ([MOVE_STEP, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRIT_FACED, SPIRIT_SLID].includes(action.type)
       && state.spirits.find(s => s.id === action.spiritId)?.abyssPending) return state;
+  // 🎸 THE OPENING ACT, enforced at the door (`systems/entrance.js`). A Spirit
+  // waiting off the board cannot move, and nobody moves ONTO a reserved home
+  // hex. The highlights and the searcher already refuse both (`bushidoBlockers`);
+  // this is the backstop for a path that forgot, and it fails the way an
+  // off-board step already does — refused, `lastMove` null.
+  if ([MOVE_STEP, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRIT_FACED, SPIRIT_SLID].includes(action.type)
+      && (isWaiting(state.spirits.find(s => s.id === action.spiritId))
+          || (action.type !== SPIRIT_FACED && isEntranceHex(state, action.toNum)))) {
+    return action.type === MOVE_STEP ? { ...state, turn: { ...state.turn, lastMove: null } }
+      : action.type === SPIRIT_SLID ? { ...state, turn: { ...state.turn, lastSlide: null } }
+      : state;
+  }
   switch (action.type) {
     case GAME_INIT:       return state;
 

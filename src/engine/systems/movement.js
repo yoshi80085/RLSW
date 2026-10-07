@@ -9,6 +9,7 @@ import { getFlatTopNeighborSlots, facingAngle } from "../../board/hexGeometry.js
 import { applySlimeDropped } from "./slime.js";
 import { applyPoseSet, isPosing } from "./limelight.js";
 import { SLIME_LIFETIME_TURNS, LIMELIGHT_HEX } from "../../data/gameConstants.js";
+import { entranceHexes } from "./entrance.js";
 
 /**
  * MOVE_STEP — one hex of movement by the acting spirit.
@@ -25,8 +26,10 @@ export function applyMoveStep(state, { spiritId, toNum, dazed }, rng) {
   let redirected = false;
   if (dazed && rng.chance(0.33)) {
     const fromHex = HEX_BY_NUM[sp.num];
+    // 🎸 A daze never stumbles onto a reserved home hex (`systems/entrance.js`).
+    const reserved = entranceHexes(state.spirits);
     const neighbours = fromHex
-      ? getFlatTopNeighborSlots(fromHex).filter(n => n.num !== toNum)
+      ? getFlatTopNeighborSlots(fromHex).filter(n => n.num !== toNum && !reserved.has(n.num))
       : [];
     if (neighbours.length > 0) {
       actualTarget = rng.pick(neighbours).num;

@@ -33,4 +33,4 @@ for (const players of [2, 3, 4]) {
 const malformed = normalizeSettings({ players: 99, stagger: -2, storm: 'bad', camera: 'unknown', reduced: 'yes' });
 check(malformed.players === 4 && malformed.stagger === .55 && malformed.storm === DEFAULTS.storm && malformed.camera === 'cinematic' && !malformed.reduced, 'persisted values are bounded and validated');
 check(duration({ ...DEFAULTS, players: 2 }) < duration(DEFAULTS), 'two-player scenes do not wait for absent seats');
-console.log(`Bardbarian opening: ${checks} checks passed (presentation rehearsal; live match rules are not ported).`);
+console.log(`Bardbarian opening: ${checks} checks passed (the preview's own clock; the game's rule is checked by test:entrance).`);

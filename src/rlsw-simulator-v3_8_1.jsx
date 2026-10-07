@@ -1,8 +1,11 @@
 import { characterId } from "./data/spiritIdentity.js";
 import { pickCommitStyle, playCommitStyle, COMMIT_STYLE_SETS } from "./audio/commitStyles.js";
 import { playUnlockHit } from "./audio/unlockSfx.js";
-import { playSpiritFx } from "./audio/spiritSting.js";
+import { playSpiritFx, playSpiritSting, stopSpiritSting } from "./audio/spiritSting.js";
 import { SeatUnlockBurst } from "./ui/SeatUnlockBurst.jsx";
+import { OpeningActOverlay } from "./ui/OpeningActOverlay.jsx";
+import { openingSchedule, entranceAt, openingDoneAt } from "./board/openingAct.js";
+import { playOpeningBoom } from "./audio/openingActSfx.js";
 import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
 import { playBarrageChord, playBarrageFoley, playSustainChord, playShieldChord, playChordClash, barrageDelay } from './audio/sonicBarrageAudio.js';
 import { playSwingCharge, playSwingStrike } from './audio/swingStrikeAudio.js';
@@ -32,6 +35,7 @@ function bushidoLandings(v) {
 }
 import { BATTLE_INTRO } from './board/battleRollGate.js';
 import { bushidoLane, bushidoDrawPatch, bushidoBlockers } from "./engine/systems/bushido.js";
+import { entranceHexes } from "./engine/systems/entrance.js";
 import boardImg from "./board.png";
 import boardOutlineImg from "./board_outline.png";
 import battleMeterImg from "./Battle_Meter.png";
@@ -2041,6 +2045,112 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [voiceRollFx, setVoiceRollFx] = useState(null);
   // 🔓 The seat-unlock moment (ui/SeatUnlockBurst.jsx + arenaVisuals SEAT_UNLOCK).
   const [seatUnlockFx, setSeatUnlockFx] = useState(null);
+  // 🎸 THE OPENING ACT — presentation of `engine/systems/entrance.js`. The engine
+  // already decided who waits and when they enter; this is the clock the arena,
+  // the sound and the input lock all read (`board/openingAct.js`).
+  //   openingSched  the schedule (wall-clock ms stamps), or null before / without one
+  //   openingLive   true while the intro holds the board: from mount until seat
+  //                 one has stepped on (or ⏭ Skip). Keys, clicks and bots wait.
+  // ⚠️ Only a fresh match with the act on gets the intro. A CATCH_UP (reconnect,
+  // spectator) lands mid-story: the waiting Spirits simply stand on their pads.
+  const openingWanted = !!engineState.config?.openingAct && !gameState.catchUp;
+  const [openingSched, setOpeningSched] = useState(null);
+  const [openingLive, setOpeningLive] = useState(openingWanted);
+  const [, setOpeningTick] = useState(0);   // re-render when a held stand fills
+  // A bot waits out its own entrance (riff + hop) before it plays, so the walk
+  // never starts while its standee is still on the pad: `{ id, until }` (ms).
+  const entranceHoldRef = useRef(null);
+  const openingSchedRef = useRef(null);
+  const openingTimersRef = useRef([]);
+  const openingEntrySeenRef = useRef(engineState.turn?.lastEntrance?.spiritId ?? null);
+  const openingGaveUpRef = useRef(false);
+  function openingLater(ms, fn) {
+    const id = setTimeout(fn, Math.max(0, ms));
+    openingTimersRef.current.push(id);
+    return id;
+  }
+  function openingSound(kind, spiritId) {
+    try {
+      const ctx = getAudioCtx();
+      if (kind === 'riff') playSpiritSting(ctx, characterId(spiritId));
+      else playOpeningBoom(ctx, kind);
+    } catch { /* no audio is never a reason to stop the show */ }
+  }
+  function publishOpening(sched) {
+    openingSchedRef.current = sched;
+    setOpeningSched(sched);
+  }
+  // 🎬 Called once the arena is on screen (BoardViewport `onArenaReady`).
+  function startOpening() {
+    if (!openingWanted || openingSchedRef.current || openingGaveUpRef.current) return;
+    setOpeningLive(true);
+    const now = performance.now();
+    // Seat order is the opening queue: seat one is the Spirit acting first.
+    const order = engineRef.current.turnQueue.map(id => engineRef.current.spirits.find(s => s.id === id)).filter(Boolean);
+    const sched = openingSchedule(order.map(s => ({ id: s.id, corner: s.corner })), now);
+    sched.cameraUntil = openingDoneAt(sched) + 400;
+    publishOpening(sched);
+    openingLater(sched.thunderAt - now, () => openingSound('thunder'));
+    for (const [id, seat] of Object.entries(sched.seats)) {
+      openingLater(seat.landingAt - now, () => openingSound('crash'));
+      if (seat.riffAt != null) {
+        openingLater(seat.riffAt - now, () => openingSound('riff', id));
+        openingLater(seat.stepAt - now, () => openingSound('step'));
+        openingLater(seat.doneAt - now, () => setOpeningTick(n => n + 1));
+      }
+    }
+    openingLater(openingDoneAt(sched) - now, () => setOpeningLive(false));
+  }
+  // ⏭ Everything lands at once and seat one is already on its hex.
+  function skipOpening() {
+    for (const id of openingTimersRef.current) clearTimeout(id);
+    openingTimersRef.current = [];
+    try { stopSpiritSting(audioCtxRef.current); } catch { /* nothing playing */ }
+    const now = performance.now(), cur = openingSchedRef.current;
+    if (cur) {
+      const past = now - 60000, seats = {};
+      for (const [id, seat] of Object.entries(cur.seats)) seats[id] = { ...seat, landingAt: past,
+        ...(seat.riffAt != null ? { riffAt: past, stepAt: past, doneAt: past } : {}) };
+      publishOpening({ ...cur, startMs: past, endMs: past, thunderAt: past, cameraUntil: now, seats });
+    }
+    setOpeningLive(false);
+  }
+  // 🛟 An arena that never reports ready must not hold the board forever: no
+  // schedule within 45 s → the intro is given up (BoardViewport's own error path
+  // gives up at once, `onArenaError`). Generous on purpose — a slow machine that
+  // takes 20 s to load still gets its intro.
+  function giveUpOpening() {
+    if (openingSchedRef.current) return;
+    openingGaveUpRef.current = true; setOpeningLive(false);
+  }
+  useEffect(() => {
+    if (!openingWanted) return undefined;
+    const id = setTimeout(giveUpOpening, 45000);
+    return () => { clearTimeout(id); for (const t of openingTimersRef.current) clearTimeout(t); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  // 🎸 A LATER SEAT'S FIRST TURN. TURN_STARTED stepped it onto its hex and gave it
+  // two fans (the engine reports `turn.lastEntrance`); the picture plays its
+  // picker riff on the pad, then the hop, and only then shows the two fans.
+  // Seat one's entrance is part of the intro's own schedule.
+  const lastEntrance = engineState.turn?.lastEntrance;
+  useEffect(() => {
+    const id = lastEntrance?.spiritId;
+    if (!id || openingEntrySeenRef.current === id) return;
+    openingEntrySeenRef.current = id;
+    const now = performance.now(), entry = entranceAt(id, now);
+    const cur = openingSchedRef.current;
+    if (cur) publishOpening({ ...cur, seats: { ...cur.seats, [id]: { ...(cur.seats[id] ?? {}), ...entry } } });
+    openingSound('riff', id);
+    entranceHoldRef.current = { id, until: entry.doneAt };
+    openingLater(entry.stepAt - now, () => openingSound('step'));
+    openingLater(entry.doneAt - now, () => setOpeningTick(n => n + 1));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lastEntrance?.spiritId, lastEntrance?.count]);
+  // Stands still empty on screen: seats whose entrance has not landed yet.
+  const openingNow = performance.now();
+  const fansHeld = openingSched ? new Set(Object.entries(openingSched.seats)
+    .filter(([, s]) => s.doneAt != null && openingNow < s.doneAt).map(([id]) => id)) : null;
   // 🔥 The exorcism's moment on the Scale Wheel: `{ spiritId, key }` for a few
   // seconds after a melody lifts the Iwato curse (the wheel burns clean).
   const [exorciseFx, setExorciseFx] = useState(null);
@@ -3077,9 +3187,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   const spiritByNum = useMemo(() => {
     const m = {};
-    spirits.forEach(s => { if (!s.knockedOut) m[s.num] = s; });
+    spirits.forEach(s => { if (!s.knockedOut && s.num != null) m[s.num] = s; });
     return m;
   }, [spirits]);
+  // 🎸 THE OPENING ACT (`engine/systems/entrance.js`): the home hex of every
+  // Spirit still waiting off the board is a wall until it enters. Every client
+  // occupancy set below adds this; the reducer refuses the move anyway, but a
+  // hex that lights up and then bounces the click is a bug to the player.
+  const reservedHexes = useMemo(() => entranceHexes(spirits), [spirits]);
 
   // ─── 👤 SHADOW ILLUSION — derived decoy state ────────────────────────────────
   // The decoy is a *body double*: to every rival it is pixel-for-pixel the real
@@ -3154,7 +3269,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (action !== 'move' || !acting) return null;
     const to = slideTarget(engineState, acting.id);
     if (to == null) return null;
-    if (spiritByNum[to] || shadowHexes.includes(to)) return null;   // a body on the road blocks it
+    if (spiritByNum[to] || shadowHexes.includes(to) || reservedHexes.has(to)) return null;   // a body (or a reserved home hex) on the road blocks it
     return to;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [action, acting?.id, engineState.board?.slime, engineState.turn?.slideStepsLeft, engineState.spirits, shadowHex]);
@@ -3170,11 +3285,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           if (!h) return false;
           if (spiritByNum[h.num]) return false;
           if (shadowHexes.includes(h.num)) return false;  // 👤 the decoy blocks like a body
+          if (reservedHexes.has(h.num)) return false;      // 🎸 a waiting Spirit's home hex
           return true;
         })
         .map(h => h.num)
     );
-  }, [action, acting, moveStepsLeft, spiritByNum, shadowHex]);
+  }, [action, acting, moveStepsLeft, spiritByNum, shadowHex, reservedHexes]);
 
   // 👤 The double's own movement pool — same size as the Ronin's budget, but a
   // separate pot, so walking the fake never costs the real body a step.
@@ -4015,6 +4131,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (battleState || activeEvent) return false;
     // 🔓 The seat-unlock cinematic holds the board — keys are swallowed, not typed.
     if (seatUnlockFx && !seatUnlockFx.short) return true;
+    if (openingLive) return true;   // 🎸 the opening act holds the board too
     // 🎡 W is not a note letter, so it is free to open / close the scale wheel —
     // in every step, since the wheel lives in the pocket now.
     if (WHEEL_DEFAULTS.wKey && (e.key === 'w' || e.key === 'W')) { toggleWheel(); return true; }
@@ -4093,6 +4210,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (battleState || activeEvent) return false;
     // 🔓 The seat-unlock cinematic holds the board — keys are swallowed.
     if (seatUnlockFx && !seatUnlockFx.short) return true;
+    if (openingLive) return true;   // 🎸 the opening act holds the board too
     if (turnStep !== 'move_act') return false;
     if (action === 'move_shadow') {
       const to = numpadTarget(e.code, HEX_BY_NUM[shadowHex]);
@@ -4123,17 +4241,26 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // flips to move_act the instant it lands — without it, HOLDING Enter on the
   // melody would commit and then auto-repeat straight past the whole action
   // phase. A deliberate second press still ends the turn; a held key does not.
+  // ⚠️ `e.defaultPrevented` IS THE OTHER ONE (Alex, 2026-10-07 — "Enter on the
+  // Melody ends the whole turn"). `e.repeat` only covers a HELD key; a single
+  // tap was still ending the turn. The note-key listener runs first and commits;
+  // the browser then runs a microtask checkpoint before THIS listener, React
+  // flushes the keydown's sync render there, and the effect below refreshes the
+  // ref — so this handler read turnStep === 'move_act' on the very press that
+  // committed. A key another handler already took is never ours: one press, one act.
   // 📌 canAct-gated (as the numpad is), not netSync-gated like the note keys:
   // ending your own turn is a per-client act `endTurn` already guards.
   const enterEndHandlerRef = useRef(() => false);
   function enterEndTurn(e) {
     if (e.key !== 'Enter' || e.repeat || e.shiftKey || e.ctrlKey || e.altKey || e.metaKey) return false;
+    if (e.defaultPrevented) return false;   // ⚠️ already spent on Commit / Continue — see above
     const t = e.target;
     if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? ''))) return false;
     if (!acting || !isMyTurn || !canAct || isBot(acting)) return false;
     if (battleState || activeEvent) return false;
     // 🔓 The seat-unlock cinematic holds the board — keys are swallowed.
     if (seatUnlockFx && !seatUnlockFx.short) return true;
+    if (openingLive) return true;   // 🎸 the opening act holds the board too
     if (turnStep !== 'move_act') return false;
     endTurn();
     return true;
@@ -5403,6 +5530,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (eventId === 'disco_inferno') {
       const occupied = new Set([
         ...spirits.filter(s => !s.knockedOut).map(s => s.num),
+        ...reservedHexes,
         ...amps.map(a => a.hexNum),
         ...eventHexes, LIMELIGHT_HEX,
       ]);
@@ -5444,7 +5572,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
 
     else if (eventId === 'satanic_panic') {
-      const alive = spirits.filter(s => !s.knockedOut);
+      // 🎸 Only Spirits on the board roll — a Spirit waiting to enter is not in the room.
+      const alive = spirits.filter(s => !s.knockedOut && s.num != null);
       const allRolls = alive.map(s => ({ id: s.id, name: s.name, color: s.color, roll: d6() }));
       rolls = { community: allRolls };
       const best = Math.max(...allRolls.map(r => r.roll));
@@ -5544,7 +5673,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     else if (eventId === 'stage_dive') {
       const sHex = HEX_BY_NUM[spirit?.num];
-      const rivals = spirits.filter(r => r.id !== spiritId && !r.knockedOut);
+      // 🎸 `num != null`: a Spirit waiting to enter has no hex to be nearest from,
+      // and an all-waiting table used to reach `[0].r` on an empty list.
+      const rivals = spirits.filter(r => r.id !== spiritId && !r.knockedOut && r.num != null);
       if (rivals.length === 0 || !sHex) {
         setSpirits(prev => prev.map(s => s.id === spiritId
           ? { ...s, vibe: Math.min(s.maxVibe, (s.vibe ?? 0) + 1) } : s));
@@ -5887,7 +6018,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // amps are still React-owned.
     // 👤 The Shadow Illusion counts as occupied: a pyro hex or animatronic
     // spawning *underneath* a standee would out it as an empty tile.
-    const occupied = [...spirits.map(s => s.num), ...amps.map(a => a.hexNum),
+    const occupied = [...spirits.map(s => s.num), ...reservedHexes, ...amps.map(a => a.hexNum),
       ...shadowHexes];
     // 🎆 Pyro runs on Alex's v2 rules (data/stageEffects.js) — opted in HERE, so
     // a replay recorded before them keeps the old round-clock cadence.
@@ -6027,7 +6158,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // (sized by the show's round). After the round clock, so the last volley of a
   // show closes it and no armed mortar is left behind to fizzle.
   function rearmPyro() {
-    const occupied = [...engineRef.current.spirits.filter(sp => !sp.knockedOut).map(sp => sp.num), ...amps.map(a => a.hexNum), ...shadowHexes];
+    const occupied = [...engineRef.current.spirits.filter(sp => !sp.knockedOut).map(sp => sp.num), ...entranceHexes(engineRef.current.spirits), ...amps.map(a => a.hexNum), ...shadowHexes];
     const r = dispatch(pyroTurnStarted(occupied)).stageFx.lastPyro;
     if (r?.event === 'armed') addLog(`🎆 ${r.hexes.length} mortars rise and arm for the next turn.`);
   }
@@ -7325,6 +7456,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // the board can change between aiming and clicking (knockback, a bot turn).
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
     shadowHexes.forEach(n => occupied.add(n)); // 👤 can't warp into the Ronin's double
+    reservedHexes.forEach(n => occupied.add(n)); // 🎸 nor onto a waiting Spirit's home hex
     if (occupied.has(hexNum)) { addLog('🌌 Something is already standing there.'); return; }
 
     triggerEffectFlash(acting.id, '🌌', 'WARP', seatColor(acting.id));
@@ -9786,6 +9918,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         const aliveSpirits = spirits.filter(sp => !sp.knockedOut);
         const occupied = [
           ...aliveSpirits.map(sp => sp.num),
+          ...entranceHexes(engineRef.current.spirits),
           ...boardCards.map(c => c.hexNum),
           ...chargeZones.map(z => z.num),
           ...eventHexes,
@@ -9842,6 +9975,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         setTimeout(() => {
           const occupied = [
             ...engineRef.current.spirits.filter(sp => !sp.knockedOut).map(sp => sp.num),
+            ...entranceHexes(engineRef.current.spirits),
             ...amps.map(a => a.hexNum),
             ...boardCards.map(c => c.hexNum),
             ...engineRef.current.board.chargeZones.map(z => z.num),
@@ -9858,7 +9992,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
       // 🎵 Lost Chord drift — uncollected tokens relocate once per round
       {
-        const occ = spirits.filter(sp => !sp.knockedOut).map(sp => sp.num);
+        const occ = [...spirits.filter(sp => !sp.knockedOut).map(sp => sp.num), ...entranceHexes(engineRef.current.spirits)];
         dispatch(tokensDrifted(occ));
         const drifted = engineRef.current.board?.lastTokensDrifted;
         if (drifted?.moved?.length) {
@@ -10348,6 +10482,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Never act in the middle of a battle/riff-off cinematic — those resolve via
     // their own bot hooks (auto-die-click / synthetic riff-off) below.
     if (battleState) return;
+    // 🎸 …nor while the Bardbarian has the board (the opening act's intro).
+    if (openingLive) return;
+    {
+      const hold = entranceHoldRef.current, wait = hold?.id === self.id ? hold.until - performance.now() : 0;
+      if (wait > 0) { const t = setTimeout(() => setBotNudge(n => n + 1), wait + 30); return () => clearTimeout(t); }
+    }
 
     const step = botStepRef.current;
     if (step === 'pending') return;              // an action is already scheduled
@@ -10631,7 +10771,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // searcher turn is a melody line plus movement plus a shot, which at
     // BOT_TICK pacing is comfortably past 15s of wall clock and was tripping the
     // net rather than the stall it was written for.
-  }, [acting?.id, battleState?.phase, winner, botNudge]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [acting?.id, battleState?.phase, winner, botNudge, openingLive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const bs = battleState;
     if (!bs || bs.riffOff) return;
@@ -10987,6 +11127,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!spHex) return new Set();
     const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
     shadowHexes.forEach(n => occupied.add(n)); // 👤 can't warp into the double
+    reservedHexes.forEach(n => occupied.add(n)); // 🎸 nor onto a waiting Spirit's home hex
     const out = new Set();
     for (const h of ALL_HEXES) {
       if (occupied.has(h.num)) continue;
@@ -11019,6 +11160,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (!acting) return new Set();
     const blocked = new Set(spirits.filter(sp => !sp.knockedOut).map(sp => sp.num));
     shadowHexes.forEach(n => blocked.add(n));   // 👤 the decoy blocks like a body
+    reservedHexes.forEach(n => blocked.add(n)); // 🎸 a waiting Spirit's home hex
     return new Set(shukuchiLandings(engineState, acting.id, blocked));
   }
 
@@ -11078,6 +11220,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     } else if (kind === 'gravity_control' || kind === 'displace') {
       const occupied = new Set(spirits.filter(s => !s.knockedOut).map(s => s.num));
       shadowHexes.forEach(n => occupied.add(n));
+      reservedHexes.forEach(n => occupied.add(n));
       for (const h of ALL_HEXES) {
         const rings = axialDist(h.q, h.r, spHex.q, spHex.r);
         if (kind === 'gravity_control' ? rings <= GRAVITY_PLACE_RINGS
@@ -14864,7 +15007,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               onPick={pickCard} onCancel={() => closeCardPick()} />}
             <SonicBarrageRecord battle={battleState} />
             <SeatUnlockBurst fx={seatUnlockFx} />
+            {openingLive && <OpeningActOverlay schedule={openingSched} onSkip={skipOpening}
+              firstName={spirits.find(s => s.id === engineState.turnQueue?.[0])?.name ?? spirits[0]?.name} />}
             <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} topView={topView} onTopView={setTopView}
+              onArenaReady={startOpening} onArenaError={giveUpOpening}
               riffProjectionRef={arenaRiffProjection}
               riffOverlay={engineState.battle?.arenaVersion && <RiffArenaBattle
                 battle={engineState.battle} spirits={spirits} net={netRef.current} projectionRef={arenaRiffProjection}
@@ -14884,6 +15030,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 marquees:marqueeMarkerList(eventHexes, quadrantOf, playerColor, h => marqueeKindOf(engineState.board, h)),
                 // 🔓 The seat-unlock moment — the cabinet drop, the push-in, the stand.
                 unlock:seatUnlockFx,
+                // 🎸 The opening act's clock, and the stands that stay empty until
+                // their Spirit's entrance lands (board/openingAct.js).
+                opening:openingSched, fansHeld,
                 // 🎸 The Iwato curse, read off the sheets alone (`iwatoCurse.js` curseScene).
                 shamisen:curseScene(spirits, noteStates),
                 shadowDecoy, shadowDecoys, vortices:gravityVortices, lite:liteFx,

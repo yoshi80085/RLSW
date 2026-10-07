@@ -20,7 +20,8 @@ import { createMoveTiles } from './moveTiles.js';
 import { createAttackTiles } from './attackTiles.js';
 import { createMarqueeMarkers } from './marqueeMarkers.js';
 import { createArenaLasers } from './arenaLasers.js';
-import { createStandee, STANDEE, STANDEE_Y, standeeYaw } from './standee.js';
+import { createStandee, STANDEE, STANDEE_Y, standeeYaw, hasBlankBack } from './standee.js';
+import { posesFor } from '../data/standeePoses.js';
 import { createStandeeSteps } from './standeeSteps.js';
 import { createLandingSfx } from '../audio/landingSfx.js';
 import { createPyroStage } from './pyroStage.js';
@@ -31,6 +32,8 @@ import { MODE_INTERVALS, SPIRIT_MELODY_MODES, BEGINNER_FALLBACK_MODE } from '../
 import { wrapClashStandees, STICK_STANDEE } from './swingStandee.js';
 import { directorShot, placeBattleDice, frontSide, BATTLE_DIRECTOR } from './battleDirector.js';
 import { grandstandPlacement } from './cosmicFans.js';
+import { createOpeningActStage } from './openingActStage.js';
+import { padPoint } from './openingAct.js';
 
 export function arenaPoint(num, height=.18) {
   const h=HEX_BY_NUM[num];return h?new THREE.Vector3((h.px-3255)/200,height,(h.py-2415)/200):null;
@@ -141,6 +144,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   // 🎸 The Iwato curse's instruments and curses (cursedShamisenArena.js) — the
   // ghost shamisen over a Ronin who holds it, and every curse burning on a rival.
   const shamisen=createShamisenStage({root,standee:id=>pawns.get(id)?.userData.standee??null});
+  // 🎸 THE OPENING ACT (openingActStage.js): the Bardbarian's storm, the waiting
+  // pads, the crash landings and the hop onto the home hex. Owns a pawn only
+  // while its seat waits, falls or steps on — `pose` below, like the pyro reaction.
+  const opening=createOpeningActStage(root);
   let curseLight={dim:0,shake:0,tint:0,tintColor:null};
   let riff=null;
   const clearRiff=()=>{riff?.dispose();riff=null;};
@@ -274,9 +281,24 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   let unlockState=null;      // 🔓 {key,id,role,start,short,rig}
   const AFTERMATH_SECONDS=BATTLE_DIRECTOR.shoveTime+BATTLE_DIRECTOR.fanDelay+BATTLE_DIRECTOR.finalHold;
   const beginAftermath=(stage,winner)=>{if(stage&&!aftermath)aftermath={stage,winner,since:clock,memo:new Map()};};
+  // 🎸 THE 'HIT' PRINT (Alex, 2026-10-06: "whenever Ronin gets hit back (loses
+  // a bout), use the 'hit' picture for the standee"). Any shove that moves him
+  // (`hitBackCount`), and the end of a Thrash he lost or tied, shows it for
+  // HIT_POSE_HOLD seconds from the LAST one — so a Thrash's close and the
+  // shove that follows it read as one beat, not hit → plain → hit. A Spirit
+  // with no 'hit' art ignores it (`setPose` returns false).
+  const HIT_POSE_HOLD=2.4;
+  const poseHit=pawn=>{const st=pawn?.userData.standee;if(st?.setPose('hit'))pawn.userData.hitUntil=clock+HIT_POSE_HOLD;};
+  // 🪧 Whose print is one-sided (a blank back) — the director must film its front.
+  const oneSided=ids=>ids.map(id=>hasBlankBack(id));
   function updateSwing(battle) {
     if(!battle?.swingClash){
-      if(swing?.stage)beginAftermath(swing.stage,swing.winner);
+      if(swing?.stage){
+        beginAftermath(swing.stage,swing.winner);
+        // 🎸 The board piece comes back as the sheet left: thrown back (a loss
+        // or a tie) → its 'hit' print, until the shove has played out.
+        swing.stage.ids.forEach((id,i)=>{if(swing.winner===null||swing.winner===1-i)poseHit(pawns.get(id));});
+      }
       clearSwing();return;
     }
     if(swing?.key!==battle.key){
@@ -293,9 +315,11 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       // 🎭 THE STICK FIGURES GO INTO ACRYLIC (swingStandee.js): they hold their
       // hexes, turn side-on so the thin edges face, and the Spirit's own print
       // swaps back in on the turn home — the pawns are hidden meanwhile.
-      const art=[attacker,defender].map(s=>s.imageSrc?{id:s.id,color:s.color,imageSrc:s.imageSrc}:null);
-      swing.standees=wrapClashStandees({...swing,T:swing.timing.TIMING},[attacker.color,defender.color],STICK_STANDEE,art);
+      // 🎸 A Spirit with its own Thrash art (the Ronin: Thrash1, Thrash2, hit)
+      // plays it instead of the stick figure, turned to face the front side.
+      const art=[attacker,defender].map(s=>s.imageSrc?{id:s.id,color:s.color,imageSrc:s.imageSrc,poses:posesFor(s.id)}:null);
       swing.stage=battleStage(battle,attacker,defender,ampOrigins);
+      swing.standees=wrapClashStandees({...swing,T:swing.timing.TIMING},[attacker.color,defender.color],STICK_STANDEE,art,{front:swing.stage.front});
       swing.diceCentre=placeBattleDice(swing.dice,{lane:swing.stage.lane,mid:swing.stage.mid,you:battle.viewer,front:swing.stage.front});
       swing.diceBounds=[swing.diceCentre.clone().add(new THREE.Vector3(-3,0,-3)),swing.diceCentre.clone().add(new THREE.Vector3(3,3,3))];
     }
@@ -507,9 +531,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         // ⚠️ A standee STANDS ON the deck; the block pawn floated at .34 because
         // it had no stand of its own. Mixing the two heights buries a standee's
         // base in the board, so the height comes from whichever pawn this is.
-        const standee=spirit.imageSrc ? createStandee(spirit) : null;
+        const standee=spirit.imageSrc ? createStandee({...spirit,poses:posesFor(spirit.id)}) : null;
         pawn=standee?standee.group:spiritMiniature(spirit);
-        const start=arenaPoint(spirit.num,standee?STANDEE_Y:.34);
+        const pad=spirit.waiting?padPoint(spirit.corner,standee?STANDEE_Y:.34):null;
+        const start=pad?new THREE.Vector3(pad.x,pad.y,pad.z):arenaPoint(spirit.num,standee?STANDEE_Y:.34);
         pawn.position.copy(start ?? new THREE.Vector3());
         pawn.userData.target=start?.clone() ?? new THREE.Vector3();
         pawn.userData.targetFacing=standeeYaw(spirit.facing);
@@ -520,7 +545,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         actors.add(pawn);pawns.set(spirit.id,pawn);
       }
       const standee=pawn.userData.standee;
-      const target=arenaPoint(spirit.num,standee?STANDEE_Y:.34);if(target)pawn.userData.target.copy(target);
+      // 🎸 A Spirit waiting to enter has no hex (`num` null, engine/systems/
+      // entrance.js): it stands on its pad between its grandstand and its home hex.
+      const pad=spirit.waiting?padPoint(spirit.corner,standee?STANDEE_Y:.34):null;
+      const target=pad?new THREE.Vector3(pad.x,pad.y,pad.z):arenaPoint(spirit.num,standee?STANDEE_Y:.34);if(target)pawn.userData.target.copy(target);
       // ⭐ ONE CONVENTION FOR BOTH PAWNS, and it lives in `standeeYaw`. The
       // block used `facing + π/2`, which is the correct mapping MIRRORED about
       // the x axis — 90° out on every diagonal, 180° out north/south. It never
@@ -534,7 +562,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       if(pawn.userData.standee&&pawn.userData.num!=null&&pawn.userData.num!==spirit.num&&!spirit.knockedOut&&!spirit.fallen&&!bushidoWarp)
         standeeSteps.step(pawn,{id:spirit.id,from:pawn.userData.num,to:spirit.num,yaw:pawn.userData.targetFacing,
           shoved:pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount,bot:!!spirit.bot,color:spirit.color});
-      if(pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount) pawn.userData.wobbleUntil=clock+1.7;
+      if(pawn.userData.hitBackCount!=null&&pawn.userData.hitBackCount!==spirit.hitBackCount){pawn.userData.wobbleUntil=clock+1.7;poseHit(pawn);}
       pawn.userData.hitBackCount=spirit.hitBackCount;
       pawn.userData.num=spirit.num;pawn.userData.vibe=spirit.vibe;pawn.userData.maxVibe=spirit.maxVibe;
       pawn.userData.knockedOut=!!spirit.knockedOut||!!spirit.fallen;
@@ -586,6 +614,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     lasers.update(frame.laser,frame.laserRound,clock);
     updatePawns(frame);
     pyro.update(frame);
+    opening.update(frame.opening,frame.spirits);
     bats.update(frame.bats);
     shamisen.update(frame.shamisen??{});
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
@@ -667,7 +696,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
           // 🎬 Where the lens goes this second (battleDirector.js).
           // 🎯 Before the Rival throws, the bout opens on the pair (twoShot).
           const sonicIntro=frame.battle?.sonicShieldRollAt==null?clock-sonic.phaseStart0:null;
-          if(!aftermath)battleShot=directorShot({t,intro:sonicIntro,facings:printFacings(sonic.stage.ids),kind:'sonic',memo:sonic.stage.memo,sees,aspect:camera?.aspect,you:sonic.stage.you,lane:sonic.stage.lane,mid:sonic.stage.mid,
+          if(!aftermath)battleShot=directorShot({t,intro:sonicIntro,facings:printFacings(sonic.stage.ids),oneSided:oneSided(sonic.stage.ids),kind:'sonic',memo:sonic.stage.memo,sees,aspect:camera?.aspect,you:sonic.stage.you,lane:sonic.stage.lane,mid:sonic.stage.mid,
             spirits:sonic.stage.ids.map((id,i)=>pawns.get(id)?.position.clone()??(i?sonic.stage.mid:sonic.stage.mid)),
             amps:sonic.stage.amps,stands:sonic.stage.stands,dice:sonic.diceCentre,
             beats:{S:{gate:SONIC_GATE,dice:SONIC_DICE,launch:BARRAGE_LAUNCH}},winner:sonic.winner});
@@ -708,8 +737,20 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       // landing heard during the drive below starts on this frame's clock.
       pyro.tick(time,{reduced});
       bats.tick(time,{reduced});
+      const openNow=performance.now();
+      opening.tick(openNow,{reduced});
       for(const [pawnId,pawn] of pawns) {
         const target=pawn.userData.target;
+        if(pawn.userData.hitUntil!=null&&clock>=pawn.userData.hitUntil){pawn.userData.hitUntil=null;pawn.userData.standee?.setPose(null);}
+        // 🎸 The opening act holds a seat while it falls, waits or steps on.
+        const held=pawn.userData.standee?opening.pose(pawnId,pawn,openNow,{reduced,cameraPos:camera?.position??null}):null;
+        if(held){
+          pawn.userData.openingHeld=true;
+          pawn.userData.standee.frame(time,{knockedOut:false,active:pawn.userData.active,acting:held.acting,
+            reduced,cameraPos:camera?.position??null,lift:held.lift});
+          continue;
+        }
+        if(pawn.userData.openingHeld){pawn.userData.openingHeld=false;pawn.visible=true;pawn.scale.set(1,1,1);}
         // 🎭 A pawn mid-step is driven by standeeSteps (position, yaw, tilt, squash);
         // a pawn at rest (and every block pawn) eases toward its target as before.
         const stepping=pawn.userData.standee?standeeSteps.drive(pawn,performance.now(),reduced):null;
@@ -765,7 +806,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         frame.battle.swingFocus=swing.update(t,{reduced});
         // The turn side-on runs on the seconds since the Swing OPENED — the
         // sequence clock is still 0 while the attacker's ROLL is waiting.
-        swing.standees.update(t,{reduced,turnT:swing.opened!=null?(performance.now()-swing.opened)/1000:t+STICK_STANDEE.lead});
+        swing.standees.update(t,{reduced,turnT:swing.opened!=null?(performance.now()-swing.opened)/1000:t+STICK_STANDEE.lead,winner:swing.winner});
         // 🎯 Before the attacker throws, the bout opens on the pair (twoShot).
         if(swing.openedClock==null)swing.openedClock=clock;
         const swingIntro=frame.battle?.swingRollAt==null?clock-swing.openedClock:null;
@@ -773,7 +814,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         // which is how they stand from half a second after the Swing opens until
         // after the strike. Without it the director assumed they faced each other
         // down the lane and happily filmed a charge shot straight at an edge.
-        battleShot=directorShot({t,intro:swingIntro,kind:'swing',facings:swing.figures.map(f=>new THREE.Vector3(1,0,0).applyQuaternion(f.carrier.getWorldQuaternion(new THREE.Quaternion())).setY(0).normalize()),memo:swing.stage.memo,sees,aspect:camera?.aspect,you:swing.stage.you,lane:swing.stage.lane,mid:swing.stage.mid,
+        battleShot=directorShot({t,intro:swingIntro,kind:'swing',facings:swing.standees.facings(),oneSided:oneSided(swing.stage.ids),memo:swing.stage.memo,sees,aspect:camera?.aspect,you:swing.stage.you,lane:swing.stage.lane,mid:swing.stage.mid,
           spirits:swing.figures.map(f=>f.carrier.position.clone()),amps:swing.stage.amps,stands:swing.stage.stands,
           dice:swing.diceCentre,beats:{T:swing.timing.TIMING},winner:swing.winner});
       }
@@ -782,7 +823,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         // A NEW bout on the board ends the old one's aftermath at once.
         const newer=(swing&&swing.stage!==st)||(sonic?.stage&&sonic.stage!==st);
         if(since>AFTERMATH_SECONDS||newer)aftermath=null;
-        else battleShot=directorShot({t:since,kind:'aftermath',memo:aftermath.memo,sees,aspect:camera?.aspect,facings:printFacings(st.ids),you:st.you,lane:st.lane,mid:st.mid,
+        else battleShot=directorShot({t:since,kind:'aftermath',memo:aftermath.memo,sees,aspect:camera?.aspect,facings:printFacings(st.ids),oneSided:oneSided(st.ids),you:st.you,lane:st.lane,mid:st.mid,
           spirits:st.ids.map(id=>pawns.get(id)?.position.clone()??st.mid.clone()),amps:st.amps,stands:st.stands,
           beats:{},winner:aftermath.winner});
       }
@@ -900,8 +941,12 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0),shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics()}),
-    dispose(){disposed=true;bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    diagnostics:()=>({rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0),shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics(),opening:opening.diagnostics(),openingBusy:opening.busy(performance.now())}),
+    /** 🎸 The opening act's lens while the intro runs, else null (openingActStage.camera). */
+    openingCamera:(now,aspect,reduced)=>opening.camera(now,aspect,{reduced}),
+    /** 🎸 0..1 — how much of the intro's own look (bloom, exposure) is on. */
+    openingEnvelope:()=>opening.envelope,
+    dispose(){disposed=true;opening.dispose();bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     // 🎆 The hit's share of the lens (shake + zoom punch) and the mortars' sprite scale.
     pyroCamera:reduced=>pyro.camera(reduced),
     resize:h=>pyro.resize(h),

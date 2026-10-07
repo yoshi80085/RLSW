@@ -36,7 +36,13 @@ const press = async (key, mods = {}) => {
   const ev = { key, shiftKey: false, ctrlKey: false, altKey: false, metaKey: false, repeat: false,
     target: document.body, defaultPrevented: false, ...mods,
     preventDefault() { this.defaultPrevented = true; } };
-  await act(async () => { for (const fn of [...keyListeners]) fn(ev); });
+  // ⚠️ ONE act PER LISTENER — that is what a browser does. It runs a microtask
+  // checkpoint between window listeners, and React flushes a keydown's sync
+  // render (and its ref-refreshing effects) in that checkpoint, so a LATER
+  // listener sees the state an EARLIER one just set. One act around the whole
+  // loop hid exactly that: Enter's Commit flipped the turn to move_act and the
+  // End Turn listener, reading the fresh state, ended the turn on the same press.
+  for (const fn of [...keyListeners]) await act(async () => { fn(ev); });
   return ev;
 };
 const keyFor = note => { const n = parseStockNote(note); return [n.letter.toLowerCase(), { shiftKey: n.altered }]; };
@@ -121,9 +127,12 @@ try {
   ev = await press(keyFor(next)[0], { ...keyFor(next)[1], target: input });
   ok(!ev.defaultPrevented && sheet().melodyLine.length === 1, 'typing in a text field is left alone');
 
+  const committer = observed.acting, commitTurn = observed.turn.count;
   ev = await press('Enter');
   ok(ev.defaultPrevented && sheet().hasConfirmed, '⏎ Enter committed the Melody Track');
   ok(JSON.stringify(sheet().committedMelody ?? []) === JSON.stringify([m1]), `…and the committed track is the one typed (${m1})`);
+  ok(observed.acting === committer && observed.turn.count === commitTurn,
+    '⚠️ …and that SAME press did not run on into End Turn (the Move & Act phase is still yours)');
 
   // ── move & act — ⏎ Enter is End Turn (2026-10-04) ──
   ok(button('End ⏭'), 'the Move & Act rail is up with its End button');

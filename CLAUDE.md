@@ -19,13 +19,14 @@
 
 ## Bardbarian intro — continuation entry point
 
-For the Rock God opening scene, read
-[CLAUDE_BARDBARIAN_INTRO_HANDOFF.md](CLAUDE_BARDBARIAN_INTRO_HANDOFF.md).
-Editable source and artwork are in `previews/bardbarian-intro/`; Alex's exact
-2026-10-04 settings are `alex-dial-in.json` there and drive the preview defaults.
-Run `npm run dev:intro`. A portable source-and-assets snapshot is available at
-`handoffs/bardbarian-intro-2026-10-05.zip`. The handoff records the accepted
-first-turn entrance rule and what remains to integrate into normal matches.
+🎸 **The opening act is in the game (2026-10-06).** The rule is
+`src/engine/systems/entrance.js` (Spirits wait off the board, enter on their own
+first turn with two fans, home hex reserved); the picture is
+`src/board/openingAct.js`, `openingActStage.js` and `bardbarian.js`. Tune it in
+the preview, `previews/bardbarian-intro/` (`npm run dev:intro`): Alex's
+settings live in `alex-dial-in.json` there and the game imports the same file.
+History and the remaining calls: [CLAUDE_BARDBARIAN_INTRO_HANDOFF.md](CLAUDE_BARDBARIAN_INTRO_HANDOFF.md)
+and `src/SEQUENCING.md` §A `60-openingport`.
 
 ## 🗺️ THE SYSTEMS MAP — Alex's picture of the game, and it is a DELIVERABLE
 
@@ -220,7 +221,7 @@ evidence that it looks right.
 
 ## Testing
 
-**`npm run test:all`** is the full sweep — **ninety suites** (2026-10-05), one command,
+**`npm run test:all`** is the full sweep — **ninety-two suites** (2026-10-06), one command,
 stops on the first red. Run it before reporting anything as done, and quote the
 assertion counts. If a count drops, explain why rather than letting it pass
 unremarked.

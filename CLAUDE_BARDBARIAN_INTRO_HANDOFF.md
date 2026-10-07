@@ -3,6 +3,26 @@
 Completed 2026-10-05 (Asia/Tokyo), preserving Alex's 2026-10-04 dial-in.
 Workspace: `C:\Users\ATBro\rlsw-sim`.
 
+## 2026-10-06 — ported into the game
+
+The rule and the cinematic are now live in normal matches (lobby, local and
+online; not Testing Grounds). Alex placed the waiting Spirits *"in between the
+previous 'home hex' and the fan's seats … a space not technically on the board"*
+and reserved the home hex until its Spirit enters.
+
+| What | Where |
+|---|---|
+| The rule (waiting = `num` null, reserved home hex, entrance at `TURN_STARTED`, +2 Diehards once) | `src/engine/systems/entrance.js` |
+| The clock and the pad geometry | `src/board/openingAct.js` (imports `alex-dial-in.json`) |
+| The live-arena stage (Bardbarian, pads, landings, hop, intro camera) | `src/board/openingActStage.js`, `src/board/bardbarian.js` |
+| Captions, ⏭ Skip, HUD hidden | `src/ui/OpeningActOverlay.jsx` |
+| Thunder / crash / step | `src/audio/openingActSfx.js` (+ the picker's `playSpiritSting`) |
+| Checks | `npm run test:entrance` (2,695) · `npm run test:entrancejourney` (29) |
+
+The full account is `src/SEQUENCING.md` §A `60-openingport`. The sections below
+are the 2026-10-05 handoff, kept for its history; where they say "not ported",
+read "ported 2026-10-06".
+
 ## Start here
 
 If Claude has this workspace, edit `previews/bardbarian-intro/` directly. It
@@ -130,8 +150,7 @@ unique corner seat ID; do not unlock unfinished Glamarchy to fill that slot.
 It rehearses entrances consecutively; actual gameplay occurs between first
 turns in normal matches.
 
-**Current status: selected visual settings saved; still a preview.** This
-handoff request does not itself port the cinematic or rules into the game.
+**Status on 2026-10-05: selected visual settings saved; still a preview** (ported 2026-10-06 — see the top of this file).
 No Game/reducer/bot imports this preview, and its `targetable` flag is not live
 combat protection. The earlier README's production checklist remains required:
 one authoritative entrance state, all targeting/area-effect/occupancy paths,

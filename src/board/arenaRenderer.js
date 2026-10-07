@@ -23,6 +23,7 @@ import { arenaPoint, pointXY, createArenaVisuals, releaseArenaObject } from './a
 import { createSonicCamera } from './sonicCamera.js';
 import { createArenaCrowd } from './arenaCrowd.js';
 import { CAMERA_DIRECTOR, createCameraDirector, createCameraSubjects } from './cameraDirector.js';
+import { OPENING_ACT } from './openingAct.js';
 
 // The SVG remains the only gameplay input surface. WebGL consumes a filtered,
 // read-only presentation frame; neither camera nor effects can dispatch actions.
@@ -153,7 +154,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     // as a cut. ⚠️ Only on the break itself: the director is manual from then on,
     // so later mouse movement cannot re-trigger it until the auto camera has
     // come back. A real drag (OrbitControls start), ☰ view or zoom cancels it.
-    let refocus=null;
+    let refocus=null,introBlend=null;
     const REFOCUS_MS=700;
     function startRefocus(now){
       const num=frame.spirits?.find(s=>s.id===frame.actingId)?.num;if(num==null)return;
@@ -238,7 +239,20 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       const cameraSubjects=subjects.read(frame,now);
       cameraShot=null;
       if(sonicCamera.active)idleFlow.activity(now);
-      if(!sonicCamera.update(frame,model,dt,reduced,visuals.battleShot())) {
+      // 🎸 THE OPENING ACT HOLDS THE LENS while the Bardbarian introduces the
+      // Spirits (openingActStage.camera) — except under ⌗ top-down, which is a
+      // lock the player chose. The intro counts as activity, so the auto camera
+      // waits its usual resume time after it rather than snapping somewhere.
+      const introShot=topView?null:visuals.openingCamera(performance.now(),camera.aspect,reduced);   // the opening's clock is performance.now(), like its stage
+      // ⏭ A skipped intro hands back a WIDE lens; frame the arena then, rather
+      // than leaving the board a speck until the auto camera's resume runs out.
+      if(!introShot&&introBlend!=null){if(introBlend<.9)frameView('arena');introBlend=null;}
+      if(introShot){
+        introBlend=introShot.blend;
+        refocus=null;director.userNudge(now);idleFlow.activity(now);
+        controls.target.copy(introShot.target);camera.position.copy(introShot.position);
+        camera.lookAt(controls.target);dirty=true;
+      } else if(!sonicCamera.update(frame,model,dt,reduced,visuals.battleShot())) {
         // wallDt, not the 50 ms-capped dt: the director caps at 100 ms itself, and a
         // slow machine must not also get a camera that crawls at a fraction of speed.
         cameraShot=autoCamera&&!topView?director.update({dtMs:wallDt*1000,now,subjects:cameraSubjects,camera:{position:camera.position,target:controls.target},reduced}):null;
@@ -275,7 +289,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
-      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.standeeSteps>0||stats.pyroBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
@@ -299,7 +313,13 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         // 🌑 THE SHAMISEN'S HUSH (cursedShamisenArena.js): the arena darkens while
         // the Ronin casts — exposure, not the lights, so every material dims
         // together and nothing in the rig has to be found and put back.
-        {const cl=visuals.curseLight();renderer.toneMappingExposure=1-.6*Math.min(1,cl.dim);}
+        // 🎸 …and the opening act's own look (Alex's dial-in: bloom, exposure) rides
+        // the Bardbarian's envelope, so it eases back to the arena's as he fades.
+        {const cl=visuals.curseLight(),open=visuals.openingEnvelope();
+         renderer.toneMappingExposure=(1+(OPENING_ACT.exposure-1)*open)*(1-.6*Math.min(1,cl.dim));
+         bloom.strength=RIVEN_WORLD.bloom+(OPENING_ACT.bloom-RIVEN_WORLD.bloom)*open;
+         // The preview hid the arena's own transient bolts under the storm (it has its own).
+         const bolts=scene.getObjectByName('Transient branching lightning');if(bolts)bolts.visible=open<.01;}
         // 🎆 A mortar hit shakes the lens and punches the zoom (pyroStage.camera,
         // Alex's dial-in: shake .3, punch .2). Applied around THIS draw and put
         // back after it, so the camera director and OrbitControls never see it.

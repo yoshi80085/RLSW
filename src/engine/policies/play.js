@@ -904,7 +904,7 @@ export function playTurn(state, view, policy, ctx) {
  */
 export function matchConfig(spirits, { startingLives = 3, mode = 'ffa', fameTarget, fameCap,
                                        fameWindowScale,
-                                       winCondition, elimination, roundLimit } = {}) {
+                                       winCondition, elimination, roundLimit, openingAct } = {}) {
   // 📏 `fameTarget` / `fameCap` ARE MEASUREMENT INSTRUMENTS AND ARE UNDEFINED BY
   // DEFAULT — see `battleFlow.fameToWin` and `grantFame`. They exist so a bench
   // run can ask what the Fame economy PRODUCES over a fixed horizon, which the
@@ -927,6 +927,9 @@ export function matchConfig(spirits, { startingLives = 3, mode = 'ffa', fameTarg
   if (winCondition != null) cfg.winCondition = winCondition;
   if (elimination  != null) cfg.elimination  = elimination;
   if (roundLimit   != null) cfg.roundLimit   = roundLimit;
+  // 🎸 The opening act (`systems/entrance.js`) — a real game axis, opt-in like
+  // the lobby's. `entranceCheck.mjs` plays whole bot matches with it on.
+  if (openingAct   != null) cfg.openingAct   = !!openingAct;
   return cfg;
 }
 
@@ -943,10 +946,10 @@ export const MAX_TURNS = 400;
  */
 export function runMatch({ seed, spirits, policies, view = {}, lives, maxTurns = MAX_TURNS,
                            fameTarget, fameCap, fameWindowScale,
-                           winCondition, elimination, roundLimit }) {
+                           winCondition, elimination, roundLimit, openingAct }) {
   const rng = makeRng(seed >>> 0);
   const config = matchConfig(spirits, { startingLives: lives, fameTarget, fameCap, fameWindowScale,
-                                       winCondition, elimination, roundLimit });
+                                       winCondition, elimination, roundLimit, openingAct });
   let state = makeInitialState(config, seed >>> 0);
   // 🎪 One box per match, shared by the demolition hook (which fills it) and
   // `playTurn` (which lends it to `view` for the turn and takes it back).

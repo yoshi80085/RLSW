@@ -8,15 +8,21 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 // for its viewer; this boundary also enforces it before copying actor data.
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
-  bots = [], bats = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null }) {
+  bots = [], bats = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null,
+  opening = null, fansHeld = null }) {
   spirits=spirits.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   shadowDecoys=shadowDecoys.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   const visible = new Set(spirits.map(s => s.id));
   return {
+    // 🎸 `fansHeld`: a Spirit whose entrance is still on screen (riff, hop) keeps
+    // an empty stand until it lands — the engine granted the two fans at its turn
+    // start, the picture shows them arrive with it (openingAct.seatPose).
     crowds:crowdSpirits.filter(s=>!s.knockedOut).map(s=>({id:s.id,corner:s.corner,color:s.color,
-      diehards:noteStates[s.id]?.diehards??0,casuals:noteStates[s.id]?.casuals??0})),
+      diehards:fansHeld?.has?.(s.id)?0:noteStates[s.id]?.diehards??0,casuals:fansHeld?.has?.(s.id)?0:noteStates[s.id]?.casuals??0})),
     spirits: spirits.map(s => ({ id:s.id, num:s.num, color:s.color, corner:s.corner,
       facing:s.facing ?? 0, imageSrc:s.imageSrc, knockedOut:!!s.knockedOut,
+      // 🎸 Off the board, on its pad, until its first turn (engine/systems/entrance.js).
+      waiting:!!s.entrance,
       vibe:s.vibe,maxVibe:s.maxVibe,fallen:!!noteStates[s.id]?.fallen,
       hitBackCount:s.hitBackCount??0,
       // 🎭 A bot's landing is quieter (standeeSteps, STANDEE_MOVE.botVol) — `cpu` is
@@ -37,6 +43,9 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
       color:s.color, ...rigTiers(noteStates[s.id]), amps:ampStacks(noteStates[s.id]),
       radius:rigRadius(noteStates[s.id], s.id === actingId), active:s.id === actingId })),
     actingId, turn, lite,
+    // 🎸 The opening act's clock (openingAct.openingSchedule) — wall-clock stamps
+    // only, no rules. Copied so the arena never holds the client's object.
+    opening:opening ? { ...opening, seats:{ ...opening.seats } } : null,
     // 🟪 Where the acting Spirit (or its Shadow) can step — moveTiles.js. Board
     // geometry the SVG already shows, so nothing new is revealed; dropped when the
     // owner is smoke-hidden, or the Shadow's decoy is not in the frame.

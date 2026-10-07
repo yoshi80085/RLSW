@@ -4,7 +4,10 @@ Run `npm run dev:intro`, or visit `/RLSW/previews/bardbarian-intro/` on the Vite
 The `.scratch/bardbarian-intro-preview.html` entry redirects here.
 
 This is the tunable visual preview required by the repository's preview-first
-workflow. **The normal game's opening and combat rules have not been changed.**
+workflow. 🎸 **Since 2026-10-06 it is also in the game:** the rule in
+`src/engine/systems/entrance.js`, the picture in `src/board/openingAct.js`,
+`openingActStage.js` and `bardbarian.js`, which read `alex-dial-in.json` from this
+folder. Tune here, export, replace the JSON — the game follows.
 
 **2026-10-04: Alex's dial-in is saved.** `alex-dial-in.json` preserves his exact
 export and original changed-vs-default comparison. `timeline.js` imports its
@@ -52,7 +55,11 @@ dial-in. Existing browser experiments are retained until reset. **Hide controls*
 expands the scene. Future exports compare against the selected baseline; the
 original JSON retains the original comparison.
 
-## Rule change recorded for the production port
+## The rule (ported 2026-10-06 — `src/engine/systems/entrance.js`)
+
+✅ **Ported.** Waiting Spirits have `num` null (off the board), their home hexes
+are reserved (Alex, 2026-10-06), entrance at `TURN_STARTED` exactly once. The
+paragraph below is the port brief as it was written:
 
 Alex's requested rule is accepted: normal matches begin in protected waiting
 spaces, no fans; each Spirit plays its picker riff and enters the old home hex

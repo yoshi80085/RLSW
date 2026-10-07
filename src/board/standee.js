@@ -21,6 +21,17 @@ import { characterId } from "../data/spiritIdentity.js";
 //     behind, through the sheet, which is what a real printed standee does.
 //     ⚠️ `facing:'soft'`/`'camera'` exist as the settings he rejected; the only
 //     thing the camera may ever change is PITCH (`steepLean`), never yaw.
+//     🪧 AMENDED 2026-10-06 for the Ronin: "Can you create the 'back side' of
+//     the Ronin as... blank. It should be obvious which side is the 'front' and
+//     which is the 'back'." A Spirit in `STANDEE_BACK.blank` prints on the FRONT
+//     only, and its back is the same silhouette in plain unprinted card. The
+//     other three still show the print through the sheet until he says so.
+//  1b. POSES (Alex, 2026-10-06): a Spirit may carry extra prints — the Ronin's
+//     two Thrash phases and his 'hit' — passed in as `spirit.poses` ({ name:
+//     url }, `data/standeePoses.js`) with their own traced cuts under
+//     `STANDEE_OUTLINES[id].poses`. `api.setPose(name)` swaps the print, the
+//     sheet and the neon edge in place; the stand, the lean and every caller's
+//     handle on the meshes stay the same objects.
 //  2. LOOK — "make it look acrylic with neon edges - but behind that, a
 //     transparent gloss look". An extruded sheet, a neon ribbon on the cut edge
 //     in the Spirit's colour, and real transmission behind the print.
@@ -48,6 +59,18 @@ export const STANDEE = Object.freeze({
   facing:'board', softDeg:25, steepLean:35, actingRing:'on', nameTag:'off',
 });
 
+/**
+ * 🪧 THE BLANK BACK (Alex, 2026-10-06 — the Ronin). Who has one, and what the
+ * unprinted side looks like: a plain pale card in the figure's own silhouette,
+ * lit a touch so it does not read as a hole in a dark arena. Separate from
+ * `STANDEE` on purpose — that object is Alex's dial-in and the preview page's
+ * levers, and the page has no back to dial.
+ */
+export const STANDEE_BACK = Object.freeze({
+  blank:Object.freeze(['cosmic_ronin']), color:'#c4cbd6', glow:0.16, roughness:0.92,
+});
+export const hasBlankBack = id => STANDEE_BACK.blank.includes(characterId(id));
+
 /** The board height a standee stands at — its stand's underside, on the deck. */
 export const STANDEE_Y = 0.2;
 /** ⚠️ The trace threshold in `standeeOutlines.js` is this × 255 (= 115). */
@@ -57,13 +80,32 @@ const PLAIN_CUT = Object.freeze({ panel:[[[0, 0], [1, 0], [1, 1], [0, 1]]], art:
 
 // ── pure ─────────────────────────────────────────────────────────────────────
 
-/** The outline record for a Spirit, and the cut `T.cut` asks for. */
-export function cutFor(id, T = STANDEE) {
-  const o = STANDEE_OUTLINES[characterId(id)];
-  if (!o) return { w:1, h:1, foot:1, ...PLAIN_CUT };
-  // ⚠️ An unknown cut falls back to the SHIPPED cut, not to `tight` — a typo
-  // must not quietly put the lightning back on.
-  return { w:o.w, h:o.h, foot:o.foot, ...(o[T.cut] ?? o[STANDEE.cut] ?? o.tight) };
+/**
+ * The outline record for a Spirit, and the cut `T.cut` asks for. With `pose`,
+ * that pose's own record (`STANDEE_OUTLINES[id].poses[pose]`), or null if the
+ * Spirit has no such pose — a pose is never faked with the base cut, because
+ * its print would then be clipped to a silhouette it does not have.
+ */
+export function cutFor(id, T = STANDEE, pose = null) {
+  const base = STANDEE_OUTLINES[characterId(id)];
+  if (pose) { const p = base?.poses?.[pose]; return p ? cutOf(p, T) : null; }
+  if (!base) return { w:1, h:1, foot:1, ...PLAIN_CUT };
+  return cutOf(base, T);
+}
+// ⚠️ An unknown cut falls back to the SHIPPED cut, not to `tight` — a typo
+// must not quietly put the lightning back on.
+const cutOf = (o, T) => ({ w:o.w, h:o.h, foot:o.foot, ...(o[T.cut] ?? o[STANDEE.cut] ?? o.tight) });
+
+/**
+ * How tall a pose stands, in world units. ⭐ AT THE SIZE IT WAS DRAWN: every
+ * drawing is cropped to its figure at its own pixel scale (`scripts/standee-art.py`),
+ * so a crouched clash is a shorter image than him standing, and drawing every
+ * pose at `T.height` would grow him as he crouched. The base drawing is
+ * `T.height`; a pose is that × its pixel height over the base's.
+ */
+export function poseHeight(id, pose, T = STANDEE) {
+  const base = STANDEE_OUTLINES[characterId(id)], p = base?.poses?.[pose];
+  return p ? T.height * (p.h / base.h) : T.height;
 }
 
 /**
@@ -243,14 +285,44 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
   // print is in the SAME queue as the sheet and simply sorted after it.
   // 📌 One texture, DoubleSide: the back is the front seen from behind, through
   // the sheet. Alex, 2026-09-18: "lets do away with 'mirror'".
+  // 🪧 …unless the Spirit has a BLANK BACK (2026-10-06): then the print is
+  // FrontSide only and a second mesh, the same cut, BackSide, is the plain card.
+  const blank = hasBlankBack(spirit.id);
   const texture = spirit.imageSrc ? loader(spirit.imageSrc) : null;
   const artGeo = planarUV(new THREE.ShapeGeometry(shapesFrom(o.art, o.w, o.h, T.height, 1)), o.w, o.h, T.height, 1);
   const art = keep(new THREE.Mesh(artGeo, new THREE.MeshStandardMaterial({
     map:texture, emissiveMap:texture, emissive:0xffffff, emissiveIntensity:T.artLift,
     transparent:true, alphaTest:ALPHA_TEST, roughness:0.85, metalness:0.02,
-    side:THREE.DoubleSide, depthWrite:true,
+    side:blank ? THREE.FrontSide : THREE.DoubleSide, depthWrite:true,
   })));
   art.renderOrder = 10;
+  // ⚠️ A CHILD OF THE PRINT, NOT A PART. It then leans, falls (knocked out, or
+  // the pyro's `applyKo`, which tips `parts[1..3]`) and swaps pose with the print
+  // for free — and every caller that finds "the print" as the part with a map
+  // still finds exactly one.
+  let back = null;
+  if (blank) {
+    back = new THREE.Mesh(artGeo, blankBackMaterial(texture));
+    back.name = 'Blank back'; back.renderOrder = 10;
+    art.add(back);
+  }
+
+  // ── the poses (1b) ─────────────────────────────────────────────────────────
+  // Every pose is built up front — its texture fetched, its three geometries cut
+  // — so the first swap mid-battle is not a frame of nothing while it loads.
+  const looks = new Map();
+  const base = { name:null, panelGeo, edgeGeo:edge.geometry, artGeo, texture };
+  for (const [name, src] of Object.entries(spirit.poses ?? {})) {
+    const p = src && cutFor(spirit.id, T, name);
+    if (!p) continue;
+    const H = poseHeight(spirit.id, name, T), pr = lip ? p.panel : p.art;
+    const pg = new THREE.ExtrudeGeometry(shapesFrom(pr, p.w, p.h, H, scale), { depth:T.thickness, bevelEnabled:false });
+    pg.translate(0, 0, -T.thickness / 2);
+    looks.set(name, { name, panelGeo:pg, edgeGeo:ribbons(pr, p.w, p.h, H, T.thickness, scale),
+      artGeo:planarUV(new THREE.ShapeGeometry(shapesFrom(p.art, p.w, p.h, H, 1)), p.w, p.h, H, 1),
+      texture:loader(src), height:H });
+  }
+  let look = base;
 
   // ── what it stands in ──────────────────────────────────────────────────────
   // 📌 The stand follows the CUT, not a fixed radius: the Ronin is 1.1 art
@@ -314,14 +386,60 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
       if (baseMesh) baseMesh.visible = !knockedOut;
       if (halo) halo.visible = !knockedOut;
     },
+    /** The poses this standee can strike (`spirit.poses` that have a traced cut). */
+    poses:[...looks.keys()],
+    /** The pose showing now — null is the Spirit's own base print. */
+    get pose() { return look.name; },
+    /**
+     * Show a pose's print (or `null`, the base). An unknown pose is ignored and
+     * returns false, so a caller can ask any Spirit for 'hit' without checking.
+     */
+    setPose(name = null) {
+      const next = name == null ? base : looks.get(name);
+      if (!next) return false;
+      if (next === look) return true;
+      panel.geometry = next.panelGeo; edge.geometry = next.edgeGeo; art.geometry = next.artGeo;
+      art.material.map = art.material.emissiveMap = next.texture;
+      if (back) { back.geometry = next.artGeo; back.material.map = next.texture; }
+      look = next;
+      return true;
+    },
     dispose() {
+      // The parts hold whichever look is showing; dispose every look's own set.
       for (const m of parts) { m.geometry.dispose(); m.material.dispose(); }
+      for (const l of [base, ...looks.values()]) {
+        if (l === look) continue;
+        l.panelGeo.dispose(); l.edgeGeo.dispose(); l.artGeo.dispose();
+      }
+      for (const l of looks.values()) l.texture?.dispose();
+      back?.material.dispose();
       texture?.dispose();
       group.clear();
     },
   };
   group.userData.standee = api;
   return api;
+}
+
+/**
+ * 🪧 The unprinted side. The print's own texture is bound, but only its ALPHA
+ * is read — so the card has exactly the print's silhouette and holes (the gap
+ * between his arms), and none of its colour. ⚠️ Not `alphaMap`: three reads an
+ * alphaMap's GREEN channel, which on a painted print is paint, not cut.
+ */
+function blankBackMaterial(texture) {
+  const m = new THREE.MeshStandardMaterial({
+    color:STANDEE_BACK.color, emissive:STANDEE_BACK.color, emissiveIntensity:STANDEE_BACK.glow,
+    map:texture, transparent:true, alphaTest:ALPHA_TEST, roughness:STANDEE_BACK.roughness, metalness:0,
+    side:THREE.BackSide, depthWrite:true,
+  });
+  m.onBeforeCompile = s => {
+    s.fragmentShader = s.fragmentShader.replace('#include <map_fragment>',
+      '#ifdef USE_MAP\n\tdiffuseColor.a *= texture2D( map, vMapUv ).a;\n#endif');
+  };
+  m.customProgramCacheKey = () => 'standee-blank-back';
+  m.userData.blankBack = true;
+  return m;
 }
 
 // ⚠️ ONE TEXTURE PER STANDEE, NOT A SHARED CACHE. `releaseArenaObject` disposes

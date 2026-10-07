@@ -18,7 +18,7 @@ import { SVG_W, SVG_H } from '../board/constants.js';
 const VEIL_FADE_MS = 600;
 
 export function BoardViewport({ enabled = true, immersive = false, sceneFrame, autoCamera = true, topView = false, onTopView,
-  quality = 'auto', onQualityLabel, cameraRef, children, riffOverlay, riffProjectionRef }) {
+  quality = 'auto', onQualityLabel, cameraRef, children, riffOverlay, riffProjectionRef, onArenaReady, onArenaError }) {
   const mount = useRef(null);
   const layer = useRef(null);
   const runtime = useRef(null);
@@ -41,11 +41,11 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
     return () => clearTimeout(t);
   }, [ready]);
   useEffect(() => {
-    latest.current = { sceneFrame, quality, autoCamera, topView, onTopView, onQualityLabel };
+    latest.current = { sceneFrame, quality, autoCamera, topView, onTopView, onQualityLabel, onArenaReady, onArenaError };
     runtime.current?.update(sceneFrame);
     runtime.current?.quality(quality);
     runtime.current?.autoCamera(autoCamera);
-  }, [sceneFrame, quality, autoCamera, topView, onTopView, onQualityLabel]);
+  }, [sceneFrame, quality, autoCamera, topView, onTopView, onQualityLabel, onArenaReady, onArenaError]);
   // ☰ → runtime. The view names keep the old toolbar's meaning exactly: ⌗ Top
   // turns top-down ON and frames it; Arena and Spirit leave top-down first.
   useEffect(() => {
@@ -70,18 +70,20 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       setStatus('Loading arena…');
       runtime.current = mountArena(host, element, {
         onRiffProjection: points => {if(riffProjectionRef)riffProjectionRef.current=points;},
-        onReady: () => { if (!cancelled) setStatus('ready'); },
+        // 🎸 `onArenaReady` — the opening act starts its clock when the arena is
+        // actually on screen, never behind the loading veil.
+        onReady: () => { if (!cancelled) { setStatus('ready'); latest.current.onArenaReady?.(); } },
         onQuality: label => { if (!cancelled) latest.current.onQualityLabel?.(label); },
         onCamera: state => { if (!cancelled) setCameraState(state); },
         onTopView: on => { if (!cancelled) latest.current.onTopView?.(on); },
-        onError: () => { if (!cancelled) setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); },
+        onError: () => { if (!cancelled) { setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); latest.current.onArenaError?.(); } },
       });
       runtime.current.update(latest.current.sceneFrame);
       runtime.current.quality(latest.current.quality ?? 'auto');
       runtime.current.autoCamera(latest.current.autoCamera ?? true);
       // A saved top-down choice comes back locked, straight from the first frame.
       if (latest.current.topView) runtime.current.view('tactical');
-    }).catch(() => { if (!cancelled) setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); });
+    }).catch(() => { if (!cancelled) { setStatus('3D unavailable. Enable WebGL in your browser, then retry the arena.'); latest.current.onArenaError?.(); } });
     return () => {
       cancelled = true;
       runtime.current?.dispose();

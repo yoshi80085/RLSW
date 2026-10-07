@@ -1,5 +1,6 @@
 import { initialLoadout } from '../data/loadouts.js';
 import { makeSpotlights } from "./systems/spotlights.js";
+import { openingActOn, openingActSeats, applySpiritEntered, homeHexOf } from "./systems/entrance.js";
 // --- ENGINE STATE ------------------------------------------------------------
 // makeInitialState(gameConfig) -> the single plain-JSON GameState object.
 //
@@ -36,24 +37,35 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
   // raw argument. See the ⚠️ on `winCondition` in that block.
   const winCondition = gameConfig.winCondition === 'fame' ? 'fame' : 'rounds';
 
-  const spirits = gameConfig.spirits.map(s => ({ ...s, lives: startingLives }));
+  const seated = gameConfig.spirits.map(s => ({ ...s, lives: startingLives }));
+  // 🎸 THE OPENING ACT (`systems/entrance.js`): every Spirit waits off the board
+  // with no fans and enters on its own first turn. Opt-in per match.
+  const openingAct = openingActOn(gameConfig);
 
   // Phase 5c foundation: engine builds + OWNS the per-spirit note sheets
   const noteRng = makeRng(seed >>> 0).fork("noteStatesInit");
   const noteStates = {};
-  if (new Set(spirits.map(s => s.id)).size !== spirits.length) throw new Error('Each player must have a unique seat ID');
-  for (const s of spirits) noteStates[s.id] = {
+  if (new Set(seated.map(s => s.id)).size !== seated.length) throw new Error('Each player must have a unique seat ID');
+  for (const s of seated) noteStates[s.id] = {
     ...makeInitialNoteState(s.id, noteRng),
     unlockedSkills: initialLoadout(s),
     loadoutLocked: true,
   };
+  // ⚠️ AFTER the sheets are dealt, so the seeded note stream draws exactly what
+  // it draws without the opening act — the act moves bodies and fans, never notes.
+  const { spirits, noteStates: sheets } = openingAct
+    ? openingActSeats(seated, noteStates)
+    : { spirits: seated, noteStates };
+  Object.assign(noteStates, sheets);
 
   // Phase 6b: stage-FX draw order (engine-owned, seeded)
   const stageFxDeck = shuffledStageFxDeck(makeRng(seed >>> 0).fork("stageFxDeck"));
 
   // Phase 6a: board state (engine-owned, seeded)
   const boardRng = makeRng(seed >>> 0).fork("boardInit");
-  const startHexNums = new Set(spirits.map(s => s.num));
+  // ⚠️ `homeHexOf`, not `s.num`: a waiting Spirit's num is null, and the home
+  // hexes must stay clear of marquees and Lost Chords either way.
+  const startHexNums = new Set(spirits.map(homeHexOf));
 
   // 🎪 THE MARQUEES — one per seat, each in its seat's own quadrant (Alex,
   // 2026-09-29; `systems/marqueeSpaces.js`). On a FORKED stream, so the rest
@@ -85,7 +97,7 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     chargeZones.push({ num: chargePool.splice(idx, 1)[0], cooldown: 0 });
   }
 
-  return {
+  const state = {
     schema: 1,
     config: {
       mode: gameConfig.mode,
@@ -143,6 +155,9 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
         : (gameConfig.elimination === 'on' ? 'on'
            : (winCondition === 'rounds' ? 'off' : 'on')),
       roundLimit: gameConfig.roundLimit ?? ROUND_LIMIT_DEFAULT,
+      // 🎸 The opening act (`systems/entrance.js`). Whitelisted like everything
+      // else here — see the ⚠️ below about fields that set and never arrive.
+      ...(openingAct ? { openingAct: true } : {}),
       // 📏 BENCH INSTRUMENTS, UNDEFINED IN EVERY REAL GAME. `fameTarget`
       // replaces `lives × fpPerLife` in `battleFlow.fameToWin`; `fameCap`
       // replaces `FAME_PER_TURN_CAP` in `grantFame`. Both exist so a
@@ -295,4 +310,10 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     },
     winner: null,
   };
+  // 🎸 THE FIRST SEAT'S FIRST TURN BEGINS HERE. The client never dispatches a
+  // TURN_STARTED for the opening turn (the hand is dealt above), so the first
+  // entrance is resolved at creation — rule-identical, since nothing can happen
+  // between the deal and seat one's first move. The client plays its riff and
+  // step off `turn.lastEntrance` after the intro, like everyone else's.
+  return openingAct && state.acting ? applySpiritEntered(state, { spiritId: state.acting }) : state;
 }

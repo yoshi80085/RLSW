@@ -278,6 +278,8 @@ export function placeBattleDice(dice, { lane, mid, you = 'attacker', front, L = 
  *   beats (sonic): { S, result, fans } — S is `sonicScheduleFor()`
  *   Either `settle`/`result`/`fans` may be Infinity when the caller does the
  *   aftermath itself (the game does, after the overlay closes).
+ *   facings: [vec] which way each print faces (default: down the lane at the other);
+ *   oneSided: [bool] a print with a blank back — film its front only.
  */
 export function directorShot(ctx) {
   const { t, lane, mid, spirits, amps, stands, beats } = ctx, L = { ...BATTLE_DIRECTOR, ...ctx.L };
@@ -289,12 +291,18 @@ export function directorShot(ctx) {
   // the real ones (`facings`, from each pawn's yaw); without them, each is
   // assumed to face the other down the lane — which is how a Sonic stands.
   const normals = spirits.map((_, i) => (ctx.facings?.[i]?.clone() ?? lane.clone().multiplyScalar(i ? -1 : 1)).setY(0).normalize());
+  // 🪧 How well a print reads from a direction: from either side for a print
+  // seen through its sheet, but only from the FRONT for one with a blank back
+  // (`ctx.oneSided[i]`, `standee.js` STANDEE_BACK — the Ronin, 2026-10-06). From
+  // behind, a blank back reads as nothing at all.
+  const facingScore = (c, i) => ctx.oneSided?.[i] ? c : Math.abs(c);
   // Bend a horizontal lens direction just far enough toward the print (front
-  // or back — the art reads from both sides) that it is at most acos(printMin)
-  // off square. A direction already inside that cone is left exactly as it is.
-  const readable = (dir, n) => {
-    const c = dir.dot(n), face = n.clone().multiplyScalar(c < 0 ? -1 : 1);
-    if (Math.abs(c) >= L.printMin) return dir;
+  // or back — the art reads from both sides, unless its back is blank) that it
+  // is at most acos(printMin) off square. A direction already inside that cone
+  // is left exactly as it is.
+  const readable = (dir, n, i) => {
+    const c = dir.dot(n), face = n.clone().multiplyScalar(c < 0 && !ctx.oneSided?.[i] ? -1 : 1);
+    if (facingScore(c, i) >= L.printMin) return dir;
     const want = Math.acos(L.printMin), side = new THREE.Vector3().crossVectors(face, dir).y >= 0 ? 1 : -1;
     return face.applyAxisAngle(Y, want * side).normalize();
   };
@@ -343,7 +351,7 @@ export function directorShot(ctx) {
       return h.clone().setY(0).normalize().multiplyScalar(Math.cos(e)).add(up(Math.sin(e))); };
     const frameAt = d => Math.max(L.twoMin, fitDistance(heads(), target, d, L.twoFov, aspect, L.twoMargin));
     const score = d => { const at = target.clone().addScaledVector(d, frameAt(d));
-      return Math.min(...spirits.map((S, i) => Math.abs(at.clone().sub(S).setY(0).normalize().dot(normals[i])))); };
+      return Math.min(...spirits.map((S, i) => facingScore(at.clone().sub(S).setY(0).normalize().dot(normals[i]), i))); };
     // 🔭 …and CLEAR (2026-09-28): the smallest swing that sees both prints AND
     // has nothing between the lens and the pair — not at the tight framing,
     // and not at the wide one the push starts from either (the push used to
@@ -398,7 +406,7 @@ export function directorShot(ctx) {
     // …and never so far round that the print goes edge-on — at some corners
     // the amp sits square to the way the Spirit faces, and the old lens then
     // filmed a sliver of acrylic in front of a cabinet ("pointing at nothing").
-    const dir = readable(base.applyAxisAngle(Y, turn * sign), normals[i]);
+    const dir = readable(base.applyAxisAngle(Y, turn * sign), normals[i], i);
     const dist = fans ? L.finalDist : L.chargeDist, height = fans ? L.finalHeight : L.chargeHeight;
     // Aim part-way from the standee toward what it is about to be about — its
     // amp for a charge, its crowd for the last shot — so both are in frame.
@@ -412,7 +420,7 @@ export function directorShot(ctx) {
     // 🔭 Swung round the standee, never through the other Spirit: the old lens
     // stood on the amp → standee line, which at close range is often exactly
     // where the opponent is — a sheet of acrylic filling the screen.
-    const printOff = p => { const c = Math.abs(p.clone().sub(S).setY(0).normalize().dot(normals[i]));
+    const printOff = p => { const c = facingScore(p.clone().sub(S).setY(0).normalize().dot(normals[i]), i);
       return c < L.printMin ? 2 * (L.printMin - c) + .5 : 0; };
     const pos = settle(key, S.clone().setY(mid.y).addScaledVector(dir, dist).add(up(height)), target,
       fans ? L.finalFov : L.chargeFov, [i], { pivot:chest, extra:printOff });

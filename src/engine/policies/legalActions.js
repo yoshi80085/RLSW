@@ -260,12 +260,18 @@ export function legalActions(state, spiritId, view = {}) {
   // ═════════════════════════════════════════════════════════════════════════
 
   const here    = HEX_BY_NUM[self.num];
-  const rivals  = (state.spirits ?? []).filter(s => s.id !== spiritId && !s.knockedOut);
+  // 🎸 THE OPENING ACT: a Spirit still waiting off the board (`num` null,
+  // `systems/entrance.js`) is no one's target — it is left out of `rivals`
+  // EXPLICITLY rather than trusting every finder below to miss a null hex. It
+  // still reaches `blocked`, through `others`, because its reserved home hex is
+  // a wall to walking, hopping and sliding.
+  const others  = (state.spirits ?? []).filter(s => s.id !== spiritId && !s.knockedOut);
+  const rivals  = others.filter(s => s.num != null);
   // 👤 the decoy blocks like a body, and so does an amp.
   // ⭐ BUILT BY `bushidoBlockers` SINCE 2026-09-05, and the sharing is the rule:
   // movement and 🗡️ Bushido's lane must agree about what a body is, or a hex you
   // cannot walk through is one the draw pretends is empty. Same set, one place.
-  const blocked = bushidoBlockers({ spirits: rivals, amps: amps ?? [], shadowHex, shadowHexes });
+  const blocked = bushidoBlockers({ spirits: others, amps: amps ?? [], shadowHex, shadowHexes });
 
   // MOVEMENT — one hex at a time into an unoccupied neighbour.
   if (here && ap >= MOVE_AP_COST) {

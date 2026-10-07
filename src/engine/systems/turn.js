@@ -10,12 +10,17 @@ import { stepSpotlights, resolveSpotPose } from "./spotlights.js";
 import { LIMELIGHT_HEX, SLIDE_STEPS_PER_TURN } from "../../data/gameConstants.js";
 import { applySlimeDecayed } from "./slime.js";
 import { respawnFromAbyss } from './crumbling.js';
+import { applySpiritEntered, isWaiting, isEntranceHex } from './entrance.js';
 
 /** TURN_STARTED — record whether the spirit begins its turn on the Limelight hex. */
 export function applyTurnStarted(state0, { spiritId }) {
+  // 🎸 THE OPENING ACT — a Spirit still waiting off the board steps onto its
+  // home hex and gains its two fans, FIRST, so everything below sees it on
+  // stage. A no-op for everyone who has already entered (`systems/entrance.js`).
+  const entered = applySpiritEntered(state0, { spiritId });
   // 🔦 A spotlight pose struck last turn is judged NOW, before anything else
   // this turn can move the body — `systems/spotlights.js`.
-  const state = resolveSpotPose(respawnFromAbyss(state0, spiritId), spiritId);
+  const state = resolveSpotPose(respawnFromAbyss(entered, spiritId), spiritId);
   const sp = state.spirits.find(s => s.id === spiritId);
   return {
     ...state,
@@ -234,9 +239,18 @@ export function applySpiritsSynced(state, { spirits }) {
  * — the shim only emits patches for the current roster (roster changes fall
  * back to the SPIRITS_SYNCED full replace). Consumes no rng.
  */
-export function applySpiritPatched(state, { spiritId, patch = {} }) {
+export function applySpiritPatched(state, { spiritId, patch: raw = {} }) {
   const sp = state.spirits.find(s => s.id === spiritId);
   if (!sp) return state;
+  // 🎸 THE OPENING ACT'S BACKSTOP for the client's diffing shim (`setSpirits`):
+  // a client rule that relocates bodies (a pull, a swap, a scatter) cannot put a
+  // waiting Spirit on the board, nor anyone on a reserved home hex. Only the
+  // position is dropped; the rest of the patch lands. The entrance itself
+  // happens in TURN_STARTED, never through a patch.
+  let patch = raw;
+  if ('num' in raw && raw.num !== sp.num && (isWaiting(sp) || isEntranceHex(state, raw.num))) {
+    patch = { ...raw }; delete patch.num;
+  }
   return {
     ...state,
     spirits: state.spirits.map(s => s.id !== spiritId ? s : { ...s, ...patch }),

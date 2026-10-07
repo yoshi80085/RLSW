@@ -61,8 +61,10 @@ ok('SEAT_PORTRAIT is the 2026-09-25 dial-in (5 of 33 levers moved: height, width
     look:'full', rim:'on', panel:'stripes', panelAlpha:0.6, slant:18,
     numeral:'on', enter:'slide', enterMs:760, idle:'drift',
     inactive:'dim', empty:'ghost' }));
-ok('every head focus was left at its default in the dial-in', JSON.stringify(HEAD_FOCUS) === JSON.stringify({
-  cosmic_ronin:{ x:0.555, y:0.14, h:0.27 }, intergalactic_0:{ x:0.56, y:0.25, h:0.24 },
+// 🎨 The Ronin's was re-read off his NEW art (2026-10-06 — a new drawing, the old
+// focus pointed at empty space beside his hat); the other three are the dial-in's.
+ok('every head focus was left at its default in the dial-in (the Ronin re-read off his new art)', JSON.stringify(HEAD_FOCUS) === JSON.stringify({
+  cosmic_ronin:{ x:0.49, y:0.134, h:0.235 }, intergalactic_0:{ x:0.56, y:0.25, h:0.24 },
   Metalness_Monster:{ x:0.465, y:0.18, h:0.22 }, Glamarchy:{ x:0.47, y:0.13, h:0.25 } }));
 
 console.log('§2 the head lands where the levers say');

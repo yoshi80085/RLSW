@@ -2,6 +2,7 @@ import { HEX_BY_NUM, HEX_BY_QR } from '../../board/hexMap.js';
 import { neighborInDirection } from '../../board/hexGeometry.js';
 import { PSYCHO_BUSHIDO_MAX_RANGE, PSYCHO_BUSHIDO_STACK_COST, psychoBushidoD8s, SONIC_BASE_DIE, SONIC_UPGRADED_DIE } from '../../data/gameConstants.js';
 import { firePatch } from './cooldowns.js';
+import { entranceHexes } from './entrance.js';
 
 // ⭐ ONE OCCUPANCY POLICY, AND IT IS ALEX'S CALL OF 2026-09-05: ANY BODY BLOCKS.
 //
@@ -19,9 +20,16 @@ import { firePatch } from './cooldowns.js';
 // 1 so the origin can never appear in it, but a caller that built the set from
 // "every spirit" and then re-checked `step.num === self.num` inside its own loop
 // is exactly the kind of duplicated policy this replaces.
+//
+// 🎸 AND A RESERVED HOME HEX IS A BODY TOO (the opening act, Alex 2026-10-06):
+// while a Spirit waits off the board for its first turn, nobody may walk, hop,
+// slide or be drawn onto its home hex. Read off the same `spirits` list, so
+// every caller of this set — the walk, Shukuchi, the slide, the Bushido lane,
+// the client's highlights — honours the reservation without being told.
 export function bushidoBlockers({ spirits = [], amps = [], shadowHex = null, shadowHexes = [], selfId = null } = {}) {
   return new Set([
-    ...spirits.filter(s => !s?.knockedOut && s?.id !== selfId).map(s => s.num),
+    ...spirits.filter(s => !s?.knockedOut && s?.id !== selfId && s?.num != null).map(s => s.num),
+    ...entranceHexes(spirits),
     ...amps.map(a => a.hexNum),
     ...shadowHexes,
     ...(shadowHex != null ? [shadowHex] : []),

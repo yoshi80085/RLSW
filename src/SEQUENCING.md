@@ -26,63 +26,163 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 59-intro. Bardbarian opens the arena — 2026-10-04
+## 61-roninart. The Ronin's new drawing: Thrash1, Thrash2, hit, and a blank back — 2026-10-06
 
-Alex requested a larger-than-life outline of the Rock God in the nebula, arms
-extended as he introduces the Spirits. Each crashes down between the fans and
-its old starting hex. New rule: wait here with no fans; on the first turn play
-the same picker riff, step onto the old home hex, and gain two fans. This closes
-the four-player opportunity to attack a Spirit before it has taken a turn.
+**Alex:** *"I've replaced Cosmic_Ronin standee in the files - and with it, the 2
+Thrash phases … phase 1 of Thrash is Thrash1, phase 2 is Thrash2, and whenever
+Ronin gets hit back (loses a bout), use the 'hit' picture for the standee"*;
+*"create the 'back side' of the Ronin as... blank. It should be obvious which
+side is the 'front' and which is the 'back'."*
 
-Built the interactive preview first, following CLAUDE.md. The real arena,
-standees, crowd and picker riffs run together at `previews/bardbarian-intro/`.
-The god uses an original imagegen asset filtered to spectral contours; storms,
-lightning, impact rings, fragments, rebound and camera are animated in Three.js.
-Two/three/four seats, reduced motion, saved controls, selectable Copy dial-in,
-replay, seek and first-turn rehearsal are available. Four seats use a duplicate
-Ronin with its proper corner identity, never the locked Glamarchy.
+**What arrived:** four RGB PNGs on WHITE (no alpha), 1316×1195, with white
+space under the feet. The standee needs alpha (alphaTest .45) and a traced cut,
+and stands the image's bottom edge on the deck — as delivered he would have
+floated ~0.07 units over his hex inside a white card.
 
-Alex subsequently supplied the complete dial-in and requested a Claude handoff.
-His exact export is now `previews/bardbarian-intro/alex-dial-in.json`; its settings
-are imported as the preview defaults, preserving the original comparison in
-the same file. Scale 1.17, presence .24, detail .74, storm .9, fall height 24,
-impact 1.35, shake .65, bloom .55; every unchanged setting is preserved too.
-`CLAUDE_BARDBARIAN_INTRO_HANDOFF.md`, linked from CLAUDE.md, maps editing paths,
-launch commands, assets, checks and the remaining port. The portable source and
-assets snapshot is `handoffs/bardbarian-intro-2026-10-05.zip`. It is a local
-handoff, not an upload or a remote Git update.
+**The art pipeline — `scripts/standee-art.py`.** Masters copied untouched to
+`src/standees/source/`; the script keys paper-white (≥236, grey) that touches
+the frame plus any enclosed pocket ≥0.01% of the image (the gap between his
+raised arms), un-mixes the anti-aliased rim from the white, erases hand-drawn
+effect polygons (`ERASE` — only Thrash2's swoosh + burst, which touch the
+drum), crops to the `body` figure with the lip margin and nothing under the
+feet, and traces `tight`/`body` with `.scratch/trace-standees.py`'s exact
+thresholds. `--splice` rewrites the whole Ronin record (base + `poses`) in
+`board/standeeOutlines.js` and the same text + a webp of the base into
+`.scratch/standee-preview.html` (`test:standee` §0 parity holds). ⚠️ On these
+opaque drawings the tracer's "glow off" step does nothing (every painted pixel
+is solid), so effects that TOUCH the figure need an `ERASE` polygon; detached
+ones (shards, speed lines) are dropped by MINP/THIN as before.
 
-**Status: selected settings saved; preview only.** No normal-match rule or visual port yet. The accepted
-waiting-space rule is in STATE_OF_PLAY; the preview README lists port coverage:
-authoritative entrance state, all targeting and bot paths, exactly-once fans,
-normal-match UI journey, intro skipping, saved games/network and Testing Grounds.
-A later entrant's home hex must also be available; the production policy must
-be explicit. Do not mistake a preview's targetable flag for engine immunity.
+**The standee — `board/standee.js`.** `spirit.poses` ({name: url}) with a cut
+each → built up front; `api.setPose(name)` swaps the print/glow texture and the
+art, sheet and edge geometries ON THE SAME MESHES, so lean, KO fall, pyro's
+`applyKo` (parts 1–3) and the picker's tint keep working. Poses stand at their
+drawn size (`poseHeight` = height × pose px h / base px h). `STANDEE_BACK`
+(`blank: ['cosmic_ronin']`): print FrontSide + a BackSide CHILD of the print
+with the same geometry, reading only the texture's alpha (shader patch — not
+`alphaMap`, which reads green). A child, not a part, so "the part with a map"
+still finds one print everywhere.
 
-Checks: 98 intro assertions, lint clean, preview and app bundles clean with zero
-warnings. Browser playback reaches each first turn in order: only entrants get
-two fans; 2/3/4 players, reduced motion, seek/replay, persistence/export verified,
-no browser errors. Fixed an effects teardown that detached its reusable root.
-The original full sweep stopped at the card journey; the incoming Claude commits
-fix that failure and the 14 missing architecture rows. On 2026-10-05 the combined
-checkout passes intro (98), preview lint, both bundles (zero warnings), and
-architecture (8 checks; 391 modules, 512 paths, 684 exports). The full sweep completes 36 suites, then
-stops at Claude's documented Shadow cooldown rule invariant in `test:bushido`.
-The isolated source project also passes 98 intro checks and loads Alex's exact
-settings and assets in Chromium without warnings/errors. Audio cues exercised,
-speaker mix not judged. The external
-Claude Systems Map has no callable Artifact publishing
-tool in this environment; the repository handoff records the pending port.
+**The Thrash — `board/swingStandee.js`.** `playsOwnThrash(art)` (has thrash1 +
+thrash2) → no stick figure; his standee turns to face `front` (`battleStage`'s
+`frontSide`, now passed into the wrap) and `thrashPose` maps the stick
+figure's own beats: ready → thrash1, strike → thrash2, from `T.result` a loss or
+tie → hit; turned home, a winner is his base print again. The drawings strike
+to their RIGHT: facing the front puts that toward the Rival on one side of the
+lane and away on the other, so there the posed print is mirrored (scale.x −1,
+applied only with a pose, so the flip hides in the change of drawing).
+`facings()` hands the director his real print normal.
 
-**2026-10-05 branch reconciliation:** local `61f50a1` and incoming `6e7238a`
-diverged from `5ba5ff1` on `chore/cleanup-rockgods-tutorial`; the older Thrash
-branch was already merged at `71170f7`. Completed the pending local merge,
-keeping the Bardbarian handoff here and preserving the incoming `59-triage`
-verbatim in `../docs/archive/SEQUENCING-2026-10-04-test-triage.md`. Both are in
-the index. No remote push. The root Claude handoff explains the history.
+**Hit back — `board/arenaVisuals.js`.** `poseHit(pawn)` on every
+`hitBackCount` change and, when a Thrash closes, for its loser (both on a tie);
+holds `HIT_POSE_HOLD` 2.4 s from the last trigger, then `setPose(null)`.
+Pose art via `data/standeePoses.js` with `new URL(…, import.meta.url)` — a
+static PNG import broke `test:arena` (same as the Bardbarian).
 
-Next: Claude can continue from the saved dial-in and editable handoff. Integrate
-the presentation and accepted rule into normal matches when that work resumes.
+**The lens — `board/battleDirector.js`.** `ctx.oneSided[i]`: `readable`,
+`printOff` and the two-shot's print score use the signed dot for a blank-backed
+print, so a charge shot never films his blank back.
+
+**Also:** `ui/seatPortrait.js` `HEAD_FOCUS.cosmic_ronin` re-read off the new
+art (0.49 / 0.134 / 0.235) — the old focus pointed beside his hat.
+
+**Calls made, not Alex's:** a TIE shows hit (both are thrown back) · the hit
+print holds 2.4 s · the back colour `#c4cbd6`, lightly self-lit · poses keep
+their drawn scale · mirroring the posed print · only the Ronin gets a blank
+back · `Cosmic_Ronin_mirror.png` (old art, used by `GameErrorBoundary` and the
+archived 2D board) left alone.
+
+**Evidence:** `test:standee` 161 (new: the poses' cuts, setPose, drawn heights,
+the blank back's side/alpha/child, a minimal Thrash both sides of the lane:
+front-facing, striking at the Rival, Thrash1 → Thrash2 → hit on loss and tie) ·
+`test:arch` 8 · `test:seatportrait` 66 · `test:swing`, `test:battledirector`,
+`test:battlelens`, `test:arena`, `test:sonicfx`, `test:sonicjourney`,
+`test:battlejourney`, `test:entrancejourney`, `test:riffarenalive`,
+`test:bushidoarena`, `test:pyrostage`, `test:beamlayer`, `test:cursedshamisen`,
+`test:spiritpicker`, `test:standeemove`, `test:topview`, `test:cameradirector`
+green · `test:abilitydemo` 142/143 — the one red is its preview-lever parity
+(`.scratch/ability-demo-preview.jsx`), untouched here. Rendered headless in
+Chromium (swiftshader): front, blank back, each pose, a mirrored pose.
+⏳ `check:bundle` not run (the cloud VM cannot run the Windows rollup binary).
+
+**Next:** Alex plays a Thrash with the Ronin on a real GPU — both as attacker
+and defender, a win, a loss and a tie — and gets shoved by a Sonic. Rule the
+calls above.
+
+---
+
+## 60-openingport. The opening act goes into the game — 2026-10-06
+
+**Start:** two workflows had overlapped (Bardbarian work and Claude's triage
+commits). Checked in order: the merge `feb0f2f` of `61f50a1` and `6e7238a` is
+complete, no conflict markers, every remote branch is contained in HEAD, and the
+249 "modified" files in the working tree were line endings only (zero content
+diff with `--ignore-cr-at-eol`). Alex pushed the three local commits. ⚠️ Plain
+`git status` from the cloud VM leaves a `.git/index.lock` it cannot delete —
+use `git --no-optional-locks` there.
+
+**Alex's ruling (2026-10-06):** *"those players whose turn hasn't come up yet
+aren't even technically on the board yet — They should be placed in the spot in
+between the previous 'home hex' and the fan's seats — There is a tiny space (not
+quite a hex)"*, and the home hex is **reserved** until its Spirit enters.
+Testing Grounds keeps everyone on stage (default; not ruled).
+
+**The rule — `engine/systems/entrance.js`.** One state, `spirit.entrance`:
+waiting = `num` null + the entrance record. ⭐ Null `num` is the protection: any
+path that finds a body by hex finds nothing, so a forgotten filter fails CLOSED.
+The paths that MOVE bodies read `entranceHexes`: `bushidoBlockers` (walk, hop,
+slide, Bushido lane, every client highlight that uses it), `knockback`, the
+reducer's movement door (`MOVE_STEP`/`SHUKUCHI_HOPPED`/`SPIRIT_WARPED`/
+`SPIRIT_SLID` refused onto a reserved hex or for a waiting Spirit), the daze
+redirect, and `SPIRIT_PATCHED` (drops a `num` that would). `legalActions` leaves
+waiting Spirits out of `rivals` explicitly. Entrance only at `TURN_STARTED`
+(seat one at `makeInitialState`, because the client never dispatches a turn
+start for the opening turn) — exactly once, +`ENTRANCE_FANS` (= the old
+`FAN_DIEHARD_START`, 2) Diehards, `turn.lastEntrance` for the theatre.
+Opt-in `config.openingAct` (whitelisted in `state.js`); the lobby sets it for
+local and online starts. The dealt hands and the rng cursor are identical with
+or without it.
+
+**Client rules.** `reservedHexes` joins every occupancy set in `Game` (move
+tiles, slide, displace/warp, Shukuchi landings, hazard and token spawns, pyro
+arming). Two event bugs a waiting Spirit exposed: `satanic_panic` rolled for
+Spirits not in the room, and `stage_dive` would reach `[0].r` of an empty list
+if every rival were waiting — both filter `num != null` now.
+
+**The picture.** `board/openingAct.js` is the clock (wall-clock ms stamps from
+`openingSchedule` / `entranceAt`, so the arena, the sound and the input lock read
+one clock) and the pad geometry (47% home → grandstand, 1.08 units off the home
+hex's centre, outside the grid). `board/openingActStage.js` on the live arena:
+the Bardbarian (built on first use — his texture needs a DOM), pads, crash
+rings, shafts, shards, the hop, the intro lens (ahead of the director in
+`arenaRenderer`, never under ⌗ top-down; a skipped intro reframes the arena)
+and the bloom/exposure envelope. It holds a pawn through `pose` like the pyro
+reaction and lets go if the engine has already moved it. `bardbarian.js` is the
+preview's shader unchanged; art by `new URL` (a static PNG import broke
+`test:arena`/`test:sonicfx`). Sound: `audio/openingActSfx.js` on the SFX bus +
+the picker's `playSpiritSting`. `ui/OpeningActOverlay.jsx`: captions, ⏭ Skip,
+HUD hidden by a body flag. Bots wait for the intro and for their own entrance
+(`entranceHoldRef` + a nudge — a state-based hold stalled the machine).
+Arena failure gives the intro up at once; a 45 s fallback covers a hang.
+
+**Calls made, not Alex's:** Testing Grounds stays as it was · the intro starts
+when the arena is ready (behind the veil it would be wasted) · the HUD hides
+for the intro · the pads stay after entry, dimmed (as the preview ends) · the
+stand stays empty until the hop lands (the engine granted the fans at turn
+start) · the intro's bloom/exposure apply only while the Bardbarian is up.
+
+**Evidence:** `test:entrance` 2,695 (opt-in, opening board ×3 sizes, entrance
+once, every door, no legal action naming a waiting Spirit, 36 whole bot matches
+audited after every turn, the bench end to end, parity with the preview's
+timeline) · `test:entrancejourney` 29 (real `Game`, lobby config; mutation:
+dropping the client reservation fails it) · mutation-checked engine doors
+(blockers, knockback, turn-start entrance) · `check:bundle` 0 warnings ·
+`test:arch` 8 · **full sweep (now 92 suites, run one by one in a fresh clone): 88 green**; the 4 red are the known ones — `test:bushido`'s Shadow call, and `shukuchiui` / `standeemove` / `dice`, which need the uncommitted `.scratch/` previews (green on Alex's machine). Chromium (swiftshader, time slowed 4–5×):
+storm, landings, seat one's riff and hop, Skip, a bot seat entering and then
+playing, no page errors.
+
+**Next:** Alex plays a real match on a real GPU with sound. Rule his calls
+above. The preview stays the tuning surface; the game imports the same JSON.
 
 ---
 
@@ -230,7 +330,9 @@ Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `59-intro` | 2026-10-04 | Bardbarian introduction preview, saved Alex dial-in and portable Claude handoff. Accepted off-board first-turn rule; gameplay port still pending. |
+| `61-roninart` | 2026-10-06 | The Ronin's new art: white masters keyed/cropped/traced by `scripts/standee-art.py`; his own Thrash1/Thrash2 prints replace the stick figure, 'hit' on any shove and on a lost/tied Thrash, a blank back, the lens films his front. `test:standee`. |
+| `60-openingport` | 2026-10-06 | The opening act in the game: Spirits wait off the board on pads, enter on their own first turn with 2 fans, home hex reserved; Bardbarian intro on the live arena at Alex's dial-in; bots and online. `test:entrance`, `test:entrancejourney`. |
+| `59-intro` | 2026-10-04 | Archived in `../docs/archive/SEQUENCING-2026-10-06-before-opening-port.md`. Bardbarian introduction preview, saved Alex dial-in and portable Claude handoff; branch reconciliation. Ported by `60-openingport`. |
 | `59-triage` | 2026-10-04 | Archived in `../docs/archive/SEQUENCING-2026-10-04-test-triage.md`. The 21 red suites brought up to the current rules (Thrash clash, no radius, Eleven die, cuts, rebase); `spendDriveStack` deleted; 14 ARCHITECTURE rows. Left red for Alex: the Shadow CD/duration invariant, and three suites needing uncommitted `.scratch/` previews. |
 | `54-sustain` | 2026-10-04 | Living Sustain shield production port. Archived in `../docs/archive/SEQUENCING-2026-10-04-before-bardbarian.md`. |
 | `58-thrashbill` | 2026-10-03 | Thrash bill: attacker 2 Drive notes, defender 1, win/lose/tie; a Thrash (and the Tentacle) needs 2 Drive notes; a tie throws both back a hex, no Vibe. Shadow whiffs pay the Drive price; the Sonic whiff's AP fixed to 1. Thrash constants moved to `gameConstants` so `battleFlow` stays art-free (`test:sandbox`). `test:legal`, `test:swing`. |

@@ -7,8 +7,8 @@
 // because those are the parts a refactor would quietly undo.
 import { readFileSync, existsSync } from 'node:fs';
 import * as THREE from 'three';
-import { STANDEE as T, STANDEE_Y, cutFor, outlinePoint, halfWidth, standeeYaw, steepPitch,
-  ribbons, planarUV, createStandee } from './standee.js';
+import { STANDEE as T, STANDEE_Y, STANDEE_BACK, hasBlankBack, cutFor, poseHeight, outlinePoint, halfWidth,
+  standeeYaw, steepPitch, ribbons, planarUV, createStandee } from './standee.js';
 import { STANDEE_OUTLINES } from './standeeOutlines.js';
 
 let pass = 0, fail = 0;
@@ -65,16 +65,38 @@ for (const id of IDS) {
 {
   // 🎯 Alex, 2026-09-25: "Only the immediate physical part of the standee should
   // be covered in the acrylic layer, other 'effect' areas should be cut off."
-  // Read off the Ronin because he is the one with effects to lose AND a thin
-  // physical part (the shamisen's headstock) that a careless cut would lose too.
+  // 🎨 2026-10-06: the Ronin is a NEW drawing (no lightning — a hat, a plain
+  // robe), traced by `scripts/standee-art.py` off a white-background master,
+  // cropped to his figure. What a careless cut would lose is now the shamisen's
+  // pegs, out at his right shoulder, and the point of his hat.
   const shoelace = r => Math.abs(r.reduce((s, [x, y], i) => { const [u, v] = r[(i + 1) % r.length]; return s + x * v - u * y; }, 0)) / 2;
   const area = rings => rings.reduce((s, r) => s + shoelace(r), 0);
-  const R = STANDEE_OUTLINES.cosmic_ronin, rb = R.body.art.flat(), rt = R.tight.art.flat();
-  ok('Ronin: the lightning off his right side is cut away', Math.max(...rb.map(p => p[0])) < 0.93 && Math.max(...rt.map(p => p[0])) > 0.94,
-    `body reaches x ${Math.max(...rb.map(p => p[0]))}, tight ${Math.max(...rt.map(p => p[0]))}`);
-  ok('Ronin: …but the shamisen headstock, out at the far left, is kept', rb.some(([x, y]) => x < 0.06 && y < 0.35),
-    `leftmost body point x ${Math.min(...rb.map(p => p[0]))}`);
-  ok('Ronin: …and so is his topknot, the top of the figure', Math.min(...rb.map(p => p[1])) < 0.01);
+  const R = STANDEE_OUTLINES.cosmic_ronin, rb = R.body.art.flat();
+  const top = rb.reduce((a, p) => p[1] < a[1] ? p : a), right = rb.reduce((a, p) => p[0] > a[0] ? p : a);
+  ok('Ronin: he stands on his feet — nothing under them in the drawing', Math.max(...rb.map(p => p[1])) > 0.99,
+    `lowest point y ${Math.max(...rb.map(p => p[1]))}`);
+  ok('Ronin: the shamisen pegs, out at his right shoulder, are kept', right[0] > 0.9 && right[1] < 0.35, `rightmost ${right}`);
+  ok('Ronin: …and the point of his hat is the top of the figure', top[1] < 0.07 && top[0] > 0.4 && top[0] < 0.6, `top ${top}`);
+  // 🎸 HIS POSES (2026-10-06) — Thrash1 (the raise), Thrash2 (the clash), hit.
+  for (const pose of ['thrash1', 'thrash2', 'hit']) {
+    const o = R.poses?.[pose], b = o?.body?.art?.flat() ?? [];
+    ok(`Ronin ${pose}: traced, both cuts`, !!o?.tight?.art?.length && !!o?.body?.art?.length && !!o?.body?.panel?.length && b.length > 100);
+    ok(`Ronin ${pose}: every point is inside its image`, b.every(([x, y]) => x >= 0 && x <= 1 && y >= 0 && y <= 1));
+    ok(`Ronin ${pose}: he stands on his feet`, Math.max(...b.map(p => p[1])) > 0.99);
+    ok(`Ronin ${pose}: one piece — no effect left over as a crumb`, o.body.art.length === 1, `${o.body.art.length} pieces`);
+  }
+  const P = R.poses, ext = (o, f) => o.body.art.flat().reduce((a, p) => f(p, a) ? p : a);
+  ok('Thrash1: the shamisen is OVER his head — the top of the cut is the drum, out left of his hat',
+    ext(P.thrash1, (p, a) => p[1] < a[1])[0] < 0.3, `top ${ext(P.thrash1, (p, a) => p[1] < a[1])}`);
+  ok('Thrash2: the swoosh and the burst are cut away — his right-most point is his front FOOT, not the burst',
+    ext(P.thrash2, (p, a) => p[0] > a[0])[1] > 0.9, `rightmost ${ext(P.thrash2, (p, a) => p[0] > a[0])}`);
+  ok('Thrash2: …and nothing of the swoosh above his hat', Math.min(...P.thrash2.body.art.flat().map(p => p[1])) > 0.03);
+  ok('hit: thrown back, the shamisen flung up behind him — the left-most point is high', ext(P.hit, (p, a) => p[0] < a[0])[1] < 0.25);
+  ok('a pose stands at the size it was DRAWN, not stretched to the dial-in height',
+    Math.abs(poseHeight('cosmic_ronin', 'thrash2') - T.height * P.thrash2.h / R.h) < 1e-9 && poseHeight('cosmic_ronin', 'thrash2') < T.height
+    && poseHeight('cosmic_ronin', 'nope') === T.height, poseHeight('cosmic_ronin', 'thrash2').toFixed(2));
+  ok('a pose the Spirit does not have is null, never the base cut', cutFor('cosmic_ronin', T, 'nope') === null
+    && cutFor('intergalactic_0', T, 'hit') === null && cutFor('cosmic_ronin', T, 'hit').art === P.hit.body.art);
   for (const id of IDS) {
     const o = STANDEE_OUTLINES[id];
     ok(`${id}: the figure is never bigger than everything-in-the-art`, area(o.body.art) <= area(o.tight.art) * 1.01,
@@ -174,13 +196,35 @@ const build = (over = {}) => createStandee(spirit, { T:{ ...T, ...over }, loader
   for (let i = 0; i < pos.count; i++) { minY = Math.min(minY, pos.getY(i)); maxY = Math.max(maxY, pos.getY(i)); maxX = Math.max(maxX, Math.abs(pos.getX(i))); }
   ok('the print is the traced cut, not a quad', pos.count > 200, `${pos.count} vertices`);
   ok('it stands on the ground', Math.abs(minY) < 0.05, minY.toFixed(3));
-  ok('…as tall as the dial-in says', Math.abs(maxY - T.height) < 0.06, maxY.toFixed(3));
+  // 📌 The drawing is cropped with the clear margin over his hat (the lip rides
+  // on it), so the FIGURE tops out a hair under the dial-in height — never over.
+  ok('…as tall as the dial-in says (the figure, under its clear margin)', maxY <= T.height + 1e-9 && maxY > T.height * 0.93, maxY.toFixed(3));
   const o = cutFor(spirit.id);
   ok('…and as wide as the drawing is', Math.abs(maxX - T.height * (o.w / o.h) / 2) < 0.12, maxX.toFixed(3));
 
-  // ⭐ ALEX'S RULING: one print, seen from both sides through the sheet.
-  ok('one print, both sides — no mirrored twin', art.material.side === THREE.DoubleSide
-    && s.parts.filter(m => m.material.map).length === 1);
+  // ⭐ ALEX'S RULING: one print — no mirrored twin.
+  ok('one print — no mirrored twin', s.parts.filter(m => m.material.map).length === 1);
+  // 🪧 AMENDED 2026-10-06 for the Ronin: "create the 'back side' of the Ronin as...
+  // blank. It should be obvious which side is the 'front' and which is the 'back'."
+  {
+    const back = art.children.find(m => m.material?.userData?.blankBack);
+    ok('the Ronin has a blank back', hasBlankBack('cosmic_ronin') && hasBlankBack('cosmic_ronin::red') && !!back);
+    ok('…his print is on the FRONT only, and the back is the other face of the same cut',
+      art.material.side === THREE.FrontSide && back.material.side === THREE.BackSide && back.geometry === art.geometry);
+    ok('…plain card in the print\'s silhouette: its alpha cut, none of its colour',
+      back.material.map === art.material.map && !back.material.emissiveMap && back.material.alphaTest === art.material.alphaTest
+      && back.material.color.getHexString() === STANDEE_BACK.color.slice(1));
+    ok('…and the shader reads only the alpha of that texture', (() => {
+      const sh = { fragmentShader:'a\n#include <map_fragment>\nb' }; back.material.onBeforeCompile(sh);
+      return !sh.fragmentShader.includes('<map_fragment>') && /diffuseColor\.a \*= texture2D\( map, vMapUv \)\.a/.test(sh.fragmentShader); })());
+    ok('…a child of the print, so it leans, falls and swaps pose with it — not a second "print" part',
+      back.parent === art && !s.parts.includes(back));
+    const zero = createStandee({ id:'intergalactic_0', color:'#fff', imageSrc:'x.png' }, { loader:stubTexture });
+    const zArt = zero.parts.find(m => m.material.map);
+    ok('the other Spirits still show their print through the sheet, both sides', !hasBlankBack('intergalactic_0')
+      && zArt.material.side === THREE.DoubleSide && zArt.children.length === 0);
+    zero.dispose();
+  }
   ok('the print is the Spirit\'s own art', art.material.map === art.material.emissiveMap && !!art.material.map);
   ok('UVs cover the print', (() => { const uv = art.geometry.attributes.uv; let lo = 2, hi = -1;
     for (let i = 0; i < uv.count; i++) { lo = Math.min(lo, uv.getX(i), uv.getY(i)); hi = Math.max(hi, uv.getX(i), uv.getY(i)); }
@@ -254,10 +298,89 @@ ok('planarUV puts a uv on every vertex', (() => {
   const g = planarUV(new THREE.PlaneGeometry(1, 1), 1, 1, 1, 1);
   return g.attributes.uv.count === g.attributes.position.count; })());
 
+console.log('§3b the poses (Alex, 2026-10-06: Thrash1, Thrash2, hit)');
+{
+  const poses = { thrash1:'t1.png', thrash2:'t2.png', hit:'hit.png' };
+  const loaded = [];
+  const s = createStandee({ ...spirit, poses }, { loader:url => { loaded.push(url); return Object.assign(stubTexture(), { name:url }); } });
+  const art = s.parts.find(m => m.material.map), panel = s.parts.find(m => m.material.isMeshPhysicalMaterial);
+  const edge = s.parts.find(m => m.material.isMeshStandardMaterial && !m.material.map && m.renderOrder === 9);
+  const back = art.children[0], baseGeo = art.geometry, baseMap = art.material.map, basePanel = panel.geometry;
+  ok('every pose is fetched up front, so a swap mid-battle is never a frame of nothing', ['x.png', 't1.png', 't2.png', 'hit.png'].every(u => loaded.includes(u)));
+  ok('the standee knows its poses', s.poses.join() === 'thrash1,thrash2,hit' && s.pose === null);
+  ok('setPose swaps the print, its glow, the sheet and the neon edge', s.setPose('thrash1') && s.pose === 'thrash1'
+    && art.material.map.name === 't1.png' && art.material.emissiveMap === art.material.map
+    && art.geometry !== baseGeo && panel.geometry !== basePanel && edge.geometry.attributes.position.count > 100);
+  ok('…the blank back follows it, cut for cut', back.geometry === art.geometry && back.material.map === art.material.map);
+  const top = g => { let m = -Infinity; const p = g.attributes.position; for (let i = 0; i < p.count; i++) m = Math.max(m, p.getY(i)); return m; };
+  s.setPose('thrash2');
+  ok('…and each pose stands at its own drawn height (the crouched clash is shorter)', top(art.geometry) < poseHeight('cosmic_ronin', 'thrash2') + 1e-9
+    && top(art.geometry) > poseHeight('cosmic_ronin', 'thrash2') * 0.9 && poseHeight('cosmic_ronin', 'thrash2') < T.height);
+  ok('the meshes are the same objects — the lean and the fall still reach a pose', s.parts.includes(art) && s.parts.includes(panel)
+    && (() => { s.frame(0, { knockedOut:true }); const r = art.rotation.x; s.frame(0, {}); return r !== art.rotation.x; })());
+  ok('an unknown pose is refused and changes nothing', s.setPose('nope') === false && s.pose === 'thrash2');
+  ok('null is the Spirit\'s own print again', s.setPose(null) && art.geometry === baseGeo && art.material.map === baseMap && panel.geometry === basePanel);
+  const zero = createStandee({ id:'intergalactic_0', color:'#fff', imageSrc:'x.png', poses }, { loader:stubTexture });
+  ok('poses with no traced cut are ignored — a Spirit is never shown a drawing it has no cut for', zero.poses.length === 0 && zero.setPose('hit') === false);
+  zero.dispose();
+  s.setPose('hit'); s.dispose();
+  ok('disposing with a pose up still clears the standee', s.group.children.length === 0);
+}
+{
+  // 🎸 The Thrash plays his own art (swingStandee.js). A minimal bout: A (the
+  // Ronin) at the origin, B one hex east, the front side given.
+  const { wrapClashStandees, thrashPose } = await import('./swingStandee.js');
+  const poses = { thrash1:'t1.png', thrash2:'t2.png', hit:'hit.png' };
+  ok('thrashPose: idle → his own print, raise → Thrash1, clash → Thrash2',
+    thrashPose({ t:0, figure:'idle', resultAt:5 }) === null && thrashPose({ t:1, figure:'ready', resultAt:5 }) === 'thrash1'
+    && thrashPose({ t:4, figure:'strike', resultAt:5 }) === 'thrash2');
+  ok('thrashPose: from the result, a loss or a tie → hit; a win holds the clash',
+    thrashPose({ t:5, figure:'strike', resultAt:5, lost:true }) === 'hit' && thrashPose({ t:5, figure:'strike', resultAt:5, lost:false }) === 'thrash2'
+    && thrashPose({ t:4.9, figure:'strike', resultAt:5, lost:true }) === 'thrash2');
+  ok('thrashPose: turned home, the winner is himself again and the loser stays hit',
+    thrashPose({ t:6, figure:'strike', resultAt:5, lost:false, home:true }) === null && thrashPose({ t:6, figure:'strike', resultAt:5, lost:true, home:true }) === 'hit');
+  const bout = front => {
+    const pose = () => { const g = new THREE.Group(); g.add(new THREE.Mesh(new THREE.BoxGeometry(.3, 2, .3))); return g; };
+    const a = new THREE.Vector3(0, .2, 0), b = new THREE.Vector3(1.5, .2, 0), lane = b.clone().sub(a).normalize();
+    const figures = [a, b].map((p, i) => {
+      const carrier = new THREE.Group(), idle = pose(), ready = pose(), strike = pose();
+      carrier.add(idle, ready, strike); carrier.position.copy(p); carrier.rotation.y = Math.atan2(lane.x, lane.z) + (i ? Math.PI : 0);
+      carrier.updateMatrixWorld(true);
+      return { carrier, idle, ready, strike, start:p.clone(), end:p.clone() };
+    });
+    const root = new THREE.Group(); figures.forEach(f => root.add(f.carrier));
+    const live = { figures, T:{ result:5 } };
+    const w = wrapClashStandees(live, ['#48f', '#f84'], undefined,
+      [{ id:'cosmic_ronin', color:'#48f', imageSrc:'x.png', poses }, { id:'intergalactic_0', color:'#f84', imageSrc:'y.png' }],
+      { front, loader:stubTexture });
+    const show = k => figures.forEach(f => { f.idle.visible = k === 'idle'; f.ready.visible = k === 'ready'; f.strike.visible = k === 'strike'; });
+    const step = (t, k, winner) => { show(k); w.update(t, { turnT:10, winner }); root.updateMatrixWorld(true); return w.rigs[0].art; };
+    return { w, step, lane };
+  };
+  for (const front of [new THREE.Vector3(0, 0, 1), new THREE.Vector3(0, 0, -1)]) {
+    const { w, step, lane } = bout(front), side = front.z > 0 ? 'one side' : 'the other side';
+    const ronin = w.rigs[0];
+    ok(`(${side}) the Ronin plays his own art — no stick figure`, ronin.own && !ronin.stick.visible && !w.rigs[1].own);
+    let st = step(1, 'idle');
+    ok(`(${side}) side-on, his print faces the FRONT (his back is blank)`, st.group.getWorldDirection(new THREE.Vector3()).dot(front) > 0.99 && st.pose === null);
+    st = step(2, 'ready');
+    const strikesAt = () => new THREE.Vector3(1, 0, 0).transformDirection(st.group.matrixWorld).dot(lane);
+    ok(`(${side}) the raise is Thrash1, and he raises it AT the Rival`, st.pose === 'thrash1' && strikesAt() > 0.99, strikesAt().toFixed(2));
+    st = step(4, 'strike');
+    ok(`(${side}) the clash is Thrash2, still facing the front, still striking at the Rival`, st.pose === 'thrash2' && strikesAt() > 0.99
+      && st.group.getWorldDirection(new THREE.Vector3()).dot(front) > 0.99);
+    ok(`(${side}) the director is told where his print really faces`, w.facings()[0].dot(front) > 0.99);
+    ok(`(${side}) a win holds the clash`, step(5.2, 'strike', 0).pose === 'thrash2');
+    ok(`(${side}) a loss shows the hit`, step(5.2, 'strike', 1).pose === 'hit');
+    ok(`(${side}) …and so does a tie (both are thrown back)`, step(5.2, 'strike', null).pose === 'hit');
+    ok(`(${side}) the Rival without art keeps the stick figure`, w.rigs[1].stick.visible);
+  }
+}
+
 console.log('§4 the wiring');
 {
   const v = read('./arenaVisuals.js');
-  ok('the renderer builds standees, not blocks', /const standee=spirit\.imageSrc \? createStandee\(spirit\) : null;/.test(v));
+  ok('the renderer builds standees, not blocks — with the Spirit\'s pose prints', /const standee=spirit\.imageSrc \? createStandee\(\{\.\.\.spirit,poses:posesFor\(spirit\.id\)\}\) : null;/.test(v));
   ok('…and keeps spiritMiniature as the fallback for a Spirit with no art', /pawn=standee\?standee\.group:spiritMiniature\(spirit\)/.test(v));
   // ⚠️ A standee STANDS ON the deck; the block floated at .34 because it had none.
   ok('a standee stands at STANDEE_Y, the block still floats at .34', /arenaPoint\(spirit\.num,standee\?STANDEE_Y:\.34\)/.test(v));
@@ -276,6 +399,13 @@ console.log('§4 the wiring');
   ok('…and the carrier stops animating it once it has',
     /standee\.frame\([\s\S]*?continue;\s*\}\s*pawn\.rotation\.z=THREE\.MathUtils\.damp/.test(v));
   ok('the "SUSTAIN NEXT TURN" badge clears a standee\'s head', /pawn\.userData\.standee\?STANDEE\.height\+\.4:1\.85/.test(v));
+  // 🎸 2026-10-06 — the hit print, the Thrash art, the one-sided lens.
+  ok('any shove that moves a Spirit (hitBackCount) shows its hit print', /hitBackCount!==spirit\.hitBackCount\)\{pawn\.userData\.wobbleUntil=clock\+1\.7;poseHit\(pawn\);\}/.test(v));
+  ok('…so does the close of a Thrash it lost or tied', /swing\.winner===null\|\|swing\.winner===1-i\)poseHit\(pawns\.get\(id\)\)/.test(v));
+  ok('…and it lets go after HIT_POSE_HOLD', /clock>=pawn\.userData\.hitUntil\)\{pawn\.userData\.hitUntil=null;pawn\.userData\.standee\?\.setPose\(null\);\}/.test(v));
+  ok('the Thrash standees get the pose prints and the front side', /poses:posesFor\(s\.id\)/.test(v) && /\{front:swing\.stage\.front\}\)/.test(v)
+    && /winner:swing\.winner\}\)/.test(v));
+  ok('every battle lens is told whose print is one-sided', (v.match(/oneSided:oneSided\(/g) ?? []).length === 3);
 }
 ok('STANDEE_Y is the board deck the move tiles sit on', STANDEE_Y === 0.2);
 {

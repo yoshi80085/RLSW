@@ -23,6 +23,19 @@
 // after the turn back; the stick-figure sheet only exists while it is side-on.
 // The swap happens part-way through each turn (`swapAt`), because mid-turn is
 // when the sheet is least readable and a change of print is least jarring.
+//
+// 🎸 2026-10-06 — A SPIRIT WITH ITS OWN THRASH ART PLAYS IT (Alex: "phase 1 of
+// Thrash is Thrash1, phase 2 is Thrash2", and the 'hit' when he loses). For a
+// side whose standee has the `thrash1` and `thrash2` poses (`standee.js` 1b,
+// `data/standeePoses.js` — the Ronin), there is NO stick figure: his own
+// printed standee turns side-on and swaps print on the stick figure's own
+// beats — 'ready' (the raise) → thrash1, 'strike' (the clash) → thrash2, and
+// from the result on, if he lost or tied, → hit. ⭐ His print is turned to face
+// the FRONT side (the battle director's, away from the amps — where the lens
+// films the bout from), because his back is blank now; and the drawings strike
+// to their RIGHT, so where facing the front would aim him away from the Rival,
+// the posed print is mirrored. The mirror goes on with the first pose swap,
+// never on his base print, so the flip is hidden inside the change of drawing.
 import * as THREE from 'three';
 import { STANDEE, ribbons, createStandee } from './standee.js';
 
@@ -144,7 +157,22 @@ const clamp01 = x => Math.max(0, Math.min(1, x));
  * @returns `{ update(t, { knockedOut }), rigs, turnAt, backAt }` — call
  *   `update` AFTER the real `update(t)` each frame.
  */
-export function wrapClashStandees(live, colors, T = STICK_STANDEE, spirits = null) {
+/** True when a built standee can play a Thrash in its own art (has both phases). */
+export const playsOwnThrash = art => !!art?.poses?.includes('thrash1') && art.poses.includes('thrash2');
+
+/**
+ * The pose a side with its own Thrash art shows at sequence time `t` — pure, so
+ * the beats can be asserted without a scene. `figure` is which stick pose the
+ * real sequence shows ('idle' | 'ready' | 'strike'), `lost` whether this side
+ * lost or tied (null while unknown), `home` whether the sheet has turned back.
+ */
+export function thrashPose({ t, figure, resultAt, lost = null, home = false }) {
+  if (lost && t >= resultAt) return 'hit';
+  if (home) return null;
+  return figure === 'strike' ? 'thrash2' : figure === 'ready' ? 'thrash1' : null;
+}
+
+export function wrapClashStandees(live, colors, T = STICK_STANDEE, spirits = null, { front = null, loader } = {}) {
   const [A, B] = live.figures;
   const lane = B.start.clone().sub(A.start).setY(0).normalize();
   const side = new THREE.Vector3(-lane.z, 0, lane.x);
@@ -171,12 +199,24 @@ export function wrapClashStandees(live, colors, T = STICK_STANDEE, spirits = nul
     // pivot's local x, so a quarter turn puts both prints on the same face.
     let art = null;
     if (spirits?.[i]) {
-      art = createStandee(spirits[i]);
+      art = createStandee(spirits[i], loader ? { loader } : undefined);
       art.group.rotation.y = Math.PI / 2;
       pivot.add(art.group);
     }
     const from = T.turnFrom === 'none' ? 0 : START_YAW[i ? T.rivalFrom : 'toward'] ?? START_YAW.toward;
-    return { f, poses, sheets, pivot, stick, art, from };
+    // 🎸 Its own Thrash art: where the turn ends, and whether the poses mirror.
+    // The print's normal is the pivot's +x at yaw 0 and −x at yaw −π; the
+    // drawing's RIGHT (where he strikes) is the carrier's −z at 0 and +z — the
+    // Rival — at −π. So: the front on +x → end at 0, mirrored; else end at −π.
+    const own = playsOwnThrash(art);
+    let end = 0, mirror = false;
+    if (own) {
+      const sideX = new THREE.Vector3(1, 0, 0).applyQuaternion(f.carrier.quaternion);
+      const onX = !!front && sideX.dot(front) > 0;
+      end = onX ? 0 : -Math.PI; mirror = onX;
+      stick.visible = false;
+    }
+    return { f, poses, sheets, pivot, stick, art, from, own, end, mirror };
   });
   const turnStart = T.turnFrom === 'none' ? -Infinity : -T.lead;
   const backAt = T.back === 'on' ? live.T.result + T.backAfter : Infinity;
@@ -189,14 +229,27 @@ export function wrapClashStandees(live, colors, T = STICK_STANDEE, spirits = nul
      *   the game's clock sits at 0 until that throw, so it passes the seconds
      *   since the Swing OPENED instead. Omitted → `t + lead`, the preview's.
      */
-    update(t, { knockedOut = [false, false], reduced = false, turnT = t + T.lead } = {}) {
+    // @param winner 0 | 1, null for a tie, undefined while unknown — only the
+    //   sides that play their own Thrash art read it (the 'hit' print).
+    update(t, { knockedOut = [false, false], reduced = false, turnT = t + T.lead, winner } = {}) {
       const into = T.turnFrom === 'none' ? 1 : ease(clamp01(turnT / T.turnTime));
       const back = ease(clamp01((t - backAt) / T.turnTime));
       // ⚠️ The swap reads the RAW turn progress on both legs, so a swapAt of
       // .5 is "halfway round" going in AND coming back, not two different moments.
       const stickShown = (T.turnFrom === 'none' || into >= T.swapAt) && back < T.swapAt;
       for (const [i, r] of rigs.entries()) {
-        r.pivot.rotation.y = r.from * (1 - into + back);
+        r.pivot.rotation.y = r.from + (r.end - r.from) * (into - back);
+        if (r.own) {
+          // 🎸 His own print the whole bout, on the stick figure's beats.
+          const figure = r.f.strike.visible ? 'strike' : r.f.ready.visible ? 'ready' : 'idle';
+          const lost = winner === undefined ? null : winner === null || winner === 1 - i;
+          const pose = thrashPose({ t, figure, resultAt:live.T.result, lost, home:back >= T.swapAt });
+          r.art.setPose(pose);
+          r.art.group.scale.x = r.mirror && pose ? -1 : 1;
+          r.art.group.visible = true;
+          r.art.frame(Math.max(0, t), { knockedOut:knockedOut[i], reduced });
+          continue;
+        }
         r.stick.visible = stickShown || !r.art;
         if (r.art) {
           r.art.group.visible = !r.stick.visible;
@@ -204,6 +257,19 @@ export function wrapClashStandees(live, colors, T = STICK_STANDEE, spirits = nul
         }
         if (r.sheets.length > 1) r.sheets.forEach((s, k) => (s.visible = r.poses[k].visible));
       }
+    },
+    /**
+     * Which way each side's print faces now, world, horizontal — for the battle
+     * director. The stick sheet faces the carrier's +x; a side playing its own
+     * art faces wherever its standee's face (local +z) points.
+     */
+    facings() {
+      return rigs.map(r => {
+        if (r.own) r.art.group.updateWorldMatrix(true, false);
+        const n = r.own ? r.art.group.getWorldDirection(new THREE.Vector3())
+          : new THREE.Vector3(1, 0, 0).applyQuaternion(r.f.carrier.getWorldQuaternion(new THREE.Quaternion()));
+        return n.setY(0).normalize();
+      });
     },
   };
 }

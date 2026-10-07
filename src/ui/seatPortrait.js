@@ -44,7 +44,7 @@ export const SEAT_PORTRAIT = Object.freeze({
  * kept unchanged in the 2026-09-25 dial-in; the preview has a slider for each.
  */
 export const HEAD_FOCUS = Object.freeze({
-  cosmic_ronin:      Object.freeze({ x:0.555, y:0.14, h:0.27 }),
+  cosmic_ronin:      Object.freeze({ x:0.49,  y:0.134, h:0.235 }),  // 🎨 re-read 2026-10-06 off the new art (hat to chin)
   intergalactic_0:   Object.freeze({ x:0.56,  y:0.25, h:0.24 }),
   Metalness_Monster: Object.freeze({ x:0.465, y:0.18, h:0.22 }),
   Glamarchy:         Object.freeze({ x:0.47,  y:0.13, h:0.25 }),
