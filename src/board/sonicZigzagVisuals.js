@@ -132,6 +132,49 @@ export const RING_TUNING = {
 // framing, and the preview's own ZOOM IN slider is the same quantity.
 export const RING_CAMERA_ZOOM = 0.95;
 
+/**
+ * 🌊 THE FOLLOW — the tail REPLAYS the head (Alex, 2026-10-08, second pass):
+ * *"it should condense and follow through in the same way the front does. If
+ * the front goes up, down, up at the end, the tail should as well go up, down,
+ * up … it might mean the tail 'speeds up' and covers more ground sped up than
+ * the front - but it should nonetheless follow through in the exact same way."*
+ *
+ * Every ring used to stay on the path station where it lit, so once the head
+ * dropped into its slow approach the body behind it stopped dead, and at
+ * contact the whole beam was cut off and squeezed flat into the shield — the
+ * tail went "up, down" and never got its last "up".
+ *
+ * Now every ring rides the HEAD'S OWN TRACK. A ring sits `k` of its old
+ * distance behind the head; on the way in k = 1 — exactly the original. Over
+ * the last `approach` units k falls to `compress`, so the rings run down the
+ * track FASTER than the head (the tail catches up and condenses), and with
+ * `replay` 1 each one takes the wave exactly as the head had it when it stood
+ * there — so the tail makes the front's ups and downs after it, in order. At
+ * contact the beam is no longer cut off: for `drain` more seconds k runs to 0
+ * and the rest of the tail pours down the same track into the impact, each
+ * ring closing as it arrives.
+ *
+ * ⚠️ Shape only: the head's flight curve, the slow approach, the contact second
+ * and every cue that rides them are untouched. `follow:false` is the original
+ * frame for frame (2.4M vertex values compared, max diff 0). Ring mode only.
+ */
+export const RING_FOLLOW = Object.freeze({
+  // ⭐ ALEX'S DIAL-IN, 2026-10-08 — 6 of 9 levers moved (preview `.scratch/sonic-follow/`,
+  // viewed at range 3, five dice breaking the shield, top camera, hit-stops on):
+  // *"This is how the attack should play out."* A taste decision made by eye —
+  // re-dial on the preview rather than editing these blind.
+  follow: true,     // false = the original stationary tail
+  compress: 0,      // 0.35 → 0. The tail has fully caught the head by contact
+  approach: 1,      // 4 → 1. The catch-up only starts in the last world unit
+  ease: 3,          // 1 → 3. …and is held back, then surges late
+  replay: 1,        // (default) each ring makes exactly the move the head made there
+  drain: 0.8,       // 0.3 → 0.8. Beam-clock seconds the beam stays drawn after contact
+  slim: 0.4,        // (default) packed hoops narrow, so the tail funnels
+  swell: 0.6,       // 0 → 0.6. …and fatten as they pack: the two pull against each other
+  calm: 1,          // 0 → 1. The sway fully settles over the last stretch, head and tail alike
+  ram: 0,           // (default) the old contact squeeze (shipped .62) stays off
+});
+
 const MAX_CHEVRONS = 44;
 const MAX_RINGS = 64, RING_SEGMENTS = 18;
 // A BLUR, not a line. Five nested ribbons whose widths and opacities fall off
@@ -384,7 +427,7 @@ export function createSonicZigzagVisuals({
   // from `strokeStyle: 'rings'` alone with nothing to configure at the call
   // site — while a caller that DOES pass `tuning` still wins, which is what the
   // preview's sliders rely on.
-  const T = { ...SONIC_TUNING, ...(beam ? RING_TUNING : null), ...tuning };
+  const T = { ...SONIC_TUNING, ...(beam ? RING_TUNING : null), ...(beam ? RING_FOLLOW : null), ...tuning };
   // Ring mode is the fluid treatment end to end: it drives the flight curve as
   // well as the drawing, so the head flows instead of ticking. Set here rather
   // than asked for by the caller — the two belong together.
@@ -619,6 +662,9 @@ export function createSonicZigzagVisuals({
       cornerTimes: Array.from({ length: cornerCount - 1 }, (_, c) =>
         FLIGHT_SECONDS * sonicFlightInverse((c + 1) / cornerCount, cornerCount, T)),
       burstAt: FLIGHT_SECONDS,
+      // 🌊 The follow (RING_FOLLOW), solved per frame from the head: `k` scales
+      // every ring's distance behind it, `e` is how far the pack-in has got.
+      follow: { on: false, reduced: false, k: 1, e: 0, m: 0, age: 0, time: 0, head: 0 },
     });
   }
 
@@ -643,7 +689,7 @@ export function createSonicZigzagVisuals({
    * the head slides along it — still a pure function of elapsed time, so replay
    * and seeking land on identical frames. Returns the amplitude envelope.
    */
-  function fluidCentre(target, r, t, swing, time, camera) {
+  function fluidCentre(target, r, t, swing, time, camera, waveT = t) {
     const tt = clamp(t, 0, 1);
     target.copy(r.path.getPoint(tt));
     wTan.copy(r.path.getTangent(tt));
@@ -655,7 +701,7 @@ export function createSonicZigzagVisuals({
     wAcross.normalize();
     wUp.crossVectors(wAcross, wTan).normalize();
     const envelope = (0.62 + 0.38 * Math.pow(1 - tt, 0.8)) * easeOutCubic(clamp((1 - tt) / 0.05, 0, 1));
-    const y = Math.PI * tt * r.corners, phase = time * 2.4 + r.seed * 6.283;
+    const y = Math.PI * clamp(waveT, 0, 1) * r.corners, phase = time * 2.4 + r.seed * 6.283;
     const lateral = (Math.sin(y - phase) * 0.84 + Math.sin(y * 2.17 + phase * 0.6) * 0.16) * swing * envelope;
     // Held well under the lateral swing: enough to keep the wave from being a
     // flat ribbon, not so much that the beam reads as a corkscrew.
@@ -792,6 +838,59 @@ export function createSonicZigzagVisuals({
    *     it. It stays a pure function of absolute elapsed time, so replay and
    *     seeking still land on identical frames.
    */
+  let lastFollowT = 0, lastFollowTau = -1;
+  // 🌊 Where the head was on the path at flight-second τ, and how far into the
+  // follow it was there — both pure, so a ring evaluating them at τ gets exactly
+  // what the head got at τ.
+  const followAt = (r, pathT) => {
+    const near = clamp(1 - (1 - pathT) * r.pathLength / Math.max(0.1, T.approach), 0, 1);
+    const shaped = Math.pow(near, Math.max(0.2, T.ease));
+    return shaped * shaped * (3 - 2 * shaped);
+  };
+  /** When the head passed path point `p` (flight seconds) — solved, never detected. */
+  const tauAt = (r, p) => p >= 1 ? FLIGHT_SECONDS
+    : r.follow.reduced ? p * FLIGHT_SECONDS : FLIGHT_SECONDS * sonicFlightInverse(p, r.corners, T);
+  /**
+   * The head's TRACK at path point `p`: where the head was when it passed `p`,
+   * with `replay` of the wave it had at that moment. A ring placed here is
+   * standing exactly where the front stood, making exactly the move it made.
+   */
+  function trailPoint(target, r, p, swing, camera) {
+    const f = r.follow, tau = tauAt(r, p);
+    const phaseTime = f.time - (f.age - tau) * f.m;
+    lastFollowTau = tau;
+    return fluidCentre(target, r, p, swing * (1 - T.calm * followAt(r, p)), phaseTime, camera);
+  }
+  /**
+   * 🌊 THE FOLLOW (RING_FOLLOW). `rest` is the ring's station — where it lit.
+   * It is drawn `k` of its old distance behind the head, ON THE HEAD'S TRACK:
+   * as k falls the rings run down the same track faster than the head, so the
+   * tail condenses and makes the front's ups and downs after it, in order.
+   * ⚠️ Distance, not time: in the slow approach the head covers almost no ground,
+   * so a lag measured in seconds collapses the whole tail onto one spot.
+   */
+  function placeFollow(r, rest, swing, camera) {
+    const f = r.follow;
+    const p = clamp(f.head - Math.max(0, f.head - rest) * f.k, 0, 1);
+    lastFollowT = p;
+    const envelope = trailPoint(sample, r, p, swing, camera);
+    const tau = lastFollowTau;
+    // Square to the track, differenced either side along it.
+    trailPoint(centreA, r, Math.min(1, p + 0.004), swing, camera);
+    trailPoint(centreB, r, Math.max(0, p - 0.004), swing, camera);
+    lastFollowTau = tau;
+    tangent.subVectors(centreA, centreB);
+    if (tangent.lengthSq() < 1e-12) tangent.copy(r.path.getTangent(p)); else tangent.normalize();
+    if (camera) {
+      toCamera.copy(camera.position).sub(sample).normalize();
+      across.crossVectors(tangent, toCamera);
+      if (across.lengthSq() < 1e-6) across.crossVectors(tangent, worldUp);
+    } else across.crossVectors(tangent, worldUp);
+    across.normalize();
+    upV.crossVectors(across, tangent).normalize();
+    return envelope;
+  }
+
   function placeCentre(r, t, swing, time, camera, fluid) {
     if (!fluid) {
       sample.copy(r.path.getPoint(t));
@@ -806,6 +905,12 @@ export function createSonicZigzagVisuals({
       sample.addScaledVector(across, triangle(t * r.corners) * swing * flat);
       return flat;
     }
+    // 🌊 With the follow on, the ring rides the head's track instead (placeFollow).
+    // Until the catch-up starts (e = 0, k = 1) the follow IS the original, so it
+    // takes the original's exact path — frame-identical, and none of the track
+    // solving it costs — and only the last stretch and the drain pay for it.
+    if (r.follow.on && (r.follow.e > 0 || r.follow.k < 1)) return placeFollow(r, t, swing, camera);
+    lastFollowT = t; lastFollowTau = -1;
     const envelope = fluidCentre(sample, r, t, swing, time, camera);
     // ⚠️ The frame comes from the DISPLACED curve, not from the path underneath
     // it. Orienting the rings to the path's own tangent leaves every hoop facing
@@ -962,10 +1067,13 @@ export function createSonicZigzagVisuals({
       placeCentre(r, station, swing, time, camera, true);
       // The last 160 ms of a held shot stacks its hoops against the wall.
       // Only compress the forward tail; launching and the smooth cadence stay intact.
-      const squeeze=r.passed||reduced?0:clamp((time-r.start-FLIGHT_SECONDS+.16)/.16,0,1);
+      // 🌊 With the follow on, the squeeze is `ram` (default 0): the tail drains
+      // into the impact down its own track instead of being flattened onto it.
+      const ram = r.follow.on ? T.ram : .62;
+      const squeeze=r.passed||reduced||!(ram>0)?0:clamp((time-r.start-FLIGHT_SECONDS+.16)/.16,0,1);
       if(squeeze){
         const distance=r.path.shieldPoint.clone().sub(sample).dot(laneForward);
-        sample.addScaledVector(laneForward,Math.max(0,distance)*squeeze*.62);
+        sample.addScaledVector(laneForward,Math.max(0,distance)*squeeze*ram);
       }
       // Born tight at the wavefront, open by a sixth of the way back: the beam
       // builds out of the head rather than switching on along its length.
@@ -975,8 +1083,14 @@ export function createSonicZigzagVisuals({
       // which is what makes the beam read as a waveform and not as a pipe.
       const swell = reduced ? 1 : 1 + 0.24 * Math.sin(b * 5.6 - time * 5.2 + r.seed * 6.283);
       // Necking down into contact, so the beam converges on the impact point.
-      const tip = 0.35 + 0.65 * easeOutCubic(clamp((1 - station) / 0.05, 0, 1));
-      const radius = Math.max(0.004, beam * nose * fall * swell * tip * (1+squeeze*.22));
+      // (Measured where the ring IS, so a ring the follow has carried forward necks too.)
+      const tip = 0.35 + 0.65 * easeOutCubic(clamp((1 - lastFollowT) / 0.05, 0, 1));
+      // 🌊 …and packed-in hoops fatten a touch: the energy piling up behind the head.
+      const packed = r.follow.on ? (1 + T.swell * r.follow.e) * (1 - clamp(T.slim, 0, 1) * (1 - r.follow.k)) : 1;
+      // 🌊 A ring that has caught up with the moment of contact has arrived: it
+      // closes as it reaches the impact instead of the whole beam blinking out.
+      const arrive = r.follow.on && lastFollowTau >= 0 ? clamp((1 - lastFollowT) * r.pathLength / 0.12, 0, 1) : 1;
+      const radius = Math.max(0.004, beam * nose * fall * swell * tip * (1+squeeze*.22) * packed * arrive);
       // Thickness is a FRACTION OF THE RADIUS, not an absolute width. A fixed
       // hairline band turns the beam into a wireframe drawing of itself — every
       // hoop reads as an outline and the column has no mass. Scaling with the
@@ -1048,13 +1162,40 @@ export function createSonicZigzagVisuals({
       }
       const progress = clamp(age / FLIGHT_SECONDS, 0, 1);
       const flying = age >= 0 && age < FLIGHT_SECONDS;
-      r.shot.visible = flying;
+      // 🌊 THE FOLLOW keeps the rings drawn for `drain` after contact, while the
+      // rest of the tail pours into the impact (RING_FOLLOW).
+      const following = !!(r.rings && T.follow) && !reduced;
+      const drainFor = following ? Math.max(0, T.drain) : 0;
+      const draining = following && age >= FLIGHT_SECONDS && age < FLIGHT_SECONDS + drainFor;
+      if (r.rings) {
+        const f = r.follow;
+        f.on = following; f.reduced = reduced; f.age = age; f.time = time;
+        if (following) {
+          const headNow = flying ? sonicFlightCurve(clamp(age / FLIGHT_SECONDS, 0, 1), r.corners, T) : 1;
+          const compress = clamp(T.compress, 0, 1);
+          f.e = flying ? followAt(r, headNow) : 1;
+          const after = drainFor > 0 ? clamp((age - FLIGHT_SECONDS) / drainFor, 0, 1) : 1;
+          f.k = flying ? 1 - (1 - compress) * f.e : compress * (1 - after * after * (3 - 2 * after));
+          f.m = clamp(T.replay, 0, 1) * f.e;
+          f.head = headNow;
+        }
+      }
+      r.shot.visible = flying || draining;
       resonance = Math.max(resonance, paintAftermath(r, age, reduced, camera));
       if (!flying) {
         r.sparks.visible = false;
         if (r.rings) r.rings.visible = r.ringCore.visible = false;
         if (r.chevrons) r.chevrons.visible = r.chevronCore.visible = false;
         if (r.threadBands) for (const band of r.threadBands) band.visible = false;
+        if (draining) {
+          // The last of the tail pours down the head's track into the impact.
+          const fade = clamp((FLIGHT_SECONDS + drainFor - age) / 0.08, 0, 1);
+          const swing = SWING_MIN + (T.swing - SWING_MIN) * r.power;
+          paintRings(r, 1, swing, fade, time, reduced, camera, T);
+          r.rings.material.opacity *= glitterSettings.ringOpacity ?? 1;
+          r.ringCore.material.opacity *= glitterSettings.ringOpacity ?? 1;
+          for (const band of r.threadBands) band.material.opacity *= glitterSettings.coreOpacity ?? 1;
+        }
         if (r.spiral) {
           const impactAge = age - FLIGHT_SECONDS;
           const active = impactAge >= 0 && impactAge < IMPACT_SECONDS;
@@ -1083,7 +1224,8 @@ export function createSonicZigzagVisuals({
 
       // Fade in at the muzzle and out at contact, so nothing pops.
       const entry = clamp(age / 0.12, 0, 1);
-      const exit = clamp((FLIGHT_SECONDS - age) / 0.14, 0, 1);
+      // 🌊 (Following, each ring closes as it reaches the impact, so no global fade.)
+      const exit = r.rings && T.follow && !reduced ? 1 : clamp((FLIGHT_SECONDS - age) / 0.14, 0, 1);
       const alive = entry * exit;
 
       // Reduced motion gets the plain linear travel — the staccato and the

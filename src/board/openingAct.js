@@ -103,3 +103,75 @@ export function padPoint(corner, y = .22) {
   return { x: home.x + (stand.x - home.x) * .47, y, z: home.z + (stand.z - home.z) * .47 };
 }
 export const homePoint = (corner, y = .2) => hexPoint(homeNumFor(corner), y);
+
+// ── The entrance close-up (the lens, presentation only) ──────────────────────
+// 🎯 Alex, 2026-10-08: *"as the game starts, the players step on to their
+// starting hex and play their tune, the camera ignores their entrance … make it
+// so the camera zooms into their space as they begin - Same goes for all
+// players"*. Before this the intro only LEANED 28% toward seat one's pad, and a
+// later seat's entrance (its own first turn) had no lens at all — the riff and
+// the hop played wherever the player had left the camera.
+//
+// The shot: from wherever the lens is, ease in to a close-up on the pad while
+// the riff plays (a slow push-in), then follow the hop onto the home hex and
+// settle there a beat. Stood on the BOARD side of the pad looking out, so the
+// Spirit plays to the camera with its grandstand behind it, and hops TOWARD us.
+//
+// ⚠️ `landDistance` must stay ≥ the renderer's OrbitControls minDistance (12):
+// the lens is handed back where it landed, and a pose closer than the player's
+// own mouse could reach would jump out to 12 on the first controls.update().
+// The riff itself may be closer — that is a shot, never a pose handed back.
+// 📌 Not dialled in a preview yet (Alex asked for it straight); these are the
+// levers if it feels off.
+export const ENTRANCE_CAMERA = Object.freeze({
+  easeInMs: 1100,       // from wherever the lens is to the close-up on the pad
+  riffDistance: 9.5,    // how close while the riff plays
+  push: .08,            // Ken Burns push-in across the riff (fraction of riffDistance)
+  landDistance: 13,     // where the hop ends — ≥ 12, see above
+  tilt: 62,             // degrees from straight down (the auto camera's idle is 44: flatter here, a figure, not a token)
+  lookHeight: 1.1,      // aim at the standee's chest, not its feet
+  holdAfterMs: 500,     // a beat on the home hex before the lens is handed back
+});
+
+const flatAz = (a, b) => Math.atan2(b.x - a.x, b.z - a.z);
+const wrap = a => Math.atan2(Math.sin(a), Math.cos(a));
+const lerp = (a, b, k) => a + (b - a) * k;
+
+/** Is `now` inside this seat's entrance close-up? */
+export const inEntranceLens = (seat, now, c = ENTRANCE_CAMERA) =>
+  seat?.riffAt != null && now >= seat.riffAt && now <= seat.doneAt + c.holdAfterMs;
+
+/**
+ * The entrance close-up at `now`, or null outside its window. Pure: plain
+ * `{x,y,z}` in and out. `pad`/`home` are arena points; `from` is the lens
+ * `{ position, target }` when the shot began (null → no ease, start framed);
+ * `scale` stretches the distances for a narrow screen, as the intro's do.
+ * Returns `{ position, target, settled }` — `settled` once the hop has landed.
+ */
+export function entranceLens(seat, now, { pad, home, center = { x: 0, z: 0 }, from = null, scale = 1, reduced = false, c = ENTRANCE_CAMERA } = {}) {
+  if (!inEntranceLens(seat, now, c) || !pad || !home) return null;
+  const pose = seatPose(seat, now, { reduced });
+  const p = pose.progress;
+  const riffK = reduced ? 0 : smooth((now - seat.riffAt) / Math.max(1, seat.stepAt - seat.riffAt));
+  const r = lerp(c.riffDistance * (1 - c.push * riffK), c.landDistance, p) * scale;
+  const pol = c.tilt * Math.PI / 180;
+  // Camera on the board side of the pad, looking out toward the stand.
+  const az = flatAz(pad, center);
+  const t = { x: lerp(pad.x, home.x, p), y: lerp(pad.y, home.y, p) + c.lookHeight, z: lerp(pad.z, home.z, p) };
+  let tx = t.x, ty = t.y, tz = t.z, rr = r, pp = pol, aa = az;
+  const e = reduced || !from ? 1 : smooth((now - seat.riffAt) / Math.max(1, c.easeInMs));
+  if (e < 1) {
+    // Ease in SPHERICALLY round the moving aim, so the lens swings and closes in
+    // rather than cutting a straight line through the scenery.
+    const f = from, dx = f.position.x - f.target.x, dy = f.position.y - f.target.y, dz = f.position.z - f.target.z;
+    const r0 = Math.hypot(dx, dy, dz) || r, pol0 = Math.acos(clamp(dy / r0, -1, 1)), az0 = Math.atan2(dx, dz);
+    tx = lerp(f.target.x, t.x, e); ty = lerp(f.target.y, t.y, e); tz = lerp(f.target.z, t.z, e);
+    rr = lerp(r0, r, e); pp = lerp(pol0, pol, e); aa = az0 + wrap(az - az0) * e;
+  }
+  const sp = Math.sin(pp);
+  return {
+    position: { x: tx + rr * sp * Math.sin(aa), y: ty + rr * Math.cos(pp), z: tz + rr * sp * Math.cos(aa) },
+    target: { x: tx, y: ty, z: tz },
+    settled: now >= seat.doneAt,
+  };
+}

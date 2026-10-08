@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import * as THREE from 'three';
 import { SONIC_GLITTER, SONIC_WAVE } from './sonicGlitter.js';
-import { createSonicZigzagVisuals, RING_TUNING, FLIGHT_SECONDS } from './sonicZigzagVisuals.js';
+import { createSonicZigzagVisuals, RING_TUNING, RING_FOLLOW, FLIGHT_SECONDS } from './sonicZigzagVisuals.js';
 import { createSonicClashVisuals } from './sonicClashVisuals.js';
 import { barrageSimulationTime } from './sonicBarrageTiming.js';
 import { createDuelWaveforms } from './riffWaveforms.js';
@@ -39,7 +39,10 @@ for (const passed of [false, true]) {
     assert.equal(particles.material.uniforms.size.value, 3);
     for (const age of [FLIGHT_SECONDS, FLIGHT_SECONDS + .07, FLIGHT_SECONDS + .22, FLIGHT_SECONDS + .44]) {
       sonic.update(age);
-      assert.equal(sonic.group.children.find(o => o.name.startsWith('Sonic die')).visible, false);
+      // 🌊 2026-10-08: the beam is no longer consumed AT contact — the tail
+      // follows through into the impact for RING_FOLLOW.drain (Alex's dial-in).
+      assert.equal(sonic.group.children.find(o => o.name.startsWith('Sonic die')).visible,
+        age < FLIGHT_SECONDS + RING_FOLLOW.drain, `the beam follows through until the drain ends (${age})`);
       assert.ok(glitter.visible, `glitter missing at ${age}`);
       assert.ok(positions(particles).every(Number.isFinite));
     }

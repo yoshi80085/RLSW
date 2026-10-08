@@ -17,7 +17,7 @@
 
 import * as THREE from 'three';
 import { createBardbarian } from './bardbarian.js';
-import { OPENING_ACT, padPoint, homePoint, homeNumFor, seatPose, smooth, clamp } from './openingAct.js';
+import { OPENING_ACT, padPoint, homePoint, homeNumFor, seatPose, smooth, clamp, entranceLens, inEntranceLens } from './openingAct.js';
 import { standeeYaw, STANDEE_Y } from './standee.js';
 
 const v = (x = 0, y = 0, z = 0) => new THREE.Vector3(x, y, z);
@@ -33,6 +33,7 @@ export function createOpeningActStage(root, { loader = new THREE.TextureLoader()
   const summon = () => { if (!god) { god = createBardbarian(loader); god.group.visible = false; group.add(god.group); } return god; };
   const seats = new Map();   // id → pad, rings, shaft, shards
   let opening = null, shake = 0, envelope = 0, disposed = false;
+  let lens = null;          // the entrance close-up in progress: { key, from }
 
   function buildSeat(id, corner, color) {
     const pad = new THREE.Group(); pad.name = `Waiting pad · ${id}`;
@@ -162,17 +163,41 @@ export function createOpeningActStage(root, { loader = new THREE.TextureLoader()
     },
     /**
      * The intro's lens (the preview's 'cinematic' camera): a wide establishing
-     * shot that meets the board as the last Spirit lands, leaning toward each
-     * pad while its riff plays. Null once the intro and seat one's step are over.
+     * shot that meets the board as the last Spirit lands. Then, for EVERY
+     * Spirit's entrance — seat one's at the intro's end, each later seat's on its
+     * own first turn, a ring-out's return — the entrance close-up
+     * (`openingAct.entranceLens`): in on the pad for the riff, along the hop,
+     * a beat on the home hex. Null when neither is on.
+     * `follow` false (☰ Auto camera off) drops the close-ups and keeps the old
+     * lean; `from` is the live lens, snapshotted when a close-up starts so it
+     * eases in from wherever the camera was. `key` names the close-up, so the
+     * renderer can let a real drag cancel that one.
      */
-    camera(now, aspect, { reduced = false } = {}) {
-      if (!opening || now > opening.cameraUntil) return null;
+    camera(now, aspect, { reduced = false, follow = true, from = null } = {}) {
+      if (!opening) return null;
+      const pad = Math.max(1, 1.6 / Math.max(.25, aspect));
+      if (follow) {
+        let pick = null;
+        for (const seat of seats.values()) {
+          const i = opening.seats[seat.id];
+          if (inEntranceLens(i, now) && (!pick || i.riffAt > pick.info.riffAt)) pick = { seat, info: i };
+        }
+        if (pick) {
+          const key = `${pick.seat.id}:${pick.info.riffAt}`;
+          if (lens?.key !== key) lens = { key, from: from && { position: { ...from.position }, target: { ...from.target } } };
+          const shot = entranceLens(pick.info, now, { pad: pick.seat.at, home: pick.seat.home, from: lens.from, scale: pad, reduced });
+          if (shot) return { position: v(shot.position.x, shot.position.y, shot.position.z),
+            target: v(shot.target.x, shot.target.y, shot.target.z), blend: 1, key, settled: shot.settled };
+        }
+        lens = null;
+      }
+      if (now > opening.cameraUntil) return null;
       const t = (now - opening.startMs) / 1000, end = (opening.endMs - opening.startMs) / 1000;
       const blend = reduced ? 0 : smooth((t - end + 1.2) / 3);
-      const pad = Math.max(1, 1.6 / Math.max(.25, aspect));
       const position = v(0, 22, 57).multiplyScalar(pad).lerp(v(0, 23, 29).multiplyScalar(pad), blend);
       const target = v(0, 8.5, -3).lerp(v(0, .5, 0), blend);
       if (!reduced && OPENING_ACT.camera === 'cinematic') {
+        // 📌 The old lean toward a riffing pad — only reached with the close-ups off.
         for (const seat of seats.values()) {
           const i = opening.seats[seat.id]; if (i?.riffAt == null) continue;
           const hold = (i.doneAt - i.riffAt) / 1000, since = (now - i.riffAt) / 1000;

@@ -5369,8 +5369,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function checkTokenPickup(spiritId, hexNum) {
     const tok = boardTokens.find(t => t.num === hexNum);
     if (!tok) return;
-    // 🎵 Play the note's pitch on pickup — the chord rings out
-    playNoteSound(tok.note, { holdTime: 0.6, fadeTime: 0.8, volume: 0.22 });
+    // 🎵 Play the note's pitch on pickup — the chord rings out.
+    // 💎 ⚠️ UNLESS THE 3D ARENA IS UP: there the crystal plays it (board/lostChords.js),
+    // in this Spirit's same amp settings, at the moment it SHATTERS over the standee —
+    // which is after the hop, not on the click. Playing it here too would sound the
+    // note twice, ~0.7 s apart. The 2D board (and a 3D arena that never came up) keeps this.
+    const arenaPlaysIt = typeof document !== 'undefined' && !!document.querySelector('[data-board-view="3d"][data-arena-ready]');
+    if (!arenaPlaysIt) playNoteSound(tok.note, { holdTime: 0.6, fadeTime: 0.8, volume: 0.22 });
     dispatch(tokenPickedUp(spiritId, hexNum));
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
@@ -14737,6 +14742,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 tentacle:tentacleFx,
                 // 🔦 The corner lights + who is holding a pose under one.
                 spotlights:{ hexes:engineState.board?.spotlights, poses:engineState.limelight?.spotPoses },
+                // 💎 The Lost Chords as crystals (board/lostChords.js). `claim` is the SAME
+                // call the 2D chip's hunt glow makes (`unlockClaim`), so the crystal that
+                // turns red or blue is the one that pays, by construction.
+                lostChords:{
+                  tokens:boardTokens.map(tok => ({ num:tok.num, note:tok.note,
+                    claim:actingNoteState ? (unlockClaim(actingNoteState, tok.note, acting?.id)?.which ?? null) : null })),
+                  drifted:engineState.board.lastTokensDrifted, thrashed:engineState.board.lastThrashTokens,
+                  hover:hovered, tones:Object.fromEntries(spirits.map(s => [s.id, toneOf(toneBySpirit, s.id)])),
+                },
                 // 🎪 The lit marquees and whose quadrant each is in (board/marqueeMarkers.js).
                 marquees:marqueeMarkerList(eventHexes, quadrantOf, playerColor, h => marqueeKindOf(engineState.board, h)),
                 // 🔓 The seat-unlock moment — the cabinet drop, the push-in, the stand.
@@ -16095,7 +16109,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 const glow  = claim ? (claim.which === 'sustain' ? SUSTAIN_C : DRIVE_C) : null;
                 const r  = HS * 0.32 * (claim ? UNLOCK_GLOW.bump : 1);
                 return (
-                  <g key={`tok-${tok.num}`} style={{pointerEvents:'none'}}>
+                  <g key={`tok-${tok.num}`} data-arena-flat="lost-chord" style={{pointerEvents:'none'}}>
                     {/* ⚠️ THE HEX SITS OUTSIDE THE CHIP'S ANIMATED GROUP, AND HAS TO.
                         `event-hex-pulse` animates OPACITY on the group, and a nested
                         opacity animation MULTIPLIES with its parent's — the marker

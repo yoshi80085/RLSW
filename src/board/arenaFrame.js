@@ -9,7 +9,7 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
   bots = [], bats = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null,
-  opening = null, fansHeld = null }) {
+  opening = null, fansHeld = null, lostChords = null }) {
   spirits=spirits.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   shadowDecoys=shadowDecoys.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   const visible = new Set(spirits.map(s => s.id));
@@ -136,6 +136,19 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
       lights:SPOT_CORNERS.filter(c => Number.isFinite(spotlights.hexes[c])).map(c => ({ corner:c, hex:spotlights.hexes[c],
         color:playerColor(c), seated:crowdSpirits.some(s => s.corner === c && !s.knockedOut) })),
       posers:Object.entries(spotlights.poses ?? {}).filter(([id]) => visible.has(id)).map(([id, p]) => ({ id, hex:p.hex })),
+    } : null,
+    // 💎 THE LOST CHORDS as crystals (board/lostChords.js). Public board state:
+    // the tokens, the engine's notes on the last drift and Thrash (so a change
+    // can be NAMED — the layer still reads the diff), the hovered hex (it rings),
+    // and each Spirit's amp settings (the pickup is played in the picker-up's own
+    // voice). `claim` is the acting Spirit's hunt colour, from `unlockClaim`.
+    lostChords:lostChords ? {
+      tokens:(lostChords.tokens ?? []).filter(t => Number.isFinite(t?.num) && t.note)
+        .map(t => ({ num:t.num, note:t.note, claim:t.claim ?? null })),
+      drifted:lostChords.drifted?.moved ? { moved:lostChords.drifted.moved.map(m => ({ from:m.from, to:m.to })) } : null,
+      thrashed:lostChords.thrashed?.added ? { added:[...lostChords.thrashed.added] } : null,
+      hover:Number.isFinite(lostChords.hover) ? lostChords.hover : null,
+      tones:lostChords.tones ?? {},
     } : null,
     // 🎪 The lit marquees (public board state) — board/marqueeMarkers.js.
     marquees:(marquees ?? []).filter(m => Number.isFinite(m?.hex))

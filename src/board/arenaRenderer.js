@@ -156,12 +156,27 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     // come back. A real drag (OrbitControls start), ☰ view or zoom cancels it.
     let refocus=null,introBlend=null;
     const REFOCUS_MS=700;
-    function startRefocus(now){
+    // 🎯 A NEW TURN BRINGS THE LENS TO ITS SPIRIT (Alex, 2026-10-08: *"When it
+    // becomes a new players turn, the camera should come to that Spirit"*). Before
+    // this only the auto camera did, and only once the player had been idle 10 s;
+    // a player moving the mouse kept looking wherever they were while a rival's
+    // whole turn played out somewhere else. Now the turn changing eases the lens
+    // onto the new Spirit (the refocus below, TURN_FOCUS_MS) whoever is holding it.
+    // ⚠️ Waits out a battle shot (the Sonic camera outranks it) and is left to the
+    // director when the director is already flying (it re-aims on a new turn by
+    // itself). Not under ⌗ top-down or with ☰ Auto camera off — both are the
+    // player asking for a still lens — and never mid-drag. A first turn with an
+    // entrance is the entrance close-up's (openingActStage.camera), not this.
+    // 📌 The refocus keeps the current viewing angle, so a new turn reads as the
+    // camera turning its head, not as a cut to a fresh shot.
+    const TURN_FOCUS_MS=1100;
+    let seenActing,turnFocus=false,dragging=false,lensDropped=null,lastIntro=null;
+    function startRefocus(now,ms=REFOCUS_MS){
       const num=frame.spirits?.find(s=>s.id===frame.actingId)?.num;if(num==null)return;
       const p=arenaPoint(num,.34);if(!p)return;
       const dir=camera.position.clone().sub(controls.target),r0=dir.length();if(!r0)return;
       controls._sphericalDelta?.set(0,0,0);controls._panOffset?.set(0,0,0);if('_scale' in controls)controls._scale=1;
-      refocus={start:now,t0:controls.target.clone(),goal:new THREE.Vector3(p.x,p.y+CAMERA_DIRECTOR.lookHeight,p.z),
+      refocus={start:now,ms,t0:controls.target.clone(),goal:new THREE.Vector3(p.x,p.y+CAMERA_DIRECTOR.lookHeight,p.z),
         dir:dir.divideScalar(r0),r0,r1:CAMERA_DIRECTOR.idleDistance*fit(Math.max(camera.aspect,.25))};
       dirty=true;
     }
@@ -174,7 +189,9 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       cleanups.push(()=>document.removeEventListener(type,noteActivity,{capture:true}));
     }
     // OrbitControls still owns drag start/end, so held gestures cannot time out.
-    const takeOver=()=>{refocus=null;sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>director.userEnd(performance.now());
+    // A drag also drops the entrance close-up it lands on (lensDropped): the riff
+    // plays on, but the lens is the player's from that moment.
+    const takeOver=()=>{refocus=null;dragging=true;if(lastIntro?.key)lensDropped=lastIntro.key;sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>{dragging=false;director.userEnd(performance.now());};
     controls.addEventListener('start',takeOver);controls.addEventListener('end',letGo);
     cleanups.push(()=>{controls.removeEventListener('start',takeOver);controls.removeEventListener('end',letGo);});
     const motion=()=>{reduced=!!media?.matches;controls.enableDamping=!reduced;dirty=true;};motion();
@@ -243,12 +260,21 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // Spirits (openingActStage.camera) — except under ⌗ top-down, which is a
       // lock the player chose. The intro counts as activity, so the auto camera
       // waits its usual resume time after it rather than snapping somewhere.
-      const introShot=topView?null:visuals.openingCamera(performance.now(),camera.aspect,reduced);   // the opening's clock is performance.now(), like its stage
+      // 🎯 Each Spirit's entrance close-up rides the same path (openingActStage.camera);
+      // `follow` is the ☰ Auto camera switch, and `from` the lens it eases in from.
+      let introShot=topView?null:visuals.openingCamera(performance.now(),camera.aspect,{reduced,follow:autoCamera,from:{position:camera.position,target:controls.target}});   // the opening's clock is performance.now(), like its stage
+      if(introShot?.key&&introShot.key===lensDropped)introShot=null;
       // ⏭ A skipped intro hands back a WIDE lens; frame the arena then, rather
       // than leaving the board a speck until the auto camera's resume runs out.
-      if(!introShot&&introBlend!=null){if(introBlend<.9)frameView('arena');introBlend=null;}
+      // A close-up cut short (⏭ mid-riff) hands back a lens closer than the
+      // player's own floor; ease out onto the Spirit instead.
+      if(!introShot&&introBlend!=null){
+        if(lastIntro?.key&&!lastIntro.settled&&lastIntro.key!==lensDropped)startRefocus(now);
+        else if(introBlend<.9)frameView('arena');
+        introBlend=null;}
+      lastIntro=introShot;
       if(introShot){
-        introBlend=introShot.blend;
+        introBlend=introShot.blend;turnFocus=false;
         refocus=null;director.userNudge(now);idleFlow.activity(now);
         controls.target.copy(introShot.target);camera.position.copy(introShot.position);
         camera.lookAt(controls.target);dirty=true;
@@ -257,6 +283,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         // slow machine must not also get a camera that crawls at a fraction of speed.
         cameraShot=autoCamera&&!topView?director.update({dtMs:wallDt*1000,now,subjects:cameraSubjects,camera:{position:camera.position,target:controls.target},reduced}):null;
         cameraShot=idleFlow.update({shot:cameraShot,camera:{position:camera.position,target:controls.target},now,dtMs:wallDt*1000,center:cameraSubjects.center,scale:fit(Math.max(camera.aspect,.25)),reduced});
+        // 🎯 the new turn's ease onto its Spirit (TURN_FOCUS_MS) — once the battle shot has let go.
+        if(turnFocus){turnFocus=false;if(autoCamera&&!topView&&!dragging&&!cameraShot?.driving)startRefocus(now,TURN_FOCUS_MS);}
         if(cameraShot?.driving) {
           // ⚠️ NO controls.update() on a frame the director drives: with damping
           // on, OrbitControls would ease the camera back toward its own last pose.
@@ -266,7 +294,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         } else if(refocus) {
           // 🎯 the break's ease back onto the Spirit (startRefocus). No
           // controls.update() here either: damping would pull against the ease.
-          const k=reduced?1:Math.min(1,(now-refocus.start)/REFOCUS_MS),e=k*k*(3-2*k);
+          const k=reduced?1:Math.min(1,(now-refocus.start)/refocus.ms),e=k*k*(3-2*k);
           controls.target.lerpVectors(refocus.t0,refocus.goal,e);
           camera.position.copy(refocus.dir).multiplyScalar(refocus.r0+(refocus.r1-refocus.r0)*e).add(controls.target);
           camera.lookAt(controls.target);dirty=true;
@@ -289,7 +317,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
-      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.lostChords>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
@@ -403,7 +431,11 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         if(top!==topView){topView=top;syncBattleCamera();if(!top){director=createCameraDirector();tuneDirector();idleFlow.activity(performance.now());}}
         refocus=null;sonicCamera.userNudge();frameView(name);director.userNudge(performance.now());},
       dispose,
-      update(next){if(disposed||failed)return;frame=next??{};applyQuality();visuals.update(frame);crowd.update(frame.crowds);dirty=true;},
+      update(next){if(disposed||failed)return;frame=next??{};
+        // 🎯 A turn changing hands (TURN_FOCUS_MS above). The first acting Spirit the
+        // arena ever sees is not a change: mounting frames the arena, the intro its own.
+        if(frame.actingId!==seenActing){if(seenActing!==undefined&&frame.actingId!=null)turnFocus=true;seenActing=frame.actingId;}
+applyQuality();visuals.update(frame);crowd.update(frame.crowds);dirty=true;},
       quality(value){if(value===quality)return;quality=value;autoLite=false;applyQuality();dirty=true;},
       zoom(factor){refocus=null;sonicCamera.userNudge();camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
       // ☰ Auto camera switch. Turning it back ON starts a fresh director so it

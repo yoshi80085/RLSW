@@ -259,6 +259,36 @@ console.log(`  🔊 ring-out returns seen in the audited matches: ${ringReturns}
     const d = Math.hypot(pad.x - home.x, pad.z - home.z);
     ok(d > .5 && d < 2, `${corner}: the pad is just off the board, beside the home hex (${d.toFixed(2)})`);
   }
+  // 🎯 THE ENTRANCE CLOSE-UP (Alex, 2026-10-08: "the camera zooms into their space as they begin").
+  {
+    const C = act.ENTRANCE_CAMERA, corner = seats[0].corner;
+    const pad = act.padPoint(corner), home = act.homePoint(corner);
+    const dist = (p, q) => Math.hypot(p.x - q.x, p.y - q.y, p.z - q.z), flat = (p, q) => Math.hypot(p.x - q.x, p.z - q.z);
+    const lens = (t, o = {}) => act.entranceLens(first, t, { pad, home, ...o });
+    const wide = { position: { x: 0, y: 22, z: 57 }, target: { x: 0, y: .5, z: 0 } };
+    eq(lens(first.riffAt - 1), null, '🎯 no close-up before the riff');
+    eq(lens(first.doneAt + C.holdAfterMs + 1), null, '🎯 …or after the beat on the home hex');
+    const start = lens(first.riffAt, { from: wide });
+    ok(dist(start.position, wide.position) < 1e-6 && dist(start.target, wide.target) < 1e-6, '🎯 it starts from wherever the lens was (no cut)');
+    const riff = lens(first.riffAt + C.easeInMs + 10, { from: wide });
+    ok(flat(riff.target, pad) < 1e-6, '🎯 in on the pad while the riff plays');
+    const r = dist(riff.position, riff.target);
+    ok(r <= C.riffDistance + 1e-6 && r >= C.riffDistance * (1 - C.push) - 1e-6, `🎯 …close (${r.toFixed(2)})`);
+    ok(flat(riff.position, { x: 0, z: 0 }) < flat(pad, { x: 0, z: 0 }), '🎯 …from the board side, looking out at the Spirit');
+    const later = lens(first.stepAt - 1, { from: wide });
+    ok(dist(later.position, later.target) < r, '🎯 a slow push-in across the riff');
+    const mid = lens((first.stepAt + first.doneAt) / 2);
+    ok(flat(mid.target, pad) > .1 && flat(mid.target, home) > .1, '🎯 it follows the hop');
+    const land = lens(first.doneAt + 1);
+    ok(flat(land.target, home) < 1e-6 && land.settled, '🎯 and settles on the home hex');
+    ok(Math.abs(dist(land.position, land.target) - C.landDistance) < 1e-6 && C.landDistance >= 12,
+      '🎯 handed back at a distance the player\'s own mouse can reach (≥ OrbitControls minDistance 12)');
+    ok(Math.abs(dist(lens(first.doneAt + 1, { scale: 1.5 }).position, land.target) - C.landDistance * 1.5) < 1e-6, '🎯 a narrow screen pulls it back, like the intro');
+    const snap = lens(first.riffAt, { from: wide, reduced: true });
+    ok(flat(snap.target, pad) < 1e-6, '🎯 reduced motion: no ease, it is simply framed');
+    const later2 = sched.seats[seats[1].id], entry2 = { ...later2, ...act.entranceAt(seats[1].id, 50000) };
+    ok(act.entranceLens(entry2, entry2.riffAt + C.easeInMs + 5, { pad: act.padPoint(seats[1].corner), home: act.homePoint(seats[1].corner) }), '🎯 a later seat\'s first turn gets the same close-up');
+  }
 }
 
 // ═════════════════════════════════════════════════════════════════════════════
@@ -313,6 +343,12 @@ console.log(`  🔊 ring-out returns seen in the audited matches: ${ringReturns}
   stage.pose(b.id, pawn, entry.doneAt - 1);
   const h = act.homePoint(b.corner);
   ok(Math.hypot(pawn.position.x - h.x, pawn.position.z - h.z) < .1, '🎬 and on his turn hops back onto his home hex');
+  // 🎯 …and the lens comes to him for it (openingActStage.camera → entranceLens).
+  const from = { position: new THREE.Vector3(0, 40, 40), target: new THREE.Vector3() };
+  const shot = stage.camera(entry.riffAt + 2000, 1.6, { from });
+  ok(shot?.key && Math.hypot(shot.target.x - pad.x, shot.target.z - pad.z) < 1e-6, '🎯 the camera comes to his pad for the riff');
+  eq(stage.camera(entry.riffAt + 2000, 1.6, { from, follow: false }), null, '🎯 …unless ☰ Auto camera is off (no intro to fall back on here)');
+  eq(stage.camera(entry.doneAt + 5000, 1.6, { from }), null, '🎯 and lets go after the beat on his hex');
   stage.dispose();
 
   // 🖥️ The client hangs the beam-down and the return on that clock.

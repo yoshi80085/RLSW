@@ -36,6 +36,7 @@ import { createOpeningActStage } from './openingActStage.js';
 import { createKnockdownHelpers } from './knockdownHelpers.js';
 import { FAN_STYLES } from './arenaCrowd.js';
 import { padPoint } from './openingAct.js';
+import { createLostChordLayer } from './lostChords.js';
 
 export function arenaPoint(num, height=.18) {
   const h=HEX_BY_NUM[num];return h?new THREE.Vector3((h.px-3255)/200,height,(h.py-2415)/200):null;
@@ -357,6 +358,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   const attackTiles=createAttackTiles(root,{pointFor:arenaPoint});
   // 🎪 The marquee spaces: a bulb-ringed neon hex and a floating prize card (marqueeMarkers.js).
   const marqueeMarkers=createMarqueeMarkers(root,{pointFor:arenaPoint});
+  // 💎 The Lost Chords as crystals (lostChords.js, Alex's dial-in 2026-10-08). The
+  // crack and the light stay on the arena canvas; the crystal floats on the
+  // FOREGROUND, above the SVG click layer, with the standees (its header says why).
+  const lostChords=createLostChordLayer(root,{pointFor:arenaPoint,floatRoot:foregroundScene,sound:typeof window!=='undefined'});
   const lasers=createArenaLasers(foregroundScene);
   const clearSonic=()=>{
     if(!sonic)return;
@@ -631,6 +636,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     moveTiles.update(frame.reach,frame.spirits);
     attackTiles.update(frame.attack);
     marqueeMarkers.update(frame.marquees);
+    lostChords.update(frame.lostChords,frame.spirits,frame.reach,frame.decoys);
     for(const [station,rig] of rigs) {
       const owner=frame.rigs?.find(r=>STATIONS[r.corner]?.includes(station));
       rig.owner=owner;
@@ -924,6 +930,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       moveTiles.tick(time*1000,camera,pawns,{reduced});
       attackTiles.tick(time*1000,{reduced});
       marqueeMarkers.tick(time*1000,{reduced});
+      lostChords.tick(time*1000,{reduced,pawns});
     },
     /** 🧱 What must never show a hex through it: every amp cabinet (all tiers), the Sonic's floor dice and the Swing's (solidLayer.js). */
     solidRoots:()=>[...[...rigs.values()].flatMap(r=>r.levels),sonic?.dice?.group,swing?.dice?.group,marqueeMarkers.solidRoot].filter(Boolean),
@@ -954,12 +961,12 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({koHelpers:koHelpers.live,rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0)+koHelpers.live,shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics(),opening:opening.diagnostics(),openingBusy:opening.busy(performance.now())}),
-    /** 🎸 The opening act's lens while the intro runs, else null (openingActStage.camera). */
-    openingCamera:(now,aspect,reduced)=>opening.camera(now,aspect,{reduced}),
+    diagnostics:()=>({koHelpers:koHelpers.live,rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0)+koHelpers.live,shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),lostChords:lostChords.active(),lostChordHexes:lostChords.diagnostics().tokens,marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics(),opening:opening.diagnostics(),openingBusy:opening.busy(performance.now())}),
+    /** 🎸 The opening act's lens — the intro, or an entrance close-up — else null (openingActStage.camera). */
+    openingCamera:(now,aspect,opts)=>opening.camera(now,aspect,opts),
     /** 🎸 0..1 — how much of the intro's own look (bloom, exposure) is on. */
     openingEnvelope:()=>opening.envelope,
-    dispose(){disposed=true;opening.dispose();koHelpers.dispose();bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    dispose(){disposed=true;opening.dispose();koHelpers.dispose();bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lostChords.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     // 🎆 The hit's share of the lens (shake + zoom punch) and the mortars' sprite scale.
     pyroCamera:reduced=>pyro.camera(reduced),
     resize:h=>pyro.resize(h),

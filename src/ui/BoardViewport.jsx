@@ -113,7 +113,8 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       [data-board-view="3d"] [data-arena-flat="spirit"],
       [data-board-view="3d"] [data-arena-flat="stage-fx"],
       [data-board-view="3d"] [data-arena-flat="crowd"],
-      [data-board-view="3d"] [data-arena-flat="marquee"] { display:none; }
+      [data-board-view="3d"] [data-arena-flat="marquee"],
+      [data-board-view="3d"] [data-arena-flat="lost-chord"] { display:none; }
       [data-board-view="3d"] .arena-tactical { pointer-events:auto; }
       [data-board-view="3d"] [data-arena-flat="amp-art"] { opacity:0; }
       [data-board-view="3d"] [data-arena-flat="fall"] { visibility:hidden; }

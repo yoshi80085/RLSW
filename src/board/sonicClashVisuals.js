@@ -163,6 +163,8 @@ export function createSonicClashVisuals(options) {
       shieldRadius: options.shieldRadius ?? .78, shieldSize: options.shieldSize ?? 2.6,
       // `margin` against ONE Sustain die, the scale the ring beam was tuned on.
       shieldValue: maxHp / dice, intensityMode: 'margin', strokeStyle: 'rings', surfaceRipple: false,
+      // 📌 Preview-only hook: the dial-in page passes levers here. The game passes none.
+      ...(options.beamTuning ? { tuning: options.beamTuning } : null),
       dice: [{ value: shot.strength, sides: battle.dicePool?.[shot.index] ?? 6, passed: kind === 'spirit' || (kind === 'shatter' && shot.through > 0) }],
     });
     // The living shield supplies its own surface and ripple; beam compression stays.

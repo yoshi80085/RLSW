@@ -169,6 +169,7 @@ Add auto-complete for committing notes based on the highest possible outcome for
 
 ### 2026-09-08 — [P2] Story reason for board notes
 Develop a solid story for why there are notes on the board to “get.”
+✅ **Done — 2026-10-08.** In 3D the Lost Chords are crystals that grow out of the stage ("crystallise from the harmonic interference"), at Alex's dial-in: `board/lostChords.js`, `SEQUENCING.md` §A `64-lostchords`.
 
 ### 2026-09-08 — [P2] Character-specific charge zones
 Change what charge zones do. For example, they could give a special benefit to Intergalactic 0 through his boom box. Every character should have something like this instead of charge zones simply raising the floor/ceiling.

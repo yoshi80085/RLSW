@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — every handoff (98 rows), dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — every handoff (99 rows), dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,60 +26,57 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 63-hammeron. The Ronin's hammer-on / pull-off — designed, previewed, dialled, ported — 2026-10-07/08
+## 64-lostchords. 💎 The Lost Chords as 3D crystals — pitched, previewed, dialled, ported — 2026-10-08
 
-**Alex:** *"Each Spirit should get a way to 'manipulate' notes in their stock
-somehow. So take Ronin - what if he could 'hammer on' notes in his melody line?
-He would get 1 hammer on technique per turn - potentially carrying over for a max
-of 2 … He commits 2 notes, doesn't have the 3rd, he can push the 'h' keystroke or
-'hammer on' button - it adds a 3rd note to the melody line - either a step up or
-down. While not a note committed from the pool, it nevertheless adds a note to the
-melody and counts as a note played."* Then: *"lets have it be 'smart' - the button
-only available if it senses it can be used in a correct way"*; the preview's
-dial-in, **0 of 24 levers moved**; and *"this system as it is - is designed only
-for Ronin as of now, other Spirits aren't touched"*.
+Alex: *"Lets make the notes on the board 3D - Do you have a good idea to integrate them with the environment?"* → three pitches (crystals / a pick in the stone / notes riding the Riven debris) → *"the crystal idea sounds great, lets see it in the preview"* → *"can you set the preview in here?"* (published as the claude.ai Artifact *Lost Chord Crystals*) → his dial-in, **4 of 44 levers** (size .50→.44, stretch 2.20→2.15, embedded 3→6, letterGlow 1.6→1.7) → *"Looks great! Wire it in please!"*
 
-### His rulings
-- 1 charge a turn, a bank of 2; **both charges may go on one melody** (over my one-per-melody advice).
-- Smart: it adds the note that continues the line's last move (a step finishes the shred, a third the arpeggio skip); it lights whenever it continues the shape and **says what it pays**.
-- It does **not** count toward lifting an Iwato curse. Up = **Hammer-on**, down = **Pull-off**.
-- It **counts toward movement** (10-08). Taking back the note it was played off **takes it too and refunds the charge** (10-08).
-- ⭐ **Ronin only.**
+### The idea
+The round-end log already said Lost Chords *"crystallise from the harmonic interference"*; the 3D board now shows it. A faceted quartz shard floats over a lit crack in the hex, six small shards stuck in the crack, the note inside (a camera-facing sprite, so top-down reads), a pooled point light on the stone, motes. **The hunt colour is the client's own `unlockClaim` call**, the same one the 2D chip's hex glow makes. Moments: spawn (Riven-palette bolts rise from the crack), drift (motes stream to the new hex), Thrash scatter (shards burst off the hit Spirit and bounce), pickup (it lifts over the standee's head, rings, shatters; the note plays in the picker-up's own amp settings). Crystals hum their pitch when hovered and when a walk is armed (its reach rings, low to high).
 
 ### What shipped
-- **The rule:** `music/noteTechniques.js` — `hammerCandidate` asks the payout's OWN readers (`spiritStyle.js` `trailingContour`, a new additive export; `melodyPayout.js` `craftRunFor`), so the button can never promise fans the commit refuses. `hasHammerOn` is the one Ronin gate; `isTechniqueSrc` / `playedNotes` / `hammerRecharge`.
-- **Charges:** dealt 1 (`economy.js` `makeInitialNoteState`), +1 at his own **turn END** (`turn.js` `applyTurnEnded`), capped at 2. ⚠️ Turn END, not start, because the client never runs a turn start for seat one's first turn — a turn-start grant would have given a seat-one Ronin nothing on turn 1 and a seat-two Ronin his. Other Spirits' sheets stay byte-identical.
-- **The track:** a hammered note's `melodySrcIdx` is `'hammer'` / `'pull'` (never a hand slot), so every existing splice keeps it aligned; `removeMelodyNote` cascades and refunds; `clearNoteTrack` refunds; the commit pays and moves it as any note and `melodyCommit.js` leaves it out of the exorcism.
-- **The client:** `hammerOn()` beside `removeMelodyNote`; H in `keyboardNoteCommit` (Ronin only — H is not a note letter); the own-row button above ✓ Commit; the plate pips; the ghost of the next note (click = hammer); the gold slur with h / p; the strike-in; the legato KATANA (`hammerVoice`, through `playNoteSound`). Human only — bots don't hammer yet.
-- **One copy of the picture:** `ui/HammerOn.jsx` (`HAMMER_LOOK` = the dial-in). The preview `.scratch/hammer-on-preview.html` now imports it and builds its levers from it.
+- `src/board/lostChords.js` — `LOST_CHORD_LOOK` (= the dial-in), the pure clocks, **`planLostChordMoments`** (names each change from the token DIFF; the engine's `last*` notes only NAME a change, so a stale `lastThrashTokens` never replays a scatter), `createLostChords`, and **`createLostChordLayer`** (the game half).
+- `src/audio/lostChordSfx.js` — the hum / crackle / whoosh / clinks / shatter / pluck; notes on the NOTES fader, effects on the SFX fader; the pluck keeps the client's register (`PC_FREQ_BASE`, C4–B4 — the suite reads that table).
+- `arenaFrame` takes `lostChords` ({ tokens + claim, drifted, thrashed, hover, tones }); `arenaVisuals` mounts the layer (**floor on the arena canvas, crystal on the FOREGROUND scene** above the SVG click layer with the standees); `arenaRenderer`'s reduced-motion loop draws while a moment plays.
+- Client (monolith): feeds `lostChords` (tokens + `unlockClaim(...).which`, `lastTokensDrifted`, `lastThrashTokens`, `hovered`, each Spirit's `toneOf`); the SVG token chip carries `data-arena-flat="lost-chord"` and `BoardViewport` hides it in 3D; **`checkTokenPickup` skips its own pluck while the 3D arena is up** (the crystal plays it at the break, so it sounds once).
+- `.scratch/lost-chord-preview.html` now imports the game's two files (one copy of the look); the claude.ai Artifact was republished from it. The old `.scratch/lostChordCrystals.js` / `lostChordSfx.js` are in `_to_delete/`.
 
 ### Found on the way
-- ✏️ My 10-07 spec said the button stays dark climbing from A♭ (no B in Hirajoshi). Building it showed the craft run counts A♭ → C as a step, so it lights on C (+1 fan). Corrected in `MELODY_IDENTITY_DESIGN.md` §13.2.
-- In a six-note scale the degree wraps: C → G is a skip *down*, so C G offers a pull-off to E♭ ("no new fans").
+- ⚠️ **A pickup waits for the standee.** The engine drops the token on the click; the standee hops ~420 ms later. The crystal is held until the pawn stands on it (2.5 s cap; 0.45 s with no pawn — a smoke-hidden Spirit or the Ronin's double).
+- ⚠️ **Lights are a fixed pool** (`LIGHT_POOL` 8 + one spawn flash). The preview built a light per crystal and per spawn; in three.js a new light recompiles every lit material in the arena — a hitch at every round end. The suite caught the spawn flash (17 lights vs 8).
+- ⚠️ The pickup pluck register: I first assumed A4–G#5; the suite reading `PC_FREQ_BASE` showed C4–B4.
+- 🧰 **device_commit_files can silently not overwrite** a file it wrote earlier in the session (it reported "written", the VM saw the old bytes). Committing under a NEW name and `cp`-ing into place on the device works; verify with `md5sum` every time.
 
 ### Evidence
-- `test:notetechniques` **50** (rule cases, the payout match, a 12-root sweep, the A♭ gap, the engine half; 7 mutants caught). `test:hammeronjourney` **30** (new — the real `Game` by keys and clicks, incl. the next Spirit getting nothing). Both in `test:all`.
-- The full sweep in the cloud on a copy of the disk with real node_modules: 91 of 96 green. The five red are not this change: `test:bushido` (the Shadow call), `test:abilitydemo` (the old preview-lever red), `test:bushidoui` (needs a file in `Claude outputs/`, not copied), `test:swing` (expects `fallen` after a knockdown — red at HEAD too since the 10-07 knockdown ruling), `test:arch` (fixed after the sweep: two new rows). `harness` 1747 / `trace` 2448 identical at HEAD.
-- `check:bundle` zero warnings. The real Game rendered in Chromium: the dark button, the lit "🔨 HAMMER-ON → B♭ · +1 fan", the slur, the plate, "3 notes → 3 hex".
-
-### 🎤 Same day, later: the fans learn it (brain built, bubble in preview)
-Alex: *"I'm wondering about the fan's hints … Would this be substantial work making
-sure the system knows when its best to use?"*, then *"lets plug that in … simple is
-best - your 3 points covers it"*. The three rules: ask when it pays more fans;
-holding both charges, ask anyway (or the next charge is wasted); otherwise nothing.
-- **Finder** (`playFinder.js`, opt-in `opts.techniques`): a hammer move in the line search (`hammerCandidate`'s note, a charge not a hand note). Bounds get one bonus copy of every palette note per charge left, which is looser and slower but never too tight. Hammered notes count as spent, so a non-paying hammer never wins. `hammerTopUp` covers rule 2. `test:playfinder` 767; §8 is brute force with the hammer move, plus legality, the commit paying what the finder says, rules 2 and 3, Alex's own example, and another Spirit never getting one.
-- **Crowd** (`crowdCoach.js`): `techs` / `idx: null` / `hammerNext` on asks, and `hammer_up` / `hammer_down` / `hammer_full` in both voices. `CROWD_HAMMER` holds first guesses. `CrowdBubbleCard` draws the hammered chip (gold + h / p) and an [H] key. `HammerButton` gained `coach` (pulse / ring). All of it is inert in the live game until `techniques` is switched on. `test:crowdcoach` 1561, `test:crowdbubble` 119.
-- **Preview:** `.scratch/hammer-on-hints-preview.html` (`npm run dev:hammerhints` / `build:hammerhints`, artifact *Hammer-On Hints Dial-in*). Six states computed live, today beside the new hints.
-- ⚠️ The finder is ~3× slower with charges (median 0.7–0.9 s, worst 2.5 s, worker-side). Rule 2 buys a hex only under speed, so its words were changed not to promise one.
-- ✅ **Ported the same day** (Alex: *"everything sounds good, lets wire it in"*, 0 levers moved): `crowdFinderClient` asks with `techniques` on the melody step only (the chord step's searches are unchanged) and slims `hammerCharges` across; `useCrowdCoach` keys on `hammerCharges`; the client lights `HammerButton coach` from `crowdShown.hammerNext`. 🐛 The worker had been dropping `unavailable` (staggered slots) — fixed. `test:crowdbubble` 128 (§5). In headless Chromium on the real Game with fan hints on, after G A♭ B♭ C D♭ (root F) the button pulsed and the ghost F waited; after H it stopped. The bubble wasn't drawn there (no 3D grandstand headless).
+- `test:lostchords` **88** (new, in `test:all`): the dial-in, the clocks, every naming case, two canvases, the constant light count, the pickup that waits, the frame, the client's three touch points, one copy of the look, the pluck register. **5/5 mutants caught** (no wait, a light per crystal, one canvas, first frame spawns, a scatter from anywhere — the last one added a check).
+- Full sweep on the device VM: **93/97 green**. Red, none from this: `bushido` (the Shadow-double gap), `abilitydemo` (the old preview lever), `swing` (`fallen` after a knockdown) — all three red in `63-hammeron` too — and `bats`, whose plain-node half passes (179) and whose second half needs rolldown's linux binding the VM lacks. `test:arch` green, `check:bundle` **0 warnings**.
+- The REAL `mountArena` + `arenaFrame` rendered headless (SwiftShader, `.scratch/lcGameProbe.entry.js`): six crystals on their hexes with the red/blue hunt hexes, a spawn, a Thrash scatter beside Glamarchy, the Ronin's pickup — 0 page errors.
 
 ### Next
-1. Alex plays the hammer-on in a real match (Testing Grounds is quickest), and dials in the hints page.
-2. ⁉️ Open: the commit's replay plays a hammered note as a picked one; bots don't hammer; Free play doesn't refill charges.
-3. The other Spirits' techniques are undesigned (Alex: Ronin only for now).
+- ⏳ Alex to play it on his GPU: brightness of the crystals at Standard, the 8 lights' cost, the hum's level in a real match.
+- The pickup's flying chip into the HUD stock (the preview's mock) is not in the game; the 2D stock still updates as before.
+- Bots don't trigger a reach hum (no armed walk); hover hums only for the person at the mouse.
 
+### ➕ Same day, separate ask: 🎯 the camera comes to each Spirit (2026-10-08)
+Alex: *"the camera ignores their entrance … make it so the camera zooms into their space as they begin - Same goes for all players - When it becomes a new players turn, the camera should come to that Spirit"*.
+- **Why it ignored them:** the intro's lens only *leaned* 28% toward seat one's pad, and returned null after `cameraUntil` — so a later seat's riff and hop (its own first turn) played wherever the player had left the camera. A new turn moved the lens only through the auto camera, i.e. after 10 s of no input.
+- **Entrance close-up:** `openingAct.ENTRANCE_CAMERA` + pure `entranceLens` / `inEntranceLens`; `openingActStage.camera(now, aspect, { reduced, follow, from })` flies it for whichever seat is in its window (riffAt → doneAt + 500 ms), snapshotting `from` when it starts so it eases in (spherically, 1.1 s) instead of cutting. Board side of the pad, tilt 62°, 9.5 → push-in 8% → 13 on the home hex (⚠️ ≥ OrbitControls' minDistance 12, so the hand-back never jumps). The old lean survives only with ☰ Auto camera off.
+- **Turn focus:** `arenaRenderer` notices `frame.actingId` change (not the first one it sees) and runs the existing refocus ease (now with a duration, `TURN_FOCUS_MS` 1100) once the Sonic shot has let go — skipped if the director is already flying (it re-aims on a new turn itself), under ⌗ top-down, with Auto camera off, or mid-drag. An entrance close-up clears it.
+- **Hand-backs:** a drag drops the close-up it lands on (`lensDropped`); a close-up cut short (⏭ mid-riff) eases out onto the Spirit instead of leaving a lens closer than 12.
+- ⚠️ **House rule bent:** no `.scratch` preview first — Alex asked for it straight, as with the 2026-09-25 refocus-on-break. The levers are all in `ENTRANCE_CAMERA` and `TURN_FOCUS_MS`; if it feels off, they are the dial-in a preview would expose.
+- **Evidence:** `test:entrance` 2,716 → **2,732** (the lens: no cut at start, on the pad, board side, push-in, follows the hop, lands ≥ 12, narrow screen, reduced motion, later seats, the stage on a ring-out return, Auto camera off) · `test:cameradirector` 93 → **97** (the wiring) · `test:topview` 60 · `test:entrancejourney` 29 · `test:arch` 8 · beamlayer / headdial / lostchords / movetiles / pyrostage / standeemove green · `check:bundle` **0 warnings** (with a linux esbuild binary via `ESBUILD_BINARY_PATH` — the tree's `node_modules` is win32). ⏳ **Not seen moving** (no WebGL run).
 
----
+### ➕ Same day, separate ask: 🌊 the Sonic's tail follows the head (2026-10-08) — `65-sonictail`
+
+Alex: *"The whole Sonic energy blast tail doesn't 'straighten out' before 'ramming' into the shield - So it looks like it becomes 'frozen' in its shape"* → (a straightening built straight into the client, ⛔ reverted: *"not 'straighten out' - I used the wrong words"*) → preview v1, rings slide and pack → *"it should condense and follow through in the same way the front does. If the front goes up, down, up at the end, the tail should as well go up, down, up … it might mean the tail 'speeds up'"* → preview v2 → *"This is how the attack should play out."* 6 of 9 levers moved.
+
+- **Cause.** Each ring of the ring beam stays on the path station where it lit. In the slow approach (slowmo 52) the back of the beam stood still, then the 160 ms contact squeeze flattened it and the whole beam was hidden at contact — "up, down" and never the last "up".
+- **What shipped** (`board/sonicZigzagVisuals.js` `RING_FOLLOW`, ring mode only): over the last `approach` 1 unit each ring rides the HEAD'S OWN TRACK, `k` × its old distance behind (k → `compress` 0), with the wave the head had there (`replay` 1, phase at `tauAt(p)`); the beam then stays drawn `drain` 0.8 s (beam clock) while the rest pours into the impact; squeeze off (`ram` 0); `slim` .4 / `swell` .6 / `calm` 1 / `ease` 3. Before the catch-up the code takes the original path — **byte-identical**, and costs nothing. Reduced motion keeps the old beam.
+- `board/sonicClashVisuals.js`: one preview-only `beamTuning` passthrough (the game passes none).
+- ⚠️ **A lag measured in TIME was tried and rejected**: in the slow approach the head covers almost no ground, so it collapsed the tail into one disc on the shield. The lag is in distance along the track.
+- **Evidence.** New `sonicFollowCheck.mjs` in `test:sonicfx` — 6 checks: the dial-in; the flight up to the catch-up byte-identical to the old beam (62 frames); back-to-front 5.37 → 0.04 units by contact (old 5.37 → 2.29); every ring at the impact at contact; drawn through the drain, gone after; seek-stable, reduced motion = old. 3 mutants caught. `sonicGlitterCheck` now asserts the beam follows through until the drain ends (it asserted the old cut-off). Green: `test:sonicfx`, `test:sonic` 100, `test:beamlayer` 53, `test:bushidoarena` 15, `test:battlelens` 18, `test:battledirector` 45, `test:topview` 60, `test:spotlight` 362, `test:arch` 8. ⚠️ `check:bundle` / journeys could not run (Windows esbuild in `node_modules`).
+- **Preview:** `.scratch/sonic-follow/` (source, built page, README) and the *Sonic Tail Follow* artifact. Not on a real GPU yet; Systems Map not republished (no rule change).
+- 📌 Found: the spark ribbon in ring mode is not seek-stable (stale buffer) on the shipped beam too — harmless, unhidden meshes only. Open: the draining tail freezes in the hit-stop like everything else.
+
 
 # B. 🎓 THE FINDINGS — what this project has learned the expensive way
 
@@ -219,13 +216,15 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 98 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 100 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `63-hammeron` | 2026-10-08 | The Ronin's hammer-on / pull-off: `music/noteTechniques.js` (the smart rule on the payout's own readers), `ui/HammerOn.jsx` at Alex's 0-lever dial-in, charges dealt 1 / +1 at his turn end / bank 2, H key, button, ghost, slur, legato KATANA; pays and moves but never exorcises; Ronin only. `test:notetechniques`, `test:hammeronjourney`. Live §A. |
+| `65-sonictail` | 2026-10-08 | The Sonic ring beam's tail follows the head at Alex's 6-lever dial-in: `RING_FOLLOW` in `board/sonicZigzagVisuals.js` — on the last stretch the rings ride the head's own track (its ups and downs, faster), catch it by contact and pour into the impact for 0.8 s; first half byte-identical. Live §A (same-day addition). `test:sonicfx` (`sonicFollowCheck`). |
+| `64-lostchords` | 2026-10-08 | The Lost Chords as 3D crystals at Alex's 4-lever dial-in: `board/lostChords.js` (look, clocks, `planLostChordMoments`, the game layer) + `audio/lostChordSfx.js`; crystal on the foreground scene, floor on the arena canvas; pickup waits for the standee; pooled lights; the client's pickup pluck moved to the shatter. `test:lostchords` 88. |
+| `63-hammeron` | 2026-10-08 | Archived in `../docs/archive/SEQUENCING-2026-10-08-before-lost-chords.md`. The Ronin's hammer-on / pull-off: `music/noteTechniques.js` (the smart rule on the payout's own readers), `ui/HammerOn.jsx` at Alex's 0-lever dial-in, charges dealt 1 / +1 at his turn end / bank 2, H key, button, ghost, slur, legato KATANA; pays and moves but never exorcises; Ronin only. `test:notetechniques`, `test:hammeronjourney`. Live §A. |
 | `62-spiritsheet` | 2026-10-07 | Archived in `../docs/archive/SEQUENCING-2026-10-08-before-hammer-on.md`. The Spirit window rebuilt in the arena's look (previewed, dialled at 6 of 25 levers, ported; the old 2D card gone) + one Enter, one act (`e.defaultPrevented`). `test:spiritsheet`, `test:notekeysjourney`. |
 | `61-roninart` | 2026-10-06 | Archived in `../docs/archive/SEQUENCING-2026-10-08-before-hammer-on.md`. The Ronin's new art: white masters keyed/cropped/traced by `scripts/standee-art.py`; his own Thrash1/Thrash2 prints replace the stick figure, 'hit' on any shove and on a lost/tied Thrash, a blank back, the lens films his front. `test:standee`. |
 | `60-openingport` | 2026-10-06 | Archived in `../docs/archive/SEQUENCING-2026-10-08-before-hammer-on.md`. The opening act in the game: Spirits wait off the board on pads, enter on their own first turn with 2 fans, home hex reserved; Bardbarian intro on the live arena at Alex's dial-in; bots and online. `test:entrance`, `test:entrancejourney`. |

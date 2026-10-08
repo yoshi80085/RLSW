@@ -316,6 +316,16 @@ console.log('§4 the switch and the badge');
     && /controls\.target\.lerpVectors\(refocus\.t0,refocus\.goal,e\)/.test(r));
   ok('a drag, a ☰ view or zoom cancels the refocus; reduced motion snaps', /const takeOver=\(\)=>\{refocus=null;/.test(r)
     && /refocus=null;sonicCamera\.userNudge\(\);frameView\(name\)/.test(r) && /zoom\(factor\)\{refocus=null;/.test(r) && /const k=reduced\?1:/.test(r));
+  // 🎯 2026-10-08: a new turn brings the lens to its Spirit; each entrance gets a close-up.
+  ok('a turn changing hands is noticed (not the first acting Spirit the arena sees)', /if\(frame\.actingId!==seenActing\)\{if\(seenActing!==undefined&&frame\.actingId!=null\)turnFocus=true;seenActing=frame\.actingId;\}/.test(r));
+  ok('…and eases onto the new Spirit once the battle shot lets go — not under top-down, Auto camera off, mid-drag, or while the director flies',
+    /if\(turnFocus\)\{turnFocus=false;if\(autoCamera&&!topView&&!dragging&&!cameraShot\?\.driving\)startRefocus\(now,TURN_FOCUS_MS\);\}/.test(r)
+    && r.indexOf('if(turnFocus)') > r.indexOf('if(!sonicCamera.update(') && /refocus=\{start:now,ms,/.test(r) && /\(now-refocus\.start\)\/refocus\.ms/.test(r));
+  ok('an entrance close-up outranks it, rides the intro path, and follows the Auto camera switch',
+    /visuals\.openingCamera\(performance\.now\(\),camera\.aspect,\{reduced,follow:autoCamera,from:/.test(r) && /introBlend=introShot\.blend;turnFocus=false;/.test(r));
+  ok('a drag drops the close-up it lands on; one cut short eases out onto the Spirit',
+    /if\(lastIntro\?\.key\)lensDropped=lastIntro\.key;/.test(r) && /introShot\.key===lensDropped\)introShot=null;/.test(r)
+    && /if\(lastIntro\?\.key&&!lastIntro\.settled&&lastIntro\.key!==lensDropped\)startRefocus\(now\);/.test(r));
   ok('ANY input is activity: keys, clicks, wheel and mouse movement, document-wide', /\['pointerdown','pointerup','click','auxclick','keydown','wheel','pointermove'\]/.test(r)
     && /document\.addEventListener\(type,noteActivity,\{capture:true,passive:true\}\)/.test(r));
   ok('☰ menu has the Auto camera toggle (menuSwitch lever: yes)', /kind:'toggle', icon:'🎥', label:'Auto camera'/.test(c) && /onClick:\(\) => setAutoCamera\(v => !v\)/.test(c));
