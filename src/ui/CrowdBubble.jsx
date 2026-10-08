@@ -28,7 +28,7 @@
 /* eslint-disable react-refresh/only-export-components */
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import NoteHex from './NoteHex.jsx';
-import { CROWD_BUBBLE, crowdBubbleFrame, prettyNote } from './crowdCoach.js';
+import { CROWD_BUBBLE, CROWD_HAMMER, crowdBubbleFrame, prettyNote } from './crowdCoach.js';
 import { askFinder } from './crowdFinderClient.js';
 
 /** The element a bubble points at: the acting Spirit's front-row fan, else the
@@ -39,6 +39,7 @@ export const CROWD_STAND_SELECTOR = '[data-tip-anchor="fan-crowd"]';
 const CLEAN_HUE = '#a58bff';     // the preview's chip hues, dialled with it
 const DISCORD_HUE = '#5b6680';
 const FIRST_HUE = '#ffffff';
+const HAMMER_HUE = '#ffc94a';   // 🎸 = HammerOn.jsx HAMMER_HUES.gold, the button's own colour
 
 /**
  * Best plays for the acting Spirit's hand, recomputed only when the hand does.
@@ -56,6 +57,7 @@ export function useCrowdCoach(request) {
     request.ns?.melodyLine, request.ns?.driveStack, request.ns?.sustainStack,
     request.ns?.stackCommitsThisTurn, request.ns?.hasConfirmed, request.ns?.tempDrive,
     request.ns?.tempSustain, request.ns?.mojoDrain, request.ns?.driveSlots, request.ns?.sustainSlots,
+    request.ns?.hammerCharges,   // 🎸 a spent or refunded charge changes the best line
   ]) : null;
   const latest = useRef(null);
   useEffect(() => {
@@ -96,7 +98,7 @@ export function crowdBubbleBoxStyle(color, B = CROWD_BUBBLE) {
 /** The NoteHex size whose hexagon spans 94% of the dialled chip box (see the card). */
 export const chipDrawSize = (B = CROWD_BUBBLE) => Math.round(B.chipSize * 0.94 * 120 / 68);
 
-export function CrowdBubbleCard({ ask, color, inScale = () => true, B = CROWD_BUBBLE, style = null, tailX = null }) {
+export function CrowdBubbleCard({ ask, color, inScale = () => true, B = CROWD_BUBBLE, H = CROWD_HAMMER, style = null, tailX = null }) {
   if (!ask) return null;
   let pay = '';
   if (B.payoff === 'fans' && ask.payoff.fans) pay = `+${ask.payoff.fans} fan${ask.payoff.fans === 1 ? '' : 's'}`;
@@ -105,7 +107,12 @@ export function CrowdBubbleCard({ ask, color, inScale = () => true, B = CROWD_BU
   return (
     <div className="crowd-bubble" data-crowd-bubble={ask.key} role="status" aria-live="polite"
       style={{ ...crowdBubbleBoxStyle(color, B), ...(style ?? {}) }}>
-      <div className="crowd-bubble-txt">{ask.text}</div>
+      <div className="crowd-bubble-txt">{ask.text}
+        {/* 🎸 "press H" — the key itself, beside the words that ask for it. */}
+        {ask.hammerNext && H.keyCap === 'on' && <kbd data-crowd-hammer-key style={{ marginLeft: 6, padding: '0 4px', borderRadius: 3,
+          border: `1px solid ${HAMMER_HUE}`, color: HAMMER_HUE, font: "700 10px 'Share Tech Mono', monospace", verticalAlign: 'middle' }}>H</kbd>}
+      </div>
+      {(ask.kind !== 'hammer' || H.topUpChip === 'on') && (
       <div className="crowd-bubble-chips" style={{ display: 'flex', gap: 5, marginTop: 6, alignItems: 'center' }}
         aria-label={ask.notes.map(prettyNote).join(' ')}>
         {ask.notes.map((n, k) => (
@@ -115,14 +122,21 @@ export function CrowdBubbleCard({ ask, color, inScale = () => true, B = CROWD_BU
           // chip with an unreadable letter — found by rendering the port beside the
           // preview. The chip is drawn at the size whose HEXAGON matches, centred in
           // the dialled box, so the row's spacing and the chip's size both match.
-          <span key={`${k}-${n}`} style={{ width: B.chipSize, height: B.chipSize, display: 'grid', placeItems: 'center', overflow: 'visible' }}>
+          <span key={`${k}-${n}`} data-crowd-chip-tech={ask.techs?.[k] || undefined}
+            style={{ width: B.chipSize, height: B.chipSize, display: 'grid', placeItems: 'center', overflow: 'visible', position: 'relative' }}>
             <span style={{ margin: -(chipDrawSize(B) - B.chipSize) / 2 }}>
               <NoteHex size={chipDrawSize(B)} letter={n}
-                hue={k === 0 ? FIRST_HUE : inScale(n) ? CLEAN_HUE : DISCORD_HUE} />
+                hue={ask.techs?.[k] && H.chipHue === 'gold' ? HAMMER_HUE
+                  : k === 0 ? FIRST_HUE : inScale(n) ? CLEAN_HUE : DISCORD_HUE} />
             </span>
+            {/* 🎸 a hammered note: no hand chip spent — the h / p says so */}
+            {ask.techs?.[k] && H.chipMark === 'badge' && <span style={{ position: 'absolute', right: -5, top: -6,
+              font: "700 9px/1 'Share Tech Mono', monospace", color: '#0a0f1c', background: HAMMER_HUE,
+              borderRadius: 2, padding: '1px 2px' }}>{ask.techs[k] === 'pull' ? 'p' : 'h'}</span>}
           </span>
         ))}
       </div>
+      )}
       {pay && (
         <div className="crowd-bubble-pay" style={{
           display: 'inline-block', marginTop: 6, font: "600 10px/1 'IBM Plex Mono', monospace", letterSpacing: '.06em',

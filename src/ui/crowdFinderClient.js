@@ -44,11 +44,17 @@ function getWorker() {
  *  plenty more, and one non-cloneable value in it would make `postMessage` THROW
  *  inside a React effect — so the sheet is slimmed before it crosses, not after. */
 const FINDER_FIELDS = ['rootNote', 'paletteMode', 'noteStock', 'usedStockIdx', 'melodyLine', 'driveStack', 'sustainStack',
-  'stackCommitsThisTurn', 'hasConfirmed', 'tempDrive', 'tempSustain', 'mojoDrain', 'driveSlots', 'sustainSlots'];
+  'stackCommitsThisTurn', 'hasConfirmed', 'tempDrive', 'tempSustain', 'mojoDrain', 'driveSlots', 'sustainSlots',
+  'hammerCharges'];   // 🎸 the Ronin's hammer-on charges (the finder reads them only with `techniques`)
 const slim = ns => Object.fromEntries(FINDER_FIELDS.filter(k => ns?.[k] !== undefined).map(k => [k, ns[k]]));
 
 export function askFinder(spiritId, ns, goals, unavailable = []) {
-  const args = { spiritId, ns: slim(ns), goals, unavailable: [...(unavailable ?? [])] };
+  // 🎸 THE HAMMER-ON (2026-10-08, Alex: "lets wire it in"): the melody step's
+  // search knows the Ronin's technique. Only the melody step — the chord step's
+  // two joint searches stay as fast as they were. The finder itself gates on the
+  // Ronin and his charges, so every other Spirit's answer is unchanged.
+  const techniques = (goals ?? []).includes('fans');
+  const args = { spiritId, ns: slim(ns), goals, unavailable: [...(unavailable ?? [])], techniques };
   const w = getWorker();
   if (w) {
     const id = ++nextId;
@@ -63,12 +69,12 @@ export function askFinder(spiritId, ns, goals, unavailable = []) {
   return inline(args);
 }
 
-function inline({ spiritId, ns, goals, unavailable }) {
+function inline({ spiritId, ns, goals, unavailable, techniques }) {
   let timer = 0;
   const promise = new Promise(resolve => {
     timer = setTimeout(() => {
       import('../engine/policies/playFinder.js')
-        .then(({ findBestPlays }) => resolve(findBestPlays(spiritId, ns, { goals, unavailable })))
+        .then(({ findBestPlays }) => resolve(findBestPlays(spiritId, ns, { goals, unavailable, techniques })))
         .catch(() => resolve(null));
     }, 0);
   });

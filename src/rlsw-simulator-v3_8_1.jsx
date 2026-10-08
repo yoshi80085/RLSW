@@ -279,7 +279,7 @@ import NoteHex, { NOTE_HEX, NOTE_BURST } from "./ui/NoteHex.jsx";
 import { ScaleWheel, ScaleWheelCard } from "./ui/ScaleWheel.jsx";
 import { WHEEL_DEFAULTS, POCKET_WHEEL } from "./ui/scaleWheelModel.js";
 import { CrowdBubble, useCrowdCoach, crowdCss } from "./ui/CrowdBubble.jsx";
-import { crowdAsks, chordGlow, crowdStockMarks, CROWD_BUBBLE } from "./ui/crowdCoach.js";
+import { crowdAsks, chordGlow, crowdStockMarks, CROWD_BUBBLE, CROWD_HAMMER } from "./ui/crowdCoach.js";
 import Bracket from "./ui/Bracket.jsx";
 // 🎵 The note in flight — a real NoteHex on a bowed arc, not the old flat chip.
 import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
@@ -291,6 +291,15 @@ import { NoteFlyChip } from "./ui/NoteFlyChip.jsx";
 // semitone offsets from the root you establish on the run's first final.
 import { CADENCE_OBJECTIVES, cadenceHints, detectCadence, randomNote } from "./music/cadence.js";
 import { noteKeyFromEvent, stockIndexForKey, nextStackDest, keyLabel } from "./music/noteKeys.js";
+// 🎸 THE RONIN'S HAMMER-ON / PULL-OFF (MELODY_IDENTITY_DESIGN §13, Alex 2026-10-07/08).
+// The rule is `music/noteTechniques.js`; the picture and the voice, at Alex's
+// dial-in, are `ui/HammerOn.jsx` (the preview page imports the same file).
+import { hammerCandidate, hasHammerOn, isTechniqueSrc, HAMMER_ON, HAMMER_DARK_WHY } from "./music/noteTechniques.js";
+import { HAMMER_LOOK, HAMMER_CSS, hammerHue, hammerArriveStyle, hammerVoice, prettyNote, paysText, techName,
+  HammerButton, HammerPlate, HammerGhostKey, HammerMark } from "./ui/HammerOn.jsx";
+/** The answer `hammerCandidate` would give when nobody can hammer (not the
+ *  Ronin, a bot, not the Melody step, already committed). */
+const NO_HAMMER = Object.freeze({ ok: false, reason: 'no-charge', candidates: [] });
 import { NUMPAD_DIRS, isNumpadMove, numpadTarget } from "./ui/numpadMove.js";
 import { chordContext, contextClaim, classifyTrack } from "./music/context.js";
 import { readStack } from "./music/vocabularies.js";
@@ -4017,12 +4026,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
     const src        = melodySrcIdx[i];
     const heardFreq  = melodyFreq[i] ?? null;
-    const newTrack   = melodyLine.filter((_, k) => k !== i);
-    const newSrc     = melodySrcIdx.filter((_, k) => k !== i);
+    // 🎸 A HAMMERED NOTE LEAVES WITH THE NOTE IT WAS PLAYED OFF (Alex,
+    // 2026-10-08): taking back note i also takes back every hammered note after
+    // it, and each refunds its charge. Played notes after i stay, as before.
+    const keep       = k => k < i || (k > i && !isTechniqueSrc(melodySrcIdx[k]));
+    const refunds    = melodySrcIdx.filter((s, k) => k >= i && isTechniqueSrc(s)).length;
+    const newTrack   = melodyLine.filter((_, k) => keep(k));
+    const newSrc     = melodySrcIdx.filter((_, k) => keep(k));
     // Same splice as melodySrcIdx — melodyFreq is index-parallel to melodyLine,
     // so dropping a note from the middle without dropping its frequency would
     // slide every later note's register one slot out of alignment.
-    const newFreq    = melodyFreq.filter((_, k) => k !== i);
+    const newFreq    = melodyFreq.filter((_, k) => keep(k));
     const newDiscord = newTrack.reduce((n, nt) => n + (isNotePlayable(nt) ? 0 : 1), 0);
 
     const patch = {
@@ -4030,9 +4044,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       melodySrcIdx:  newSrc,
       melodyFreq:    newFreq,
       discordCount:  newDiscord,
+      ...(refunds ? { hammerCharges: Math.min(HAMMER_ON.bank, (actingNoteState?.hammerCharges ?? 0) + refunds) } : {}),
     };
+    if (refunds) setHammerArrive(null);
 
-    if (src === 'bank') {
+    if (isTechniqueSrc(src)) {
+      addLog(`🔁 ${note} taken back — the ${techName(src).toLowerCase()} charge is refunded · ${newTrack.length} notes`);
+    } else if (src === 'bank') {
       patch.bankedNote = { note };
       addLog(`🔁 ${note} pulled from the track — back in the bank · ${newTrack.length} notes`);
     } else if (typeof src === 'number' && src >= 0) {
@@ -4046,6 +4064,36 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Pulling a note out echoes it in the register it went in with.
     playNoteSound(note, heardFreq ? { freq: heardFreq } : {});
     setNoteField(acting.id, patch);
+  }
+
+  // ── 🎸 THE HAMMER-ON / PULL-OFF — the Ronin's note technique ────────────────
+  // Alex, 2026-10-07: *"he commits 2 notes, doesn't have the 3rd, he can push the
+  // 'h' keystroke or 'hammer on' button — it adds a 3rd note to the melody line …
+  // it nevertheless adds a note to the melody and counts as a note played."*
+  // The rule (which note, whether it may, what it pays) is ONE call into
+  // `music/noteTechniques.js`; this only writes the track. ⭐ No hand note is
+  // spent: the seat's source is `'hammer'` / `'pull'`, which is what
+  // `removeMelodyNote` refunds and what the Iwato exorcism leaves out.
+  // ✅ It counts toward movement (Alex, 2026-10-08) simply by being on the track.
+  function hammerOn() {
+    if (!acting || !canAct || !hasHammerOn(acting.id) || isBot(acting)) return;
+    if (turnStep !== 'melody' || hasConfirmed) return;
+    const charges = actingNoteState?.hammerCharges ?? 0;
+    const c = hammerCandidate(acting.id, melodyLine, currentScale, { charges });
+    if (!c.ok) { addLog(`🔨 Hammer-on — ${HAMMER_DARK_WHY[c.reason] ?? 'not now'}.`); return; }
+    const prev = melodyLine[melodyLine.length - 1];
+    const prevHz = melodyFreq[melodyFreq.length - 1] ?? PC_FREQ_BASE[NOTE_FREQS[prev]];
+    const voice = hammerVoice(HAMMER_LOOK, prevHz, c.note, c.dir);
+    playNoteSound(c.note, voice ?? {});
+    setHammerArrive({ seat: melodyLine.length, note: c.note });
+    setNoteField(acting.id, {
+      melodyLine:   [...melodyLine, c.note],
+      melodySrcIdx: [...melodySrcIdx, c.label],   // 'hammer' | 'pull' — never a hand slot
+      melodyFreq:   [...melodyFreq, null],
+      hammerCharges: charges - 1,
+      // A hammered note is always a palette note, so `discordCount` does not move.
+    });
+    addLog(`🔨 ${techName(c.label)} → ${c.note} (no hand note spent) · ${paysText(c.pays)} · ${charges - 1} charge${charges - 1 === 1 ? '' : 's'} left`);
   }
 
   // ── 🎤 MIC INPUT — play the note, place the note ─────────────────────────────
@@ -4216,6 +4264,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       if (melodyLine.length) removeMelodyNote(melodyLine.length - 1);
       return true;
     }
+    // 🎸 H = the Ronin's hammer-on / pull-off. ⚠️ H is not a note letter (a–g),
+    // so it cannot shadow one; every other Spirit leaves the key to the browser.
+    if ((e.key === 'h' || e.key === 'H') && hasHammerOn(acting.id)) { hammerOn(); return true; }
     const want = noteKeyFromEvent(e);
     if (!want) return false;
     const idx = stockIndexForKey(noteStock, want,
@@ -4363,7 +4414,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   function clearNoteTrack() {
     if (!acting || !canAct) return; // N4/N7: gate
+    // 🎸 Every hammered note on the track gives its charge back.
+    const hammerRefunds = melodySrcIdx.filter(isTechniqueSrc).length;
     setNoteField(acting.id, {
+      ...(hammerRefunds ? { hammerCharges: Math.min(HAMMER_ON.bank, (actingNoteState?.hammerCharges ?? 0) + hammerRefunds) } : {}),
       melodyLine: [],
       melodySrcIdx: [],
       melodyFreq: [],
@@ -11744,6 +11798,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // turn and React tears the component down.
   const [poolNestRef, poolCols] = usePoolColumns(NOTE_HEX.size);
 
+  // 🎸 THE HAMMER-ON'S LIVE ANSWER — ⭐ RONIN ONLY, and only for a human at the
+  // Melody step (bots don't hammer yet). ⚠️ An unconditional hook, like the one
+  // above: the step gates the ANSWER, never the hook.
+  const [hammerHover, setHammerHover] = useState(false);
+  const [hammerArrive, setHammerArrive] = useState(null);   // { seat, note } — the strike-in plays once
+  const hammerHuman   = !!acting && hasHammerOn(acting.id) && !isBot(acting);
+  const hammerCharges = actingNoteState?.hammerCharges ?? 0;
+  const hammerCand    = hammerHuman && canAct && turnStep === 'melody' && !hasConfirmed
+    ? hammerCandidate(acting.id, melodyLine, currentScale, { charges: hammerCharges })
+    : NO_HAMMER;
+  const hammerColor   = hammerHue(HAMMER_LOOK, acting?.color);
+
   const stockGrid = (acting && (turnStep === 'melody' || turnStep === 'move_act'))
     ? (() => {
                       return (
@@ -11947,6 +12013,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         </button>
       )}
       <GameStyles />
+      <style>{HAMMER_CSS}</style>
 
       {/* 🎤 THE CROWD COACH — the stylesheet for the stock marks, and the fans'
           bubble. ⚠️ Hidden while a Pickles tip is open: the tip is modal, and a
@@ -13916,6 +13983,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 {turnStep === 'melody' && !hasConfirmed && canAct && !isBot(acting) && (
                   <div style={{fontSize:7,color:"#6a8a9a",margin:"0 0 5px"}}>
                     ⌨️ Type a–g to play a note · Shift = ♯/♭ · Backspace takes the last one back · Enter = commit · W = scale wheel
+                    {hammerHuman && <> · <b style={{color:hammerColor}}>H = {hammerCand.ok && hammerCand.label === 'pull' ? 'pull-off' : 'hammer-on'}</b></>}
                   </div>
                 )}
                 {/* 🎸 STACK COMMIT PREVIEW — hover-a-note guidance (inline, instant via hoverScale) */}
@@ -13995,6 +14063,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     to the tap column's floor. The layout is ARCHIVED (2026-09-29,
                     docs/archive/phone-play-2026-09-29/); the class is inert and
                     kept so the archive can be restored without a monolith edit. */}
+                {/* 🎸 THE HAMMER-ON — its own row above ✓ Commit (Alex's dial-in).
+                    Ronin only, human only, Melody step only; dark with the reason
+                    when it can't be used. */}
+                {turnStep === 'melody' && !hasConfirmed && canAct && hammerHuman && (
+                  <HammerButton cand={hammerCand} charges={hammerCharges} look={HAMMER_LOOK} hue={hammerColor}
+                    onHammer={hammerOn} onHover={setHammerHover}
+                    // 🎤 the fans are asking for it (crowdAsks → hammerNext): the button pulses
+                    coach={crowdCoachOn && crowdShown?.hammerNext && CROWD_HAMMER.button !== 'none' ? CROWD_HAMMER.button : null}
+                    coachMs={CROWD_HAMMER.buttonMs} />
+                )}
                 <div className="match-commit-row" style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
                     onClick={confirmNoteTrack}
@@ -14245,8 +14323,16 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   </span>
                 )}
               </div>
+              {/* 🎸 The Ronin's hammer-on charges, on the panel's frame beside N / 8. */}
+              {hammerHuman && !hasConfirmed && <HammerPlate n={hammerCharges} look={HAMMER_LOOK} hue={hammerColor} />}
               {Array.from({length:8}).map((_,i)=>{
                 const note = melodyLine[i];
+                // 🎸 A hammered note (its source is 'hammer' / 'pull'), and the GHOST
+                // of the note a hammer-on would add, waiting in the next seat.
+                const tech  = note && isTechniqueSrc(melodySrcIdx[i]) ? melodySrcIdx[i] : null;
+                const ghost = !note && i === melodyLine.length && hammerCand.ok && HAMMER_LOOK.ghost !== 'off'
+                  && (HAMMER_LOOK.ghost === 'always' || hammerHover);
+                const arriving = !!tech && hammerArrive?.seat === i && hammerArrive?.note === note;
                 const isRoot   = i === 0 && note;
                 const isTritone      = note && note === tritoneNote;
                 const isMajorThird   = note && note === majorThirdNote;
@@ -14293,22 +14379,31 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       paidBy
                         ? `${note} — pardoned by your ${paidBy === 'sustain' ? '🛡️ Sustain' : '⚔️ Drive'} chord${isDual ? ' (both qualify — reroute below)' : ''}`
                         : null,
+                      tech ? `🎸 ${techName(tech)} — no hand note spent${editable ? '; taking it back refunds the charge' : ''}` : null,
                       editable ? '🔁 Click to pull this note back out' : null,
+                      ghost ? `🎸 ${techName(hammerCand.label)} ${prettyNote(hammerCand.note)} · ${paysText(hammerCand.pays)} · key H` : null,
                     ].filter(Boolean).join(' · ') || undefined}
-                    onClick={editable ? () => removeMelodyNote(i) : undefined}
+                    data-hammer-arrive={arriving || undefined}
+                    onClick={editable ? () => removeMelodyNote(i) : ghost ? hammerOn : undefined}
                     onMouseEnter={note ? (e) => { const x = e.clientX, y = e.clientY; clearTimeout(noteTipTimerRef.current); noteTipTimerRef.current = setTimeout(() => setNoteScaleTip({ note, x, y }), 900); } : undefined}
                     onMouseLeave={() => { clearTimeout(noteTipTimerRef.current); setNoteScaleTip(null); }}
                     style={{
                     width:COMMIT_OVERLAY.trackChip, height:COMMIT_OVERLAY.trackChip,
                     flexShrink:0, display:"flex", alignItems:"center", justifyContent:"center",
-                    cursor: editable ? 'pointer' : 'default',
+                    cursor: editable || ghost ? 'pointer' : 'default',
                     opacity: 1,   // 🕳️ see the socket note on the stack seats
                     transition:"opacity .15s",
+                    position:"relative",   // 🎸 the hammer mark and the ghost's H sit on the seat
+                    ...(arriving ? hammerArriveStyle(HAMMER_LOOK, COMMIT_OVERLAY.trackChip, 6) : {}),
                   }}>
+                    <div style={{opacity: ghost ? HAMMER_LOOK.ghostAlpha : 1}}>
                     <NoteHex size={COMMIT_OVERLAY.trackChip}
-                      hue={note ? borderC : SOCKET_HUE} letter={note || ""} dull={!note}
+                      hue={note ? borderC : ghost ? hammerColor : SOCKET_HUE} letter={note || (ghost ? hammerCand.note : "")} dull={!note}
                       stackSupport={finalStackSupport}
                       burst={burstIn?.seat === `track:${i}` ? burstIn : null} />
+                    </div>
+                    {ghost && HAMMER_LOOK.keyCap === 'on' && <HammerGhostKey hue={hammerColor} />}
+                    {tech && <HammerMark tech={tech} look={HAMMER_LOOK} seat={COMMIT_OVERLAY.trackChip} gap={6} first={i === 0} />}
                   </div>
                 );
               })}

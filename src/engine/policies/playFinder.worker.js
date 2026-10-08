@@ -12,9 +12,11 @@
 import { findBestPlays } from "./playFinder.js";
 
 self.onmessage = (event) => {
-  const { id, spiritId, ns, goals } = event.data ?? {};
+  // 🐛 `unavailable` was dropped here until 2026-10-08, so the Worker path coached
+  // staggered slots the inline path refused; it rides along now, with `techniques`.
+  const { id, spiritId, ns, goals, unavailable, techniques } = event.data ?? {};
   try {
-    self.postMessage({ id, plays: findBestPlays(spiritId, ns, { goals }) });
+    self.postMessage({ id, plays: findBestPlays(spiritId, ns, { goals, unavailable, techniques }) });
   } catch (error) {
     // A throw here must not silence the crowd forever: answer, and say why.
     self.postMessage({ id, plays: null, error: String(error?.message ?? error) });

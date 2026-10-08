@@ -50,6 +50,16 @@ function heard(line, scale) {
   return scale ? notes.map(n => (scale.includes(n) ? n : null)) : notes;
 }
 
+/** The run still OPEN at the end of the line, as the Ronin's gestures read it —
+ *  `span` 1 = letter steps (the shred), 2 = letter skips (the arpeggio skip).
+ *  🎸 Exported for `noteTechniques.js` (the hammer-on, MELODY_IDENTITY_DESIGN
+ *  §13): ⚠️ the hammer must ask THIS reader whether a note continues a shape,
+ *  never a second copy of the contour rule — a copy that drifted would light the
+ *  button for a note the payout then refuses to pay. */
+export function trailingContour(line, span, scale = null) {
+  return contourRun(heard(line, scale), span, true);
+}
+
 function samePitch(a, b) {
   const aPc = pitchIndex(a), bPc = pitchIndex(b);
   return aPc >= 0 && aPc === bPc;

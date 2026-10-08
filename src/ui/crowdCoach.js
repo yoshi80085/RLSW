@@ -56,6 +56,11 @@ export const CROWD_VOICES = Object.freeze({
     craft_down:        'Keep falling!',
     lead_up:           'Take it up — we want MORE!',
     lead_down:         'Take it down — we want MORE!',
+    // 🎸 The Ronin's hammer-on (MELODY_IDENTITY_DESIGN §13) — Alex's dial-in,
+    // 2026-10-08 (unchanged from the preview's lines).
+    hammer_up:         'HAMMER ON {n}! 🔨',
+    hammer_down:       'PULL OFF to {n}! 🔨',
+    hammer_full:       'Picks full — HAMMER ONE ON! 🔨',
   }),
   plain: Object.freeze({
     scalar_shred_up:   'Step up through the letters',
@@ -68,6 +73,9 @@ export const CROWD_VOICES = Object.freeze({
     craft_down:        'A long run down pays extra',
     lead_up:           'Start here — it builds to a crowd-pleaser',
     lead_down:         'Start here — it builds to a crowd-pleaser',
+    hammer_up:         'Press H: hammer on {n}',
+    hammer_down:       'Press H: pull off to {n}',
+    hammer_full:       'Both charges full: use one now (press H)',
   }),
 });
 
@@ -105,8 +113,11 @@ function directionFrom(line, from) {
  * @param {object} [opts]
  * @param {'hype'|'plain'} [opts.voice='hype']
  * @param {number}  [opts.chips=4]   the most notes one bubble may carry
- * @returns {Array<{ kind:'fans', key:string, text:string, notes:string[],
- *   idx:number[], payoff:{fans:number}, goal:'fans' }>}
+ * @returns {Array<{ kind:'fans'|'hammer', key:string, text:string, notes:string[],
+ *   idx:(number|null)[], techs:(null|'hammer'|'pull')[], hammerNext:boolean,
+ *   payoff:{fans:number}, goal:'fans' }>}
+ *   🎸 A hammered note has `idx: null` and its `tech` — there is no hand chip to
+ *   light, so `hammerNext` tells the HUD to light the hammer-on button instead.
  *   Ordered: the bubble to show first is first. Empty when there is nothing
  *   worth asking for — the crowd stays quiet rather than cheering noise.
  */
@@ -159,12 +170,32 @@ export function crowdAsks(spiritId, ns = {}, plays = {}, opts = {}) {
       vars = {};
     }
     const window = fans.melody.slice(0, Math.max(1, Math.min(end - from, maxChips)));
+    // 🎸 Rule 1 (Alex): when the NEXT step is a hammer-on, that is what the crowd
+    // shouts — the hand has no chip for it, so the words must say "press H".
+    const hammerNext = !!window[0]?.tech;
+    if (hammerNext) { key = window[0].tech === 'pull' ? 'hammer_down' : 'hammer_up'; vars = { n: window[0].note }; }
     asks.push({
       kind: 'fans', goal: 'fans', key,
       text: fill(voice[key], vars),
       notes: window.map(m => m.note),
       idx: window.map(m => m.idx),
+      techs: window.map(m => m.tech ?? null),
+      hammerNext,
       payoff: { fans: fans.result.fans },
+    });
+  }
+
+  // 🎸 Rule 2 (Alex): BOTH charges held and the best line spends none — hammer
+  // one on anyway (the next turn-end charge would be wasted; it buys a hex only
+  // under the Spirit's speed, so the words never promise one). Asked last, after whatever the line still wants. Rule 3 — otherwise
+  // nothing — is simply the absence of this bubble.
+  const top = fans?.hammerTopUp;
+  if (top && fans.line.length === prefix.length + fans.melody.length) {
+    asks.push({
+      kind: 'hammer', goal: 'fans', key: 'hammer_full',
+      text: fill(voice.hammer_full, { n: top.note }),
+      notes: [top.note], idx: [null], techs: [top.tech], hammerNext: true,
+      payoff: { fans: 0 },
     });
   }
 
@@ -246,6 +277,20 @@ export const CROWD_BUBBLE = Object.freeze({
   glowMs: 1500,     // ★ default 1200 — a slower breath
 });
 
+/** 🎸 THE HAMMER-ON HINTS' LOOK — ✅ ALEX'S DIAL-IN (2026-10-08, off
+ *  `.scratch/hammer-on-hints-preview.html`): *"everything sounds good, lets wire
+ *  it in"* — 0 levers moved, so every value below and the six `hammer_*` lines in
+ *  `CROWD_VOICES` are decisions. Live since the same day: the melody step asks
+ *  the finder with `techniques` (`crowdFinderClient.js`). */
+export const CROWD_HAMMER = Object.freeze({
+  chipHue: 'gold',     // the hammered chip in the bubble: gold · note (its usual hue)
+  chipMark: 'badge',   // h / p on that chip: badge · none
+  keyCap: 'on',        // an [H] key beside a "press H" bubble's words
+  button: 'pulse',     // the hammer-on button while the crowd asks for it: pulse · ring · none
+  buttonMs: 900,       // one pulse
+  topUpChip: 'on',     // the "charges full" bubble shows the note it would add
+});
+
 /** The levers Alex moved, and the defaults they moved from — so a check can tell
  *  "he chose 12" from "nobody touched it". */
 export const CROWD_BUBBLE_CHANGED = Object.freeze({
@@ -297,6 +342,8 @@ export function crowdBubbleFrame(elapsed, count, B = CROWD_BUBBLE) {
 export function crowdStockMarks(ask, B = CROWD_BUBBLE) {
   const marks = new Map();
   if (!ask || B.hl === 'off') return marks;
-  for (const i of (B.hlWhich === 'next' ? ask.idx.slice(0, 1) : ask.idx)) marks.set(i, ask.kind);
+  // 🎸 A hammered note has no hand slot (`idx: null`) — it lights the hammer-on
+  // button (`ask.hammerNext`), never a stock chip.
+  for (const i of (B.hlWhich === 'next' ? ask.idx.slice(0, 1) : ask.idx)) if (i != null) marks.set(i, ask.kind);
   return marks;
 }

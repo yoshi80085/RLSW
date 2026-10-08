@@ -30,7 +30,7 @@ function ok(cond, msg) {
 }
 const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
 
-const { crowdAsks, chordGlow, CROWD_VOICES, prettyNote } = await import('./crowdCoach.js');
+const { crowdAsks, chordGlow, CROWD_VOICES, prettyNote, crowdStockMarks, CROWD_BUBBLE } = await import('./crowdCoach.js');
 const { findBestPlays, scorePlay } = await import('../engine/policies/playFinder.js');
 const { detectSpiritStyle } = await import('../music/spiritStyle.js');
 const { paletteScaleFor } = await import('../music/notes.js');
@@ -53,6 +53,8 @@ console.log('§1 every voice can say everything the logic can reach');
   const src = read('./crowdCoach.js');
   const reachable = new Set([
     ...Object.keys(GESTURE_KEYS), 'craft_up', 'craft_down', 'lead_up', 'lead_down',
+    // 🎸 the Ronin's hammer-on (2026-10-08)
+    'hammer_up', 'hammer_down', 'hammer_full',
   ]);
   // 🪦 'ending_fifth' / 'ending_fourth' / 'ending_tonic' / 'in_key' went with Db
   // (2026-10-02): the ending pays nothing now, and a coach must never ask for
@@ -61,7 +63,7 @@ console.log('§1 every voice can say everything the logic can reach');
     ok(same(Object.keys(voice).sort(), [...reachable].sort()), `voice "${name}" has exactly the reachable keys`);
     ok(Object.values(voice).every(t => typeof t === 'string' && t.length > 0 && t.length <= 44), `voice "${name}": every line fits a bubble (≤ 44 chars)`);
   }
-  ok(!/'in_key'/.test(src) && !/`ending_\$\{/.test(src) && /lead_down/.test(src), 'the keys the suite lists are the keys the logic builds — and no Db asks remain');
+  ok(!/'in_key'/.test(src) && !/`ending_\$\{/.test(src) && /lead_down/.test(src) && /hammer_full/.test(src), 'the keys the suite lists are the keys the logic builds — and no Db asks remain');
   ok(prettyNote('Bb') === 'B♭' && prettyNote('F#') === 'F♯' && prettyNote('B') === 'B', 'chips spell ♭ and ♯');
 }
 
@@ -169,6 +171,48 @@ console.log('§4 quiet when it should be, and the glow is the finder’s');
   ok(chordGlow(tie, 'both', { drive: 2, sustain: 2 }).get(0) === 'drive', 'a slot best for both: Drive wins a tie');
   ok(chordGlow(tie, 'both', { drive: 4, sustain: 2 }).get(0) === 'sustain', '…and the lower dial wins otherwise');
   ok(chordGlow(tie, 'both', {}).get(1) === 'sustain', 'a Sustain-only slot glows blue');
+}
+
+// ═══ 6. 🎸 THE HAMMER-ON HINTS ══════════════════════════════════════════════
+// Alex, 2026-10-08: (1) ask for it when it pays more fans, (2) when both charges
+// are held ask anyway, (3) otherwise say nothing.
+console.log('§6 the hammer-on hints');
+{
+  const R = 'cosmic_ronin';
+  const base = { rootNote: 'C', paletteMode: 'hirajoshi', usedStockIdx: [], driveStack: [], sustainStack: [], stackCommitsThisTurn: 0 };
+  const T = { goals: ['fans'], techniques: true };
+  // (1) His own example: C D in the hand, no E♭, one charge.
+  const ex = { ...base, noteStock: ['C', 'D'], melodyLine: [], hammerCharges: 1 };
+  let asks = crowdAsks(R, ex, findBestPlays(R, ex, T));
+  ok(asks.length === 1 && !asks[0].hammerNext && same(asks[0].notes, ['C', 'D', 'Eb']) && same(asks[0].techs, [null, null, 'hammer']),
+    `C D in the hand: the bubble's chips are C D + a hammered E♭ (${asks[0]?.notes} / ${asks[0]?.techs})`);
+  ok(asks[0].idx[2] === null && asks[0].idx[0] !== null, 'the hammered chip points at no hand slot');
+  ok(!crowdStockMarks(asks[0], { ...CROWD_BUBBLE, hlWhich: 'window' }).has(null), 'the stock highlight never marks a slot for the hammered note');
+  // …after C D are on the track, the NEXT step is the hammer: the crowd says press H.
+  const after = { ...ex, melodyLine: ['C', 'D'], usedStockIdx: [0, 1] };
+  asks = crowdAsks(R, after, findBestPlays(R, after, T));
+  ok(asks[0]?.hammerNext && asks[0].key === 'hammer_up' && /HAMMER ON E♭/.test(asks[0].text),
+    `C D on the track: "${asks[0]?.text}" and the button is the thing to light`);
+  ok(crowdAsks(R, after, findBestPlays(R, after, T), { voice: 'plain' })[0].text === 'Press H: hammer on E♭', 'the plain voice says the key');
+  // Falling → pull-off.
+  const down = { ...base, noteStock: ['G', 'F'], melodyLine: ['G', 'F'], usedStockIdx: [0, 1], hammerCharges: 1 };
+  asks = crowdAsks(R, down, findBestPlays(R, down, T));
+  ok(asks[0]?.key === 'hammer_down' && /PULL OFF to E♭/.test(asks[0].text), `G F falling: "${asks[0]?.text}"`);
+  // (2) Both charges held, nothing more to win: hammer one on anyway.
+  const maxed = { ...base, noteStock: ['D', 'Eb', 'F', 'G', 'Ab', 'C', 'Eb'], melodyLine: ['D', 'Eb', 'F', 'G', 'Ab', 'C', 'Eb'],
+    usedStockIdx: [0, 1, 2, 3, 4, 5, 6], hammerCharges: 2 };
+  asks = crowdAsks(R, maxed, findBestPlays(R, maxed, T));
+  ok(asks.length === 1 && asks[0].kind === 'hammer' && asks[0].key === 'hammer_full' && asks[0].hammerNext && same(asks[0].notes, ['G']),
+    `the line already pays everything, both charges held: "${asks[0]?.text}"`);
+  // (3) …with one charge, the crowd stays quiet and the charge carries.
+  ok(crowdAsks(R, { ...maxed, hammerCharges: 1 }, findBestPlays(R, { ...maxed, hammerCharges: 1 }, T)).length === 0,
+    'one charge and nothing to win: quiet');
+  // Off unless asked, and never another Spirit.
+  ok(crowdAsks(R, after, findBestPlays(R, after, { goals: ['fans'] })).every(a => !a.hammerNext && !(a.techs ?? []).some(Boolean)),
+    'without `techniques` the crowd never mentions a hammer-on (the live game until the bubble is dialled in)');
+  const monster = { ...base, rootNote: 'E', paletteMode: undefined, noteStock: ['E', 'F', 'G'], melodyLine: [], hammerCharges: 2 };
+  ok(crowdAsks('Metalness_Monster', monster, findBestPlays('Metalness_Monster', monster, T)).every(a => !a.hammerNext),
+    '⭐ never for another Spirit');
 }
 
 // ═══ 5. WIRED ═══════════════════════════════════════════════════════════════

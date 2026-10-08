@@ -159,11 +159,42 @@ console.log('§4 the client gates it and wires it');
   ok(/data-crowd-speaker=\{s\.id === acting\?\.id && i === 0 \? '' : undefined\}/.test(c), 'the acting Spirit\'s front-row fan is the speaker');
   ok(/goals: turnStep === 'melody' \? \['fans'\] : \['drive', 'sustain'\]/.test(c), 'melody asks fans (🪦 no db since 2026-10-02); chord asks drive+sustain');
   const worker = read('src/engine/policies/playFinder.worker.js');
-  ok(/findBestPlays\(spiritId, ns, \{ goals \}\)/.test(worker) && !/melodyPayoutFor|spiritChord/.test(worker), 'the worker only calls the finder');
+  ok(/findBestPlays\(spiritId, ns, \{ goals, unavailable, techniques \}\)/.test(worker) && !/melodyPayoutFor|spiritChord/.test(worker),
+    'the worker only calls the finder — and forwards the staggered slots and `techniques` (🐛 it dropped `unavailable` until 2026-10-08)');
   const client = read('src/ui/crowdFinderClient.js');
   ok(/new URL\('\.\.\/engine\/policies\/playFinder\.worker\.js', import\.meta\.url\)/.test(client), 'the worker is found the way Vite bundles workers');
   const pkg = JSON.parse(read('package.json'));
   ok(!!pkg.scripts['test:crowdbubble'] && /test:crowdbubble/.test(pkg.scripts['test:all']), 'test:crowdbubble exists and test:all runs it');
+}
+
+// ═══ 5. 🎸 THE HAMMER-ON HINTS ══════════════════════════════════════════════
+// Alex's dial-in 2026-10-08 (0 levers moved): "everything sounds good, lets wire it in".
+console.log('§5 the hammer-on hints are live');
+{
+  const { CROWD_HAMMER, CROWD_VOICES } = await import('./crowdCoach.js');
+  const { HammerButton, HAMMER_LOOK } = await import('./HammerOn.jsx');
+  ok(CROWD_HAMMER.chipHue === 'gold' && CROWD_HAMMER.chipMark === 'badge' && CROWD_HAMMER.keyCap === 'on'
+    && CROWD_HAMMER.button === 'pulse' && CROWD_HAMMER.buttonMs === 900 && CROWD_HAMMER.topUpChip === 'on', 'the look is the dial-in (all defaults)');
+  ok(CROWD_VOICES.hype.hammer_up === 'HAMMER ON {n}! 🔨' && CROWD_VOICES.plain.hammer_full === 'Both charges full: use one now (press H)', 'the words are the dial-in');
+  const next = { kind: 'fans', key: 'hammer_up', text: 'HAMMER ON E♭! 🔨', notes: ['Eb'], idx: [null], techs: ['hammer'], hammerNext: true, payoff: { fans: 1 } };
+  const html = renderToStaticMarkup(<CrowdBubbleCard ask={next} color="#4488ff" tailX={40} />);
+  ok(html.includes('data-crowd-hammer-key') && html.includes('data-crowd-chip-tech="hammer"') && html.includes('#ffc94a'),
+    'a "press H" bubble: the [H] key, and the hammered chip in gold with its badge');
+  const plain = renderToStaticMarkup(<CrowdBubbleCard ask={{ ...next, key: 'scalar_shred_up', hammerNext: false, techs: [null] }} color="#4488ff" />);
+  ok(!plain.includes('data-crowd-hammer-key') && !plain.includes('data-crowd-chip-tech'), 'an ordinary bubble is drawn exactly as before');
+  const cand = { ok: true, note: 'Eb', label: 'hammer', pays: 1, via: { contour: 1, craft: 3 }, candidates: [] };
+  ok(renderToStaticMarkup(<HammerButton cand={cand} charges={1} look={HAMMER_LOOK} hue="#ffc94a" onHammer={() => {}} coach="pulse" />).includes('data-hammer-coach="pulse"'),
+    'the button pulses while coached');
+  ok(!renderToStaticMarkup(<HammerButton cand={{ ok: false, reason: 'no-charge' }} charges={0} look={HAMMER_LOOK} hue="#ffc94a" onHammer={() => {}} coach="pulse" />).includes('data-hammer-coach'),
+    '…never while dark');
+  const c = read('src/rlsw-simulator-v3_8_1.jsx');
+  ok(/coach=\{crowdCoachOn && crowdShown\?\.hammerNext && CROWD_HAMMER\.button !== 'none' \? CROWD_HAMMER\.button : null\}/.test(c),
+    'the client lights the button from the bubble on screen');
+  const client = read('src/ui/crowdFinderClient.js');
+  ok(/'hammerCharges'\]/.test(client) && /const techniques = \(goals \?\? \[\]\)\.includes\('fans'\);/.test(client)
+    && /findBestPlays\(spiritId, ns, \{ goals, unavailable, techniques \}\)/.test(client),
+    'the melody step asks with `techniques` and the charges cross to the worker (and the inline fallback)');
+  ok(/request\.ns\?\.hammerCharges/.test(read('src/ui/CrowdBubble.jsx')), 'a spent or refunded charge re-asks the finder');
 }
 
 console.log('');

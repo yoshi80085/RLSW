@@ -11,6 +11,7 @@ import { LIMELIGHT_HEX, SLIDE_STEPS_PER_TURN } from "../../data/gameConstants.js
 import { applySlimeDecayed } from "./slime.js";
 import { respawnFromAbyss } from './crumbling.js';
 import { applySpiritEntered, isWaiting, isEntranceHex } from './entrance.js';
+import { hammerRecharge } from '../../music/noteTechniques.js';
 
 /** TURN_STARTED — record whether the spirit begins its turn on the Limelight hex. */
 export function applyTurnStarted(state0, { spiritId }) {
@@ -149,6 +150,10 @@ export function applyTurnEnded(state) {
   // 🃏 An armed marquee card that was not thrown goes back into the hand at
   // your turn end — arming is for THIS turn's attack (MARQUEE_QUIZ_DESIGN §10).
   const disarms = endedNotes?.marqueeArmed != null;
+  // 🎸 THE RONIN'S HAMMER-ON RECHARGES AT HIS OWN TURN END (+1, a bank of 2 —
+  // `music/noteTechniques.js` hammerRecharge, which says why it is the END).
+  // `null` for everyone else, so their sheets stay byte-identical.
+  const hammer = hammerRecharge(endedId, endedNotes);
 
   // 🔦 THE LIGHTS STEP ONCE PER ROUND, on the turn end that closes it — the
   // same boundary the round counter uses, so a skipped turn's banked round
@@ -157,12 +162,13 @@ export function applyTurnEnded(state) {
 
   return {
     ...lit,
-    ...(clearsSonicTally || disarms ? {
+    ...(clearsSonicTally || disarms || hammer != null ? {
       noteStates: {
         ...lit.noteStates,
         [endedId]: { ...endedNotes,
           ...(clearsSonicTally ? { pendingSonicAttacks: 0 } : {}),
-          ...(disarms ? { marqueeArmed: null } : {}) },
+          ...(disarms ? { marqueeArmed: null } : {}),
+          ...(hammer != null ? { hammerCharges: hammer } : {}) },
       },
     } : {}),
     turnQueue,

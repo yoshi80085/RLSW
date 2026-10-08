@@ -40,6 +40,19 @@ import { characterId } from "../../data/spiritIdentity.js";
 // would coach "commit nothing to Drive", which is a bug's lesson, not the game's.
 // 🚩 Reported in the 2026-09-16 handoff; not fixed here.
 //
+// 🎸 THE RONIN'S HAMMER-ON (2026-10-08, MELODY_IDENTITY_DESIGN §13) — opt-in
+// with `opts.techniques`. A hammer is one more move in the line search: it spends
+// a CHARGE instead of a hand note and adds the note `hammerCandidate` picks, so the
+// finder can only ever suggest a hammer-on the game would allow. Alex's three
+// rules for when the crowd should ask for it (*"simple is best"*):
+//   1. it is part of the best line when it pays MORE FANS — the search does that
+//      by itself: a hammered note counts as a spent note in the `-spent`
+//      tie-break, so a hammer that pays nothing never beats the line without it;
+//   2. holding a FULL BANK (2), use one anyway — the next turn-end charge would
+//      be wasted (and under your speed it buys a hex too): `hammerTopUp`;
+//   3. otherwise say nothing, and the charge carries to next turn.
+// ⚠️ Saving a charge for a better line NEXT turn is deliberately not modelled.
+//
 // 📌 WHAT IT DOES NOT MODEL (deliberately, for v1): the mic's bonus note (a die
 // roll), next turn's refill beyond the "spend fewer notes" tie-break, the board
 // hunt a stack root points at, removing notes already in a stack, and movement
@@ -55,6 +68,7 @@ import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { livePalette } from "../systems/iwatoCurse.js";
 import { melodyPayoutFor, craftFansFromRun } from "../../music/melodyPayout.js";
 import { styleCoachFor } from "../../music/spiritStyle.js";
+import { hammerCandidate, hasHammerOn, HAMMER_ON } from "../../music/noteTechniques.js";
 
 // 🪦 The `db` goal went with Db, 2026-10-02 — the melody commit pays fans only.
 export const FINDER_GOALS = Object.freeze(['drive', 'sustain', 'fans']);
@@ -120,12 +134,16 @@ function readHand(spiritId, ns, opts) {
   const confirmed = !!ns.hasConfirmed;
   const budget = confirmed ? 0 : Math.max(0, STACK_COMMIT_BUDGET - (ns.stackCommitsThisTurn ?? 0));
   const speed = Math.min(SPEED_CAP, SPIRIT_DEFS[characterId(spiritId)]?.speed ?? 5);
-  // Per-spelling facts the bounds read on every node, computed once.
+  // 🎸 Charges the search may spend (0 unless asked for, and only the Ronin).
+  const hammers = opts.techniques && !confirmed && hasHammerOn(spiritId)
+    ? Math.max(0, Math.min(HAMMER_ON.bank, ns.hammerCharges ?? 0)) : 0;
+  // Per-spelling facts the bounds read on every node, computed once. 🎸 With
+  // charges, every palette note too — a hammer can land on any of them.
   const info = new Map();
-  for (const n of [...free.map(f => f.note), ...prefix]) {
+  for (const n of [...free.map(f => f.note), ...prefix, ...(hammers ? scale : [])]) {
     if (!info.has(n)) info.set(n, { clean: scale.includes(n), deg: scale.indexOf(n), letter: letterOf(n), pc: pitchIndex(n) });
   }
-  return { info,
+  return { info, hammers,
     spiritId, rootNote, mode, scale, harmonic, free, prefix, confirmed, budget, speed,
     driveStack: [...(ns.driveStack ?? [])], sustainStack: [...(ns.sustainStack ?? [])],
     capDrive: stackCapFor(ns, 'drive'), capSustain: stackCapFor(ns, 'sustain'),
@@ -362,6 +380,19 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
   let best = null;
   let nodes = 0;
   let exhausted = false;
+  // 🎸 The hammer move's state: charges left on THIS branch, and which added
+  // notes were hammered (index-parallel to `line.slice(prefix)`).
+  let hammersLeft = hand.hammers;
+  const techs = [];
+  /** The counts a BOUND may read: with charges left, every palette note gets
+   *  that many extra copies. ⚠️ Deliberately generous — a bound may only ever be
+   *  too LOOSE (slower), never too tight (a missed line). */
+  const boundCounts = p => {
+    if (!hammersLeft) return p.counts;
+    const out = new Map(p.counts);
+    for (const n of scale) out.set(n, (out.get(n) ?? 0) + hammersLeft);
+    return out;
+  };
 
   // Per-plan constants, and an optimistic bound so the plans are tried best-first.
   const prepared = plans.map(plan => {
@@ -372,7 +403,7 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
     const ctx = payoutContext(hand, driveStack, sustainStack);
     // Last-note facts depend only on the note, so one single-note payout each
     // answers "what would ending here pay / carrot" without copying the ladder.
-    const lastNote = new Map([...counts.keys()].map(n => [n, melodyPayoutFor(spiritId, [n], scale, ctx)]));
+    const lastNote = new Map([...counts.keys(), ...(hand.hammers ? scale : [])].map(n => [n, melodyPayoutFor(spiritId, [n], scale, ctx)]));
     const dChord = chordOf(spiritId, driveStack);
     const sChord = chordOf(spiritId, sustainStack);
     return { plan, driveStack, sustainStack, counts, ctx, lastNote, dChord, sChord,
@@ -402,7 +433,7 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
     let carrotD = !hand.mojoDrained && line.length > 0 && payout.chordRootCarrot === 'drive';
     let carrotS = !hand.mojoDrained && line.length > 0 && payout.chordRootCarrot === 'sustain';
     if (slots > 0) {
-      for (const [n, c] of p.counts) {
+      for (const [n, c] of boundCounts(p)) {
         if (!c) continue;
         const one = p.lastNote.get(n);
         if (!hand.mojoDrained && one.chordRootCarrot === 'drive') carrotD = true;
@@ -420,9 +451,10 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
       case 'fans': {
         let trailingClean = 0;
         for (let i = line.length - 1; i >= 0 && hand.info.get(line[i])?.clean; i -= 1) trailingClean += 1;
-        const runMax = craftRunBound(scale, p.counts, line, payout, slots, trailingClean, hand.info);
+        const counts = boundCounts(p);
+        const runMax = craftRunBound(scale, counts, line, payout, slots, trailingClean, hand.info);
         let styleMax = 0;
-        for (const g of styleCoachFor(spiritId, line, slots, scale)) styleMax += gestureBound(g, p.counts, line, slots, hand.info);
+        for (const g of styleCoachFor(spiritId, line, slots, scale)) styleMax += gestureBound(g, counts, line, slots, hand.info);
         return styleMax + craftFansFromRun(runMax);
       }
       default: throw new Error(`playFinder: no bound for "${key}"`);
@@ -479,7 +511,7 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
       if (verdict <= 0) return;
     }
     const values = valuesFor(p, line, payout);
-    best = { vec: vectorFor(goal, values), values, prep: p, line: [...line], payout };
+    best = { vec: vectorFor(goal, values), values, prep: p, line: [...line], techs: [...techs], payout };
   };
 
   const emptyPayout = hand.prefix.length ? null : { style: { score: 0 }, craftFans: 0, chordRootCarrot: null, cleanCount: 0, craftRun: 0 };
@@ -510,14 +542,28 @@ function searchGoal(hand, goal, budgetNodes, ceilings = null) {
         if (!c) continue;
         if (nodes >= budgetNodes) { exhausted = true; return; }
         p.counts.set(n, c - 1);
-        line.push(n);
+        line.push(n); techs.push(null);
         nodes += 1;
         const pay = melodyPayoutFor(spiritId, line, scale, p.ctx);
         consider(p, line, pay);
         if (canBeat(p, line, pay, slots - 1).beat) rec();
-        line.pop();
+        line.pop(); techs.pop();
         p.counts.set(n, c);
         if (exhausted) return;
+      }
+      // 🎸 THE HAMMER MOVE — the rule's own note, a charge instead of a hand note.
+      if (hammersLeft > 0) {
+        const hc = hammerCandidate(spiritId, line, scale, { charges: hammersLeft });
+        if (hc.ok) {
+          if (nodes >= budgetNodes) { exhausted = true; return; }
+          hammersLeft -= 1; line.push(hc.note); techs.push(hc.label);
+          nodes += 1;
+          const pay = melodyPayoutFor(spiritId, line, scale, p.ctx);
+          consider(p, line, pay);
+          if (canBeat(p, line, pay, slots - 1).beat) rec();
+          line.pop(); techs.pop(); hammersLeft += 1;
+          if (exhausted) return;
+        }
       }
     };
     rec();
@@ -537,7 +583,9 @@ function describe(hand, goal, found, ceilings) {
     ...best.prep.plan.sustain.map(note => ({ note, idx: take(note), dest: 'sustain' })),
   ];
   const added = best.line.slice(hand.prefix.length);
-  const melody = added.map(note => ({ note, idx: take(note) }));
+  // 🎸 A hammered note has no hand slot: `idx: null` and its `tech`.
+  const techs = best.techs ?? [];
+  const melody = added.map((note, k) => techs[k] ? { note, idx: null, tech: techs[k] } : { note, idx: take(note) });
   const pay = best.line.length ? best.payout : null;
   return {
     goal,
@@ -559,7 +607,11 @@ function describe(hand, goal, found, ceilings) {
       craftRun: pay?.craftRun ?? 0,
       craftFans: pay?.craftFans ?? 0,
       cleanCount: pay?.cleanCount ?? 0,
+      hammers: techs.filter(Boolean).length,
     },
+    // 🎸 Rule 2: a full bank and a line that spends none — "hammer one on
+    // anyway". Outside `result` on purpose: the proven line stays the proven line.
+    hammerTopUp: hammerTopUp(hand, best, techs),
     // Exact only if the goal's own search AND the ceiling it leaned on were proven.
     exact: found.exact && !!ceilings?.fansLine,
     searched: { plans: found.plans, lines: found.nodes, ceilingLines: ceilings?.lines ?? 0 },
@@ -601,11 +653,25 @@ export function findBestPlay(spiritId, ns = {}, goal = 'fans', opts = {}) {
   return describe(hand, goal, found, ceilings);
 }
 
+/** 🎸 Rule 2 (Alex, 2026-10-08): with BOTH charges held and a best line that
+ *  hammers nothing, suggest one hammer-on at its end — the turn-end charge would
+ *  otherwise be wasted. ⚠️ It buys a hex only while the line is under the
+ *  Spirit's speed (found on the preview: 7 notes at SPD 5 move 5), so the words
+ *  must not promise movement. `null` otherwise, or when
+ *  the line's end has no shape to carry on. */
+function hammerTopUp(hand, best, techs) {
+  if (hand.hammers < HAMMER_ON.bank || techs.some(Boolean)) return null;
+  if (best.line.length >= FINDER_TRACK_SEATS) return null;
+  const hc = hammerCandidate(hand.spiritId, best.line, hand.scale, { charges: hand.hammers });
+  return hc.ok ? { note: hc.note, tech: hc.label, pays: hc.pays, why: 'bank-full' } : null;
+}
+
 /** The best stacks the leftovers of a fixed line can build (the fans goal). */
 function stacksAfterLine(hand, goal, lineFound) {
   const line = lineFound.best.line;
+  const techs = lineFound.best.techs ?? [];
   const groups = groupBySpelling(hand.free);
-  for (const n of line.slice(hand.prefix.length)) groups.get(n).pop();
+  line.slice(hand.prefix.length).forEach((n, k) => { if (!techs[k]) groups.get(n).pop(); });
   for (const [n, idxs] of [...groups]) if (!idxs.length) groups.delete(n);
   let best = null;
   const plans = stackPlans(hand, groups);
@@ -616,7 +682,7 @@ function stacksAfterLine(hand, goal, lineFound) {
     const values = scorePlay(hand.spiritId, null, { stack: [], line }, { hand, driveStack, sustainStack, payout, spentStack: plan.drive.length + plan.sustain.length });
     const vec = vectorFor(goal, values);
     if (!best || lexCompare(vec, best.vec) > 0) {
-      best = { vec, values, line, payout, prep: { plan,
+      best = { vec, values, line, techs, payout, prep: { plan,
         dChord: chordOf(hand.spiritId, driveStack), sChord: chordOf(hand.spiritId, sustainStack) } };
     }
   }

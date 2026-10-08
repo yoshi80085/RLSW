@@ -857,3 +857,111 @@ beginner end is open call 3 above.
 | Fan bands, weights, thresholds | `data/gameConstants.js` — `EXCITE_PER_CASUAL`, `LOYALTY_PER_DIEHARD`, `FAN_*` |
 | The live gesture detectors | `music/cadence.js` — `detectDiatonicRun`, `detectSkipClimb`, `detectRepeatPattern`, `detectMotifRepeat`, `detectChromaticRun` |
 | The stack seat ladder (Ronin's ♭7 rhyme) | `music/stackSlots.js` — `SLOT_LADDER` |
+
+---
+
+## 13. 🎸 NOTE TECHNIQUES — each Spirit bends its own melody (decided 2026-10-07/08, ✅ the Ronin's BUILT 2026-10-08)
+
+> Alex, 2026-10-07: *"Each Spirit should get a way to 'manipulate' notes in their
+> stock somehow."* The Ronin's is first and is the template. The other three
+> Spirits have no technique yet. Ideas raised in passing, **not decided**:
+> Monster palm-mute repeat, Zero echo/loop, Glamarchy slide/key change.
+
+### 13.1 🗡️ The Ronin's HAMMER-ON / PULL-OFF — the rules as ruled
+
+Alex's idea: *"he commits 2 notes, doesn't have the 3rd, he can push the 'h'
+keystroke or 'hammer on' button — it adds a 3rd note to the melody line — either a
+step up or down. While not a note committed from the pool, it nevertheless adds a
+note to the melody and counts as a note played."*
+
+1. ✅ **Charges.** He gains **1 charge per turn**, and unused charges carry over
+   up to a **bank of 2**.
+2. ✅ **"Smart" — it only lights when it can be used correctly** (Alex,
+   2026-10-07: *"the button only available if it senses it can be used in a
+   correct way"*). It adds the note that **continues the line's last move**: a
+   step if the line is stepping (finishes the **scalar shred**, 1 → 2 → 3), a
+   third if it is skipping (finishes the **arpeggio skip**, 1 → 3 → 5).
+3. ✅ **It lights whenever it continues the shape, not only when it pays.** The
+   button says what it will earn (*"+1 fan"*, or *"no new fans"*).
+4. ✅ **Both banked charges may go on ONE melody** (Alex, 2026-10-08 — chosen over
+   my one-per-melody recommendation). ⚠️ So a clean 4-note run + 2 hammers = a
+   6-note run = the craft cap (+2). That is the payoff for saving up. 🚩 Balance:
+   recorded, not tuned (balance is deferred). It is the same fan speed that the
+   09-30 playtest dialled back (`CRAFT_FAN_TOP` 5 → 6).
+5. ✅ **It does NOT count toward lifting an Iwato curse.** Only notes played from
+   the hand lift a curse.
+6. ✅ **Up = Hammer-on, down = Pull-off.** It is the same button, the same `H`
+   key and the same charge, and the label follows the direction.
+7. ✅ **It is a played note:** it takes a seat on the 8-seat track, and every
+   payout reader (style, craft, the red/blue carrot, the finder) sees it as a note
+   of the line.
+
+### 13.2 ⁉️ My readings — not Alex's calls, flag them when building
+
+- **"Correct" = the hammered note is in his palette (Hirajoshi + P4) AND extends
+  the trailing shape.** The trailing shape is the letter contour his gestures
+  read (`spiritStyle.js` `contourRun`, span 1 or 2), or the craft run
+  (`melodyPayout.js` `craftRunFor`). If more than one note qualifies, it takes
+  the one that pays most. On a tie, it takes the gesture's note.
+  - ⚠️ **His scale has no B-letter note** (C D E♭ F G A♭ on C). ✏️ **CORRECTED
+    2026-10-08 by building it:** climbing from A♭ there is no next *letter* step,
+    but the next *scale* step is C, and the craft run counts that as a step. So
+    the button **lights on C** (F G A♭ → C makes a 4-run, +1 fan). It does not
+    stay dark, as the 10-07 draft said. The chooser asks both real readers
+    (`trailingContour`, `craftRunFor`), so it cannot disagree with the payout.
+- **"The last move"** means two clean notes a step or a skip apart, by letter OR
+  by scale degree. In a six-note scale the degree wraps: C → G counts as a
+  skip *down* (C, A♭, G), so C G offers a pull-off to E♭ ("no new fans").
+- **It needs at least 2 notes on the track, the last two clean and moving one
+  way.** One note is no shape, and discord breaks a shape. So it can never be
+  the first note.
+- **It goes on the END of the line only.**
+- **The track must have a free seat**, otherwise the button is dark.
+- **Backspace pulls a hammered note back off and refunds its charge.**
+- **First charge:** on his first turn (the entrance turn), so the bank starts at 1.
+- **It is an innate technique, not a drafted ability.** It has no cooldown other
+  than the charges, and costs no AP and no Action Token.
+- **Sound:** a legato note on the KATANA voice with no pick attack (pick
+  overshoot off, a short slur from the previous pitch). In tab notation it is
+  marked **h** / **p** on the melody track.
+- **Bots / finder:** they don't know about it in the first pass. ⚠️ The finder's
+  fan bound must learn it before bots can be fair. Flag it, don't fake it.
+
+### 13.2a 🎛️ The preview (2026-10-08)
+
+`.scratch/hammer-on-preview.html` (`npm run dev:hammeron`; the double-click copy is
+`hammer-on-preview.standalone.html`, rebuilt by `npm run build:hammeron`; also the
+*Hammer-On Dial-in* artifact). It is playable: hand clicks or a–g, H, Backspace,
+Enter, charges carrying into the next turn, and the real KATANA. 24 levers cover
+the button, the charges, the ghost note, the h/p mark, the arrival and the sound.
+The rule is real: `music/noteTechniques.js` (`hammerCandidate`), with
+`test:notetechniques` (33 assertions, 4 mutants caught). ⏳ **Waiting on Alex's dial-in.**
+
+Two more of my calls, made on the page and flagged there:
+- **Taking a note back also takes back every hammered note after it**, and each
+  refunds its charge, because a hammer-on is played off the notes before it.
+- **A hammered note counts toward the hexes you move**, since ✓ Commit says "N notes →
+  N hex" and Alex said it "counts as a note played". ⁉️ Unruled.
+
+### 13.2b ✅ Ported 2026-10-08 — Alex's last three rulings
+
+- **The dial-in:** 0 of 24 levers moved, so every default is now a decision (`ui/HammerOn.jsx` `HAMMER_LOOK`).
+- ✅ **A hammered note counts toward movement.**
+- ✅ **Taking back the note it was played off takes it too and refunds the charge.**
+- ⭐ **Ronin only** (*"other Spirits aren't touched"*): `hasHammerOn` is the one gate.
+- My call at the port: the charge arrives at the **end** of his turn (dealt 1 at the start of the match), because the client never runs a turn start for seat one's first turn. Every seat ends up with the same count. `noteTechniques.js` `hammerRecharge` says why.
+- Still open: the commit's replay plays the note picked, not legato. Bots and the finder don't use the technique. Free play doesn't refill charges.
+
+### 13.3 🛠️ Where it landed (was: "where it would land")
+
+- Rule + chooser: ✅ **built 2026-10-08**, `music/noteTechniques.js` (`hammerCandidate`,
+  `fansFor`, `HAMMER_ON`, `HAMMER_DARK_WHY`), with its ARCHITECTURE row and `test:notetechniques`.
+- Charges in the note state (`ns.hammerCharges`), granted in `turnFlow.js`
+  `startTurnNotes` and capped at 2.
+- Melody step: the button and the `H` key in `music/noteKeys.js`. Human turns
+  only, same gates as `keyboardNoteCommit`.
+- Iwato: `commitMelodyEconomy` must skip hammered notes when counting cursed
+  notes. Mark the notes `{ technique: 'hammer' }` on the track.
+- ⚠️ **Visual → preview first** (`CLAUDE.md`): the button, the h/p chip on the
+  track, the dark-vs-lit states and the "+1 fan" readout go in `.scratch/` with
+  levers, before any client edit.

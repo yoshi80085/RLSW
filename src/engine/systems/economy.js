@@ -1,4 +1,5 @@
 import { characterId } from "../../data/spiritIdentity.js";
+import { hasHammerOn, HAMMER_ON } from "../../music/noteTechniques.js";
 // ─── ENGINE SYSTEM: ECONOMY (note-track / skills) ────────────────────────────
 // Phase 5a: contract fixes ahead of the full economy extraction (Phase 5c flip).
 
@@ -161,6 +162,9 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
   // 🗡️ SHREDDING RONIN carries a deeper well: 11 stock slots instead of 10.
   const stockSize = characterId(spiritId) === "cosmic_ronin" ? 11 : 10;
   return {
+    // 🎸 THE RONIN IS DEALT HIS FIRST HAMMER-ON CHARGE (MELODY_IDENTITY_DESIGN
+    // §13). The next ones arrive at his turn ends — see `hammerRecharge`.
+    ...(hasHammerOn(spiritId) ? { hammerCharges: HAMMER_ON.perTurn } : {}),
     noteStock:       refillStock(root, initMode, stockSize, rand),
     melodyLine:      [],
     // ── 🎸 DRIVE / SUSTAIN SPLIT (DRIVE_SUSTAIN_SPLIT_DESIGN.md) ──

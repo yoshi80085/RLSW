@@ -45,6 +45,7 @@ import {
 import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { melodyPayoutFor } from "../../music/melodyPayout.js";
 import { livePalette, exorcisedBy, exorcisePatch } from "./iwatoCurse.js";
+import { playedNotes } from "../../music/noteTechniques.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
   FAN_CASUAL_CAP, FAN_DIEHARD_START, FAN_CASUAL_START,
@@ -301,7 +302,9 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // melody pays normally (Iwato IS their scale this turn): fighting free is
   // rewarded, not merely survived. The lift is in the patch so the kernel and
   // the client cannot disagree about whether it happened.
-  const exorcised = exorcisedBy(ns, melodyLine);
+  // 🎸 ⚠️ A HAMMERED NOTE DOES NOT LIFT A CURSE (Alex, 2026-10-08): only notes
+  // played from the hand count here, though the hammered ones still PAY above.
+  const exorcised = exorcisedBy(ns, playedNotes(melodyLine, ns.melodySrcIdx));
   if (exorcised) {
     logs.push(`🔥 ${name} plays three Iwato notes straight back at the curse — the charm burns and the Scale Wheel snaps back. EXORCISED!`);
     flashLines.push('🔥 EXORCISED!');

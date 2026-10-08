@@ -403,6 +403,104 @@ console.log('§6 full seeded hands: every goal proven inside the budget');
     'a starved budget reports exact: false instead of claiming a proof');
 }
 
+// ═══ 8. 🎸 THE HAMMER-ON ════════════════════════════════════════════════════
+// MELODY_IDENTITY_DESIGN §13, Alex 2026-10-08: the crowd asks for a hammer-on
+// (1) when it pays more fans, (2) when both charges are held, (3) otherwise not.
+console.log('§8 the hammer-on: brute force agrees, every hammer is legal, the top-up');
+{
+  const { hammerCandidate } = await import('../music/noteTechniques.js');
+  const { livePalette } = await import('./systems/iwatoCurse.js');
+  // Brute force WITH the hammer move: every hand note in any order, plus a
+  // hammer wherever the rule allows one and a charge is left.
+  function allLinesH(spiritId, ns, free, usedSet) {
+    const prefix = ns.melodyLine ?? [];
+    const seats = FINDER_TRACK_SEATS - prefix.length;
+    const scale = livePalette(spiritId, ns);
+    const out = [];
+    const rec = (line, used, charges, techs) => {
+      out.push({ line, techs });
+      if (line.length - prefix.length >= seats) return;
+      for (const f of free) if (!used.has(f.idx)) rec([...line, f.note], new Set([...used, f.idx]), charges, [...techs, null]);
+      if (charges > 0) {
+        const hc = hammerCandidate(spiritId, line, scale, { charges });
+        if (hc.ok) rec([...line, hc.note], used, charges - 1, [...techs, hc.label]);
+      }
+    };
+    rec([...prefix], usedSet, ns.hammerCharges ?? 0, []);
+    return out;
+  }
+  const freeOfH = ns => ns.noteStock.map((note, idx) => ({ idx, note })).filter(f => !(ns.usedStockIdx ?? []).includes(f.idx));
+  const lexCmpH = (a, b) => { for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return a[i] - b[i]; return 0; };
+  let cases = 0, hammeredWins = 0, topUps = 0;
+  for (let seed = 1; seed <= 24; seed += 1) {
+    const spiritId = 'cosmic_ronin';
+    const mode = melodyModeFor(spiritId);
+    const root = ROOTS[(seed * 5) % ROOTS.length];
+    const rng = makeRng(7700 + seed);
+    const stock = refillStock(root, mode, 4 + (seed % 2), rng, seed % 3 ? 0.5 : 0);
+    const ns = sheet({ rootNote: root, paletteMode: mode, noteStock: stock, hammerCharges: 1 + (seed % 2) });
+    if (seed % 4 === 2) Object.assign(ns, { melodyLine: playableScale(root, mode).slice(0, 2) });
+    // Fans = the melody alone (the finder's definition): best line, shorter wins a tie.
+    let top = null;
+    for (const c of allLinesH(spiritId, ns, freeOfH(ns), new Set())) {
+      const v = scorePlay(spiritId, ns, { stack: [], line: c.line });
+      const vec = [v.fans, -v.spent];
+      if (!top || lexCmpH(vec, top.vec) > 0) top = { vec, c };
+    }
+    const got = findBestPlay(spiritId, ns, 'fans', { techniques: true });
+    cases += 1;
+    ok(same([got.result.fans, -(got.line.length - (ns.melodyLine ?? []).length)], top.vec),
+      `seed ${seed} (${ns.hammerCharges} charge${ns.hammerCharges > 1 ? 's' : ''}): finder fans ${got.result.fans} = brute force ${top.vec[0]} (same length)`);
+    // Legal: hand notes are real unused slots; each hammer is the rule's own note at its place.
+    const scale = livePalette(spiritId, ns);
+    const prefix = ns.melodyLine ?? [];
+    let charges = ns.hammerCharges, legalH = true;
+    got.melody.forEach((m, k) => {
+      if (!m.tech) { if (ns.noteStock[m.idx] !== m.note) legalH = false; return; }
+      const hc = hammerCandidate(spiritId, [...prefix, ...got.melody.slice(0, k).map(x => x.note)], scale, { charges });
+      if (!hc.ok || hc.note !== m.note || hc.label !== m.tech) legalH = false;
+      charges -= 1;
+    });
+    ok(legalH && charges >= 0, `seed ${seed}: every hammer in the answer is one the game would allow`);
+    const handIdx = got.melody.filter(m => !m.tech).map(m => m.idx);
+    ok(new Set(handIdx).size === handIdx.length, `seed ${seed}: no hand slot used twice`);
+    if (got.line.length) ok(commitForReal(spiritId, ns, { stack: [], line: got.line }).fans === got.result.fans, `seed ${seed}: the commit pays what the finder says`);
+    if (got.result.hammers) hammeredWins += 1;
+    // Rule 2: full bank + no hammer in the line → a top-up when the line's end allows one.
+    const want = ns.hammerCharges >= 2 && !got.result.hammers && got.line.length < FINDER_TRACK_SEATS
+      && hammerCandidate(spiritId, got.line, scale, { charges: 2 }).ok;
+    ok(!!got.hammerTopUp === want, `seed ${seed}: top-up ${want ? 'offered' : 'not offered'} (bank ${ns.hammerCharges}, ${got.result.hammers} hammered)`);
+    if (got.hammerTopUp) topUps += 1;
+  }
+  ok(hammeredWins > 0, `the sample reaches a hammer in the best line (${hammeredWins} of ${cases})`);
+  // Rule 2 by hand: a line already paying all four of the Ronin's fans — another note pays nothing.
+  const full6 = sheet({ rootNote: 'C', paletteMode: 'hirajoshi', noteStock: ['D', 'Eb', 'F', 'G', 'Ab', 'C', 'Eb'] });
+  const top2 = findBestPlay('cosmic_ronin', { ...full6, hammerCharges: 2 }, 'fans', { techniques: true });
+  ok(top2.result.hammers === 0 && top2.result.fans === 4 && top2.hammerTopUp?.note === 'G' && top2.hammerTopUp.pays === 0,
+    `rule 2: both charges held, the line already pays the Ronin's most (4 fans) → "hammer one on anyway" (${top2.hammerTopUp?.note}, +${top2.hammerTopUp?.pays})`);
+  const top1 = findBestPlay('cosmic_ronin', { ...full6, hammerCharges: 1 }, 'fans', { techniques: true });
+  ok(top1.result.hammers === 0 && top1.hammerTopUp === null, 'rule 3: one charge and nothing to gain → the crowd says nothing, the charge carries');
+  // Rule 3 / off by default: no techniques option → no hammer, ever.
+  const plain = findBestPlay('cosmic_ronin', sheet({ rootNote: 'C', paletteMode: 'hirajoshi', noteStock: ['C', 'D'], hammerCharges: 2 }), 'fans');
+  ok(plain.result.hammers === 0 && plain.hammerTopUp === null, 'without opts.techniques the finder never hammers (the live game, until the bubble is dialled in)');
+  const ex = findBestPlay('cosmic_ronin', sheet({ rootNote: 'C', paletteMode: 'hirajoshi', noteStock: ['C', 'D'], hammerCharges: 1 }), 'fans', { techniques: true });
+  ok(ex.line.join(' ') === 'C D Eb' && ex.melody[2].tech === 'hammer' && ex.melody[2].idx === null,
+    `Alex's own example: C D in the hand, no E♭ → the crowd's line is C D + hammer-on E♭ (got ${ex.line.join(' ')})`);
+  const other = findBestPlay('Metalness_Monster', sheet({ rootNote: 'E', paletteMode: melodyModeFor('Metalness_Monster'), noteStock: ['E', 'F'], hammerCharges: 2 }), 'fans', { techniques: true });
+  ok(other.result.hammers === 0 && other.hammerTopUp === null, '⭐ another Spirit never gets a hammer suggestion');
+  // Full Ronin hands with two charges stay proven, and the time is recorded.
+  let worst = 0, proven = 0, n = 0;
+  for (let seed = 1; seed <= 12; seed += 1) {
+    const root = ROOTS[(seed * 7) % ROOTS.length];
+    const stock = refillStock(root, 'hirajoshi', 11, makeRng(55000 + seed));
+    const t0 = performance.now();
+    const plays = findBestPlays('cosmic_ronin', sheet({ rootNote: root, paletteMode: 'hirajoshi', noteStock: stock, hammerCharges: 2 }), { goals: ['fans'], techniques: true });
+    worst = Math.max(worst, performance.now() - t0);
+    n += 1; if (plays.fans.exact) proven += 1;
+  }
+  ok(proven === n, `${proven}/${n} full Ronin hands with two charges proven exact (worst ${worst.toFixed(0)} ms, fans goal)`);
+}
+
 // ═══ 7. WIRED ═══════════════════════════════════════════════════════════════
 console.log('§7 the suite is run by something');
 {
