@@ -14,7 +14,7 @@ import { BATTLE_DIRECTOR } from './battleDirector.js';
 import { createSpeedLines } from './speedLines.js';
 import { createSolidLayer, markSolid, markOccluders } from './solidLayer.js';
 import { createBeamLayer } from './beamLayer.js';
-import { TOP_OFFSET, onTopAxis } from './topDownView.js';
+import { TOP_OFFSET, onTopAxis, lensHeading, facesNorth, turnLens } from './topDownView.js';
 import { SCALE, SVG_W, SVG_H } from './constants.js';
 import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
 import { createArenaEnvironment, polishArenaModel } from './arenaEnvironment.js';
@@ -156,6 +156,20 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     // come back. A real drag (OrbitControls start), ☰ view or zoom cancels it.
     let refocus=null,introBlend=null;
     const REFOCUS_MS=700;
+    // 🧭 FACE NORTH (topDownView.js `northLens`, Alex 2026-10-09). The lens swings
+    // round its look-at point the short way, keeping zoom and tilt, over
+    // NORTH_MS — a swing rather than a cut, so the player SEES which way the
+    // board turned and does not have to find their Spirit again.
+    // ⚠️ Like refocus, no controls.update() while it runs: damping would pull
+    // the lens back toward the pose OrbitControls last settled on.
+    let northSwing=null;
+    const NORTH_MS=450;
+    function northPose(now){
+      const k=reduced?1:Math.min(1,(now-northSwing.start)/NORTH_MS),e=k*k*(3-2*k);
+      const p=turnLens(northSwing.from,controls.target,northSwing.turn*e);
+      camera.position.set(p.x,p.y,p.z);camera.lookAt(controls.target);dirty=true;
+      if(k>=1)northSwing=null;
+    }
     // 🎯 A NEW TURN BRINGS THE LENS TO ITS SPIRIT (Alex, 2026-10-08: *"When it
     // becomes a new players turn, the camera should come to that Spirit"*). Before
     // this only the auto camera did, and only once the player had been idle 10 s;
@@ -172,6 +186,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const TURN_FOCUS_MS=1100;
     let seenActing,turnFocus=false,dragging=false,lensDropped=null,lastIntro=null;
     function startRefocus(now,ms=REFOCUS_MS){
+      if(northSwing){northSwing.start=-Infinity;northPose(now);}
       const num=frame.spirits?.find(s=>s.id===frame.actingId)?.num;if(num==null)return;
       const p=arenaPoint(num,.34);if(!p)return;
       const dir=camera.position.clone().sub(controls.target),r0=dir.length();if(!r0)return;
@@ -191,7 +206,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     // OrbitControls still owns drag start/end, so held gestures cannot time out.
     // A drag also drops the entrance close-up it lands on (lensDropped): the riff
     // plays on, but the lens is the player's from that moment.
-    const takeOver=()=>{refocus=null;dragging=true;if(lastIntro?.key)lensDropped=lastIntro.key;sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>{dragging=false;director.userEnd(performance.now());};
+    const takeOver=()=>{refocus=null;northSwing=null;dragging=true;if(lastIntro?.key)lensDropped=lastIntro.key;sonicCamera.userStart();director.userStart(performance.now());},letGo=()=>{dragging=false;director.userEnd(performance.now());};
     controls.addEventListener('start',takeOver);controls.addEventListener('end',letGo);
     cleanups.push(()=>{controls.removeEventListener('start',takeOver);controls.removeEventListener('end',letGo);});
     const motion=()=>{reduced=!!media?.matches;controls.enableDamping=!reduced;dirty=true;};motion();
@@ -291,6 +306,8 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
           controls.target.set(cameraShot.target.x,cameraShot.target.y,cameraShot.target.z);
           camera.position.set(cameraShot.position.x,cameraShot.position.y,cameraShot.position.z);
           camera.lookAt(controls.target);dirty=true;
+        } else if(northSwing) {
+          northPose(now);   // 🧭 the swing to face north (NORTH_MS)
         } else if(refocus) {
           // 🎯 the break's ease back onto the Spirit (startRefocus). No
           // controls.update() here either: damping would pull against the ease.
@@ -317,7 +334,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
-      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.lostChords>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus;
+      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.lostChords>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus||!!northSwing;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
@@ -429,7 +446,17 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // director, which waits out the usual resume before it drives again.
       view(name){const top=name==='tactical';
         if(top!==topView){topView=top;syncBattleCamera();if(!top){director=createCameraDirector();tuneDirector();idleFlow.activity(performance.now());}}
-        refocus=null;sonicCamera.userNudge();frameView(name);director.userNudge(performance.now());},
+        refocus=null;northSwing=null;sonicCamera.userNudge();frameView(name);director.userNudge(performance.now());},
+      // 🧭 Face north: turn only — zoom, tilt and aim are kept (topDownView `northLens`).
+      // It is the player choosing a shot, so it counts as taking over, exactly as
+      // zoom does: the auto camera waits out its usual resume before it drives again.
+      // ⚠️ ⌗ Top already faces north (TOP_OFFSET has x = 0), so under top-down this
+      // is a no-op and can never tilt the lens off the axis and drop the lock.
+      north(){if(disposed||failed)return;const now=performance.now();
+        refocus=null;sonicCamera.userNudge();director.userNudge(now);idleFlow.activity(now);
+        controls._sphericalDelta?.set(0,0,0);controls._panOffset?.set(0,0,0);if('_scale' in controls)controls._scale=1;
+        if(facesNorth(camera.position,controls.target)){northSwing=null;return;}
+        northSwing={start:now,from:camera.position.clone(),turn:-lensHeading(camera.position,controls.target)};dirty=true;},
       dispose,
       update(next){if(disposed||failed)return;frame=next??{};
         // 🎯 A turn changing hands (TURN_FOCUS_MS above). The first acting Spirit the
@@ -437,7 +464,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         if(frame.actingId!==seenActing){if(seenActing!==undefined&&frame.actingId!=null)turnFocus=true;seenActing=frame.actingId;}
 applyQuality();visuals.update(frame);crowd.update(frame.crowds);dirty=true;},
       quality(value){if(value===quality)return;quality=value;autoLite=false;applyQuality();dirty=true;},
-      zoom(factor){refocus=null;sonicCamera.userNudge();camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
+      zoom(factor){refocus=null;northSwing=null;sonicCamera.userNudge();camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
       // ☰ Auto camera switch. Turning it back ON starts a fresh director so it
       // picks up from wherever the camera is now, not from a pose it held before.
       autoCamera(on){on=!!on;if(on===autoCamera)return;autoCamera=on;syncBattleCamera();if(on){director=createCameraDirector();tuneDirector();}dirty=true;},

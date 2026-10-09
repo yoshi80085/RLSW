@@ -4,6 +4,16 @@ import {RoundedBoxGeometry} from 'three/addons/geometries/RoundedBoxGeometry.js'
 
 const atlases=new Map(),Z=new THREE.Vector3(0,0,1),Y=new THREE.Vector3(0,1,0);
 export const COMBAT_DICE_SIDES=Object.freeze([4,6,8,10,12,20]);
+// 📏 Each solid's radius (a d6 is a .94 cube). 🎲 The d8 and d12 grew (Alex,
+// 2026-10-09: "the d8 and d12 maybe can be a bit bigger") — .72 → .84 and
+// .68 → .80, my numbers, on the Special Dice Bench's two size levers. A pointed
+// solid reads smaller than a cube of the same radius, so next to d6s they looked
+// like the cheaper dice when they are the better ones. `radii` overrides per die.
+export const COMBAT_DIE_RADIUS=Object.freeze({4:.69,8:.84,10:.74,12:.80,20:.72});
+// 🃏 A marquee card's bonus die (Alex's dial-in, 2026-10-09: finish "rim"): YOUR
+// colour in the body, GOLD on its edges and its numbers, and a harder polish —
+// so it reads as yours and as something the card gave you, never as one more die.
+export const CARD_DIE_GOLD='#ffcf5a';
 
 // Merge coplanar triangles into physical faces, including pentagons and kites.
 function facesOf(geometry){
@@ -26,19 +36,20 @@ function facesOf(geometry){
   return {normal:f.normal,center,up,right,radius};
  });
 }
-function shape(sides){
- if(sides===4)return new THREE.TetrahedronGeometry(.69);
+function shape(sides,radii=COMBAT_DIE_RADIUS){
+ const r=n=>radii?.[n]??COMBAT_DIE_RADIUS[n];
+ if(sides===4)return new THREE.TetrahedronGeometry(r(4));
  // 🔊 11 is the ELEVEN DIE (gameConstants ELEVEN_DIE): a d6 body, five faces read 11, one reads 1.
  if(sides===6||sides===11)return new THREE.BoxGeometry(.94,.94,.94);
- if(sides===8)return new THREE.OctahedronGeometry(.72);
- if(sides===12)return new THREE.DodecahedronGeometry(.68);
- if(sides===20)return new THREE.IcosahedronGeometry(.72);
+ if(sides===8)return new THREE.OctahedronGeometry(r(8));
+ if(sides===12)return new THREE.DodecahedronGeometry(r(12));
+ if(sides===20)return new THREE.IcosahedronGeometry(r(20));
  // The dual of a pentagonal antiprism is a ten-kite trapezohedron.
  const points=[];for(let i=0;i<5;i++)for(const sign of [-1,1]){
   const a=(i+(sign>0?.5:0))*Math.PI*2/5;points.push(new THREE.Vector3(Math.cos(a),Math.sin(a),sign*.6));
  }
  const antiprism=new ConvexGeometry(points),dual=facesOf(antiprism).map(f=>f.normal.clone().divideScalar(f.normal.dot(f.center)));
- antiprism.dispose();const g=new ConvexGeometry(dual);g.computeBoundingSphere();g.scale(.74/g.boundingSphere.radius,.74/g.boundingSphere.radius,.74/g.boundingSphere.radius);return g;
+ antiprism.dispose();const g=new ConvexGeometry(dual);g.computeBoundingSphere();const k=r(10)/g.boundingSphere.radius;g.scale(k,k,k);return g;
 }
 function acquireAtlas(sides){
  if(atlases.has(sides)){const a=atlases.get(sides);a.refs++;return a;}
@@ -81,9 +92,9 @@ function neonEdges(source,color){
 // 2026-09-27, so a Goes to 11 throw in the arena threw 'Invalid combat die.'
 const ELEVEN_BODY=6;
 const isEleven=(sides,value)=>sides===11&&(value===1||value===11);
-export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presentation='face'}={}){
+export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presentation='face',finish=null,radii=COMBAT_DIE_RADIUS}={}){
  if(!isEleven(sides,value)&&(!COMBAT_DICE_SIDES.includes(sides)||!Number.isInteger(value)||value<1||value>sides))throw Error('Invalid combat die.');
- const source=shape(sides),faces=facesOf(source),remaining=[...faces],numbered=[];
+ const source=shape(sides,radii),faces=facesOf(source),remaining=[...faces],numbered=[];
  // Opposite faces add to sides+1 where the solid has opposite faces.
  while(remaining.length){const f=remaining.shift();numbered.push(f);if(sides!==4&&remaining.length){let idx=0;for(let i=1;i<remaining.length;i++)if(remaining[i].normal.dot(f.normal)<remaining[idx].normal.dot(f.normal))idx=i;numbered.splice(numbered.length-1,0,remaining.splice(idx,1)[0]);}}
  const ordered=[];for(let i=0;i<numbered.length;i+=2){ordered[i/2]=numbered[i];if(numbered[i+1])ordered[faces.length-1-i/2]=numbered[i+1];}
@@ -91,8 +102,9 @@ export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presenta
  const group=new THREE.Group();group.name=`Combat d${sides}`;group.userData={sides,value,faceCount:faces.length};
  const bodyGeometry=sides===6||sides===11?new RoundedBoxGeometry(.94,.94,.94,2,.065):source;
  const tint=new THREE.Color(color);
- const body=new THREE.Mesh(bodyGeometry,new THREE.MeshStandardMaterial({color:tint.clone().multiplyScalar(.075),emissive:tint,emissiveIntensity:.035,roughness:.24,metalness:.55,flatShading:true}));group.add(body);
- const edges=neonEdges(source,color);group.add(edges.group);
+ const card=finish==='card';
+ const body=new THREE.Mesh(bodyGeometry,new THREE.MeshStandardMaterial({color:tint.clone().multiplyScalar(.075),emissive:tint,emissiveIntensity:.035,roughness:card?.22:.24,metalness:card?.9:.55,flatShading:true}));group.add(body);
+ const edges=neonEdges(source,card?CARD_DIE_GOLD:color);group.add(edges.group);
  const atlas=acquireAtlas(sides),positions=[],uvs=[];
  faceList.forEach((f,i)=>{
   const scale=f.radius*1.8,center=f.center.clone().addScaledVector(f.normal,.008);
@@ -102,7 +114,7 @@ export function createCombatDie({sides=6,value=1,color='#4ccbdd',seed=0,presenta
   }
  });
  const printed=new THREE.BufferGeometry();printed.setAttribute('position',new THREE.Float32BufferAttribute(positions,3));printed.setAttribute('uv',new THREE.Float32BufferAttribute(uvs,2));
- const ink=new THREE.Mesh(printed,new THREE.MeshBasicMaterial({map:atlas.texture,transparent:true,depthWrite:false,color:tint.clone().lerp(new THREE.Color('#ffffff'),.68),toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1}));ink.name='Printed face numbers';ink.userData.solidDecal=true;group.add(ink);
+ const ink=new THREE.Mesh(printed,new THREE.MeshBasicMaterial({map:atlas.texture,transparent:true,depthWrite:false,color:card?new THREE.Color(CARD_DIE_GOLD):tint.clone().lerp(new THREE.Color('#ffffff'),.68),toneMapped:false,polygonOffset:true,polygonOffsetFactor:-1}));ink.name='Printed face numbers';ink.userData.solidDecal=true;group.add(ink);
  // The Eleven die's 11 is the face opposite its 1 (the last face).
  const winnerIndex=sides===11?(value===1?0:faceList.length-1):value-1;
  const winner=faceList[winnerIndex],orientation=new THREE.Quaternion().setFromUnitVectors(winner.normal,Z);

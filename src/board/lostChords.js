@@ -89,6 +89,7 @@ export const LOST_CHORD_LOOK = Object.freeze({
   // ── glass and glow ──
   neutral:'#7fe0ff',      // today's token cyan
   drive:'#ff6644', sustain:'#44aaff',
+  cursed:'#8f4dff',        // 🪤 the Cursed Shamisen's trap — drawn ONLY on the Ronin's own screen (⏳ placeholder for its own animation)
   bodyOpacity:0.38,       // the see-through body
   bodyGlow:0.55,          // its own emissive
   edgeGlow:1.9,           // the facet edges — past 1 so they read without bloom
@@ -441,7 +442,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
   }
   buildGeos();
 
-  const colorOf = claim => claim === 'drive' ? L.drive : claim === 'sustain' ? L.sustain : L.neutral;
+  const colorOf = claim => claim === 'drive' ? L.drive : claim === 'sustain' ? L.sustain : claim === 'cursed' ? (L.cursed ?? '#8f4dff') : L.neutral;
 
   /** One crystal and its floor, built at a hex. `style` 'crystal' | 'today' (the shipped flat chip, for the honest comparison). */
   function makeToken(num, note, claim, style = 'crystal') {
@@ -593,6 +594,8 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     },
     tokens() { return [...tokens.values()].filter(t => t.alive).map(t => ({ num:t.num, note:t.note, claim:t.claim, mode:t.mode, style:t.style })); },
     has(num) { const t = tokens.get(num); return !!(t && t.alive); },
+    /** 🪤 Where a live crystal floats right now, in world space (the noroi card sticks to it), or null. */
+    floatAt(num, out = new THREE.Vector3()) { const t = tokens.get(num); if (!t || !t.alive) return null; t.float.getWorldPosition(out); return out; },
     /** A token, appearing at rest (no moment) — a loaded save, the page's reset. */
     place(num, note, claim = null, style = 'crystal') { api.remove(num); return makeToken(num, note, claim, style); },
     remove(num) { const t = tokens.get(num); if (!t) return; dropToken(t); tokens.delete(num); },
@@ -847,7 +850,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
  * settings (`tones`, from the client's tone panel); the client skips its own
  * pickup pluck while the 3D arena is up, so the note sounds once.
  */
-export function createLostChordLayer(root, { pointFor, floatRoot = root, L = LOST_CHORD_LOOK, sound = true } = {}) {
+export function createLostChordLayer(root, { pointFor, floatRoot = root, L = LOST_CHORD_LOOK, sound = true, onShatter = null } = {}) {
   const chords = createLostChords(root, { pointFor, L, floatRoot });
   let prev = null, pending = [], hums = [], lastHover = null, reachKey = null, tones = {}, nowMs = 0;
   const say = fn => { if (!sound) return; try { fn(); } catch { /* audio unavailable — silent */ } };
@@ -908,6 +911,8 @@ export function createLostChordLayer(root, { pointFor, floatRoot = root, L = LOS
         pending.splice(pending.indexOf(p), 1);
         const live = notes().find(t => t.num === p.num);
         if (!live) continue;
+        // 🪤 the noroi card comes out of THIS shatter (cursedShamisenArena.js) — told where the crystal was
+        try { onShatter?.(p.num, chords.floatAt(p.num)); } catch { /* the picture must never cost a pickup */ }
         chords.pickup(p.num, { rise:p.spiritId != null ? rise() : 0.6 });
         say(() => pickupSound(p.note, { volume:L.sfxVolume, octave:L.humOctave, voice:L.humVoice,
           pluck:p.spiritId != null ? L.pluck : 'off', spiritId:String(p.spiritId ?? '').replace(/:shadow$/, ''), knobs:tones[p.spiritId] ?? tones[String(p.spiritId ?? '').replace(/:shadow$/, '')], ringMs:L.pickupMs * 0.34 }));

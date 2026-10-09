@@ -162,7 +162,8 @@ const src = p => readFileSync(new URL(p, import.meta.url), 'utf8');
 {
   const mono = src('../rlsw-simulator-v3_8_1.jsx'), vp = src('../ui/BoardViewport.jsx'), vis = src('./arenaVisuals.js'), ren = src('./arenaRenderer.js');
   ok(/data-arena-flat="lost-chord"/.test(mono) && /\[data-arena-flat="lost-chord"\][^{]*\{ display:none; \}/.test(vp), 'in 3D the flat SVG chip is hidden (the crystal replaces it)');
-  ok(/claim:actingNoteState \? \(unlockClaim\(actingNoteState, tok\.note, acting\?\.id\)\?\.which/.test(mono), 'the crystal\'s hunt colour is the 2D chip\'s own `unlockClaim` call');
+  ok(/: actingNoteState \? \(unlockClaim\(actingNoteState, tok\.note, acting\?\.id\)\?\.which/.test(mono), 'the crystal\'s hunt colour is the 2D chip\'s own `unlockClaim` call');
+  ok(/claim:myTrap\?\.hexNum === tok\.num \? 'cursed'/.test(mono), '🪤 …except the Ronin\'s own cursed note, on his screen only (v3 Shamisen)');
   ok(/if \(!arenaPlaysIt\) playNoteSound\(tok\.note/.test(mono), 'the client\'s pickup pluck stands down while the 3D arena plays it (no double note)');
   ok(/createLostChordLayer\(root,\{pointFor:arenaPoint,floatRoot:foregroundScene/.test(vis), 'arenaVisuals floats the crystals on the foreground scene');
   ok(/lostChords\.tick\(time\*1000,\{reduced,pawns\}\)/.test(vis) && /lostChords\.dispose\(\)/.test(vis), 'it ticks them with the pawns and disposes them');

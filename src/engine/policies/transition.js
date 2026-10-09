@@ -96,6 +96,7 @@ import { firePatch } from "../systems/cooldowns.js";
 import { SHUKUCHI_SKILL, hopBudgetPatch, hopIsActivation } from "../systems/shukuchi.js";
 import { randomNote } from "../../music/cadence.js";
 import { applyUnlockClaim } from "../../music/stackSlots.js";
+import { springOutcome } from "../systems/iwatoCurse.js";
 import { commitMelodyEconomy } from "../systems/melodyCommit.js";
 import { SWING_AP_COST, SONIC_AP_COST } from "./legalActions.js";
 
@@ -207,8 +208,17 @@ export function collectPickups(state, spiritId, hexNum, rng) {
       : extra
         ? bankLostChord(ns.noteStock, usedList(ns.usedStockIdx), extra, null)
         : { noteStock: ns.noteStock };
+    // 🪤 THE CURSED SHAMISEN'S TRAP — read off the sheets BEFORE the pickup
+    // (`iwatoCurse.js` springOutcome; the client's `checkTokenPickup` is the twin).
+    // ⚠️ No draw: the haunted notes are seeded from the curse's own key.
+    const spring = springOutcome({ noteStates: next.noteStates ?? {}, pickerId: spiritId, hexNum, turnKey: next.turn?.count ?? '' });
     next = applyAction(next, tokenPickedUp(spiritId, hexNum), rng);
     next = patchNs(next, spiritId, found ? { ...found.patch, noteStock } : { noteStock }, rng);
+    if (spring) {
+      for (const [id, p] of Object.entries(spring.patches)) next = patchNs(next, id, p, rng);
+      logs.push(spring.kind === 'sprung' ? `🌑 the Lost Chord was CURSED — ${spiritId} is haunted (Iwato on ${tok.note})`
+        : spring.kind === 'disarmed' ? '🪤 the Ronin took back his own cursed note' : '🪤 the curse fizzled — already haunted');
+    }
     if (found) {
       logs.push(`🔓 Lost Chord (${tok.note}) on #${hexNum} opens ${found.which === 'sustain' ? 'Sustain' : 'Drive'} seat ${found.slot} — and takes it`);
     } else {
@@ -248,8 +258,8 @@ export function collectPickups(state, spiritId, hexNum, rng) {
 
     const { q, used } = drawMarqueeQuestion(pickVal, next.board.usedTrivia ?? []);
     next = applyAction(next, eventHexTriggered(spiritId, hexNum, used), rng);
-    // 🎪 …and the next marquee lights at once (`systems/marqueeSpaces.js`).
-    if (next.board.lastEventRespawn?.from === hexNum) logs.push(`🎪 a new marquee lights on #${next.board.lastEventRespawn.hexNum}`);
+    // 🎪 …and the next marquee is CHOSEN now but lights at the turn end
+    // (Alex, 2026-10-09 — `systems/marqueeSpaces.js` `lightPendingMarquees`).
     logs.push(`🎪 ${kind} marquee on #${hexNum} — ${q?.difficulty ?? '?'} question`);
 
     let winnerId = null;
@@ -774,8 +784,10 @@ export function applyBotAction(state, action, ctx = {}) {
       // the Spirit being paid must be read BEFORE the dispatch, never after.
       const posingId = spiritId;
       const next = applyAction(state, turnEnded(), rng);
+      // 🎪 ⏳ a marquee taken during the turn lights as it closes
+      const litLogs = next.board?.lastEventRespawn?.deferred ? [`🎪 a new marquee lights on #${next.board.lastEventRespawn.hexNum}`] : [];
       if (!next.turn?.lastReport?.limelightHeld) {
-        return { state: next, view, ok: true, reason: null, logs: [] };
+        return { state: next, view, ok: true, reason: null, logs: litLogs };
       }
 
       const run = runBattleFlow(
@@ -791,7 +803,7 @@ export function applyBotAction(state, action, ctx = {}) {
       const nextView = run.result?.fameThisTurn
         ? { ...view, fameThisTurn: run.result.fameThisTurn }
         : view;
-      return { state: run.state, view: nextView, ok: true, reason: null, logs: run.logs, ledger: run.ledger };
+      return { state: run.state, view: nextView, ok: true, reason: null, logs: [...litLogs, ...run.logs], ledger: run.ledger };
     }
 
     default:

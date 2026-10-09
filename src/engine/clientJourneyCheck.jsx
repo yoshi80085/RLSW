@@ -104,16 +104,21 @@ try {
   assert.ok(shadow?.stepsLeft > 0, 'Shadow Illusion receives an independent movement budget');
   assert.ok(button('👤 Shadow')?.textContent.includes(`${shadow.turnsLeft}t`),
     'the live ability control reports the active Shadow duration');
-  // 🎸 THE IWATO CURSE (2026-10-02). The timed curse and its 💰 Pay Debt button
-  // this journey used to drive are gone; one rail button now walks the curse's
-  // whole life, and its first step is taking the instrument up — free, and the
-  // strings only open NEXT turn.
+  // 🎸 THE IWATO CURSE — v3 "the trap" (2026-10-09). One rail button: arm it,
+  // then click any Lost Chord. (v1's take-up / strings and the older 💰 Pay Debt are gone.)
   assert.equal(button('💰 Pay Debt'), undefined, '🪦 there is no debt to pay any more');
-  await click(button('🎸 Take up Shamisen'));
-  const shamisen = observedState?.noteStates?.[roninId]?.shamisen;
-  assert.ok(shamisen, 'taking it up puts the Shamisen on his sheet');
-  assert.equal(shamisen.ready, false, '…but its strings do not open until his next turn');
-  assert.ok(button('🎸 Shamisen · strings next turn'), 'the same button now says which step he is on');
+  const curseBtn = [...document.querySelectorAll('button')].find(b => b.textContent.trim().startsWith('🎸'));
+  assert.ok(curseBtn, 'the Shamisen has its rail button');
+  assert.ok(!/Take up|strings/.test(curseBtn.textContent), '🪦 v1\'s take-up and strings are gone');
+  if (!curseBtn.disabled) {
+    await click(curseBtn);
+    const tok = observedState.board.boardTokens[0];
+    await click(document.querySelector(`[data-hex-num="${tok.num}"]`));
+    assert.equal(observedState?.noteStates?.[roninId]?.shamisenTrap?.hexNum, tok.num, 'a click on a Lost Chord lays the trap on his sheet');
+    assert.ok(button('🎸 Trap set'), 'the same button now says the trap is set');
+  } else {
+    assert.ok(/no action left|🕒|no Lost Chords/.test(curseBtn.textContent), `the button says why not (${curseBtn.textContent})`);
+  }
   // Inspect details, then return through the same controls a player uses.
   await click(document.querySelector('.match-player-card')); // 🎡 Spirit details: the card's ＋ (the nav's middle chip is Scale now)
   await click(panelButton('Turn'));
@@ -148,7 +153,7 @@ try {
   assert.equal(button('2D board'), undefined, 'no 2D toggle either — the classic layout is archived');
   assert.equal(document.querySelector('[data-board-view] .arena-tactical > svg'), board,
     'the board DOM survives two whole turns — nothing remounted it');
-  console.log('PASS: melody, immersive layout/drawers, preserved live controls, Shukuchi hop, Shadow summon, Shamisen take-up, Bushido arm/cancel, next-turn reset, second commit, no 2D switch');
+  console.log('PASS: melody, immersive layout/drawers, preserved live controls, Shukuchi hop, Shadow summon, Shamisen trap, Bushido arm/cancel, next-turn reset, second commit, no 2D switch');
 } finally {
   await act(async () => root.unmount());
   dom.window.close();

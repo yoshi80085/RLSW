@@ -259,6 +259,8 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
       marqueeSeats,
       // 🎤 hex → 'community' | 'solo', rolled as each marquee lights (§13).
       marqueeKinds,
+      // ⏳ a marquee taken this turn, chosen but not lit until TURN_ENDED (`marqueeSpaces.js`)
+      marqueePending: [],
       eventRespawnIn: 0,
       // 🎪 Questions already drawn this match. Per-BUCKET recycling lives in
       // `drawTrivia`; this is just the ledger it reads and rewrites.

@@ -65,9 +65,12 @@ import { createLandingSfx } from '../audio/landingSfx.js';
 import { createBushidoSfx, scheduleBushidoStrike } from '../audio/bushidoSfx.js';
 import { getRiffAudio, getSfxBus } from '../audio/riffSfx.js';
 import { createCursedShamisenVisuals } from '../board/cursedShamisenVisuals.js';
-import { CURSED_SHAMISEN, planCast, stringIv, stringOctaves, iwatoDegree, STRINGS, CURSE_TURNS, EXORCISE_NOTES } from '../board/cursedShamisen.js';
+import { CURSED_SHAMISEN, planCast, stringIv, iwatoDegree, STRINGS, CURSE_TURNS, HAUNTED_NOTES } from '../board/cursedShamisen.js';
 import { createShamisenCurseSfx, scheduleCast, midiHz } from '../audio/shamisenCurseSfx.js';
-import { CURSED_SHAMISEN_CD, SONIC_BEAM_REACH } from '../data/gameConstants.js';
+import { CURSED_SHAMISEN_CD } from '../data/gameConstants.js';
+// 🪤 the noroi card and the crystal it sticks to — the game's own files (Alex's dial-ins)
+import { createNoroiCard, NOROI_CARD, NOROI_SPRING_CAST_DELAY_MS, ashPlan } from '../board/noroiCard.js';
+import { createLostChords, LOST_CHORD_LOOK } from '../board/lostChords.js';
 
 // ── the levers ── ⭐ ONE COPY, and Alex's dial-in (untouched defaults, 2026-10-01).
 // The preview page reads its defaults from here.
@@ -90,7 +93,9 @@ export const ABILITY_DEMO = Object.freeze({
 
 /** The abilities that have a demo. Every other row keeps today's text-only guide.
  *  🎸 The Cursed Shamisen joined 2026-10-02 with the Iwato curse's port — its
- *  demo plays `createCursedShamisenVisuals`, the arena's own curse. */
+ *  demo plays `createCursedShamisenVisuals`, the arena's own curse. ⏳ v3 (the
+ *  trap, 2026-10-09): the script now tells the trap's story with the v1 cast as
+ *  the spring — a placeholder until the trap's own animation is designed. */
 export const DEMO_ABILITIES = Object.freeze(new Set(['shukuchi', 'psycho_bushido', 'cursed_shamisen']));
 export const hasDemo = id => DEMO_ABILITIES.has(id);
 
@@ -247,47 +252,63 @@ export function shukuchiEndCard() {
     `${SHUKUCHI_CD}-round cooldown from the first leap`, 'You end facing your last leap'] };
 }
 
-// ── 🎸 CURSED SHAMISEN: the script ──────────────────────────────────────────
-// The Iwato curse's whole life in one loop: taken up, three strings tuned, the
-// cast (at 1× — the hush, the bell, his melody, the wisps, the 呪 charm), the
-// infection, a cursed turn burning a wisp, and the ending — EXORCISED and
-// EXPIRED alternate, loop by loop, so both are seen. 📌 The demo's Ronin is in
-// D; the strings are ♭2 · ♭5 · ♭7, three DIFFERENT notes, so the melody shows
-// its full shape (`planCast`).
+// ── 🎸 CURSED SHAMISEN: the script (v3, "the trap", with the noroi card) ─────
+// The curse's whole life in one loop, seen from the Ronin's seat: he spends his
+// Action Token to throw a 呪 NOROI CARD onto a Lost Chord (only he sees it —
+// `noroiCard.js`, Alex's dial-in 2026-10-09), and then one of three endings,
+// taking turns loop by loop so all three are seen:
+//   · LIFTED  — a rival walks onto it: the crystal shatters, the card comes out
+//     beside the ghost shamisen (the hush, the bell, the haunted notes, three
+//     wisps) and lands on them as the charm; a haunted note played lifts a
+//     ghost… and all three lift the curse;
+//   · EXPIRED — the same spring, but not all played back: it runs out;
+//   · WASTED  — nobody takes it: at his next turn the card burns to ash, in
+//     front of everyone (rule 18).
+// 📌 The trapped note is D; the haunted notes ♭2 · ♭5 · ♭7 (`planCast`).
 export const SHAMISEN_DEMO = Object.freeze({
-  root:'D', midi:50, strings:['Eb', 'Ab', 'C'],
-  roninCell:[0, 0], rivalCell:[3, -1],             // three hexes apart: in reach
-  upAt:0.3, tuneAt:[1.5, 2.3, 3.1], castAt:4.4,   // seconds
-  holdAfterCast:1.6, burnAfter:1.3, endAfter:1.6,  // after the cast lands
+  root:'D', midi:50, haunted:['Eb', 'Ab', 'C'],
+  roninCell:[0, 0], rivalCell:[4, -1], trapCell:[2, 0],    // the cursed Lost Chord between them, in clear view
+  layAt:0.4, stepAt:2.7, hopMs:560, wasteAt:3.2,            // seconds (the hop in ms)
+  holdAfterCast:1.6, burnAfter:1.3, endAfter:1.6,           // after the spring lands
 });
+export const SHAMISEN_ENDINGS = Object.freeze(['exorcised', 'expired', 'wasted']);
 export function shamisenScript(S = SHAMISEN_DEMO, L = CURSED_SHAMISEN) {
-  const ivs = S.strings.map(n => stringIv(n, S.root));
+  const ivs = S.haunted.map(n => stringIv(n, S.root));
   const plan = planCast(L, ivs);
-  const landed = S.castAt + plan.total / 1000;
+  // ⏱ the arena's own clock: the crystal shatters when she lands; the cast
+  // starts `NOROI_SPRING_CAST_DELAY_MS` after the step, as in a match
+  const shatterAt = S.stepAt + S.hopMs / 1000;
+  const castAt = S.stepAt + NOROI_SPRING_CAST_DELAY_MS / 1000;
+  const landed = castAt + plan.total / 1000;
   const burnAt = landed + S.holdAfterCast;
   const endAt = burnAt + S.burnAfter;
-  return { ivs, octaves:stringOctaves(ivs), labels:S.strings.map(n => iwatoDegree(n, S.root)), plan, landed, burnAt, endAt, total:endAt + S.endAfter + 1.6,
-    reach:axialDist(...S.roninCell, ...S.rivalCell) };
+  const ash = ashPlan(NOROI_CARD, { seen:true });
+  return { ivs, labels:S.haunted.map(n => iwatoDegree(n, S.root)), plan, shatterAt, castAt, landed, burnAt, endAt, total:endAt + S.endAfter + 1.6,
+    ashAt:S.wasteAt, burntAt:S.wasteAt + ash.burnt / 1000, wasteTotal:S.wasteAt + ash.done / 1000 + 1.6,
+    reach:axialDist(...S.roninCell, ...S.trapCell) };
 }
 export function shamisenCaptions(sc, ending = 'exorcised', S = SHAMISEN_DEMO) {
-  const cast = t => S.castAt + t / 1000;
-  return [
-    { at:0, text:'Take up the Cursed Shamisen — free, and everyone sees it' },
-    { at:S.tuneAt[0] - 0.3, text:'Next turn: tune its strings in the chord step — Iwato notes (1 ♭2 4 ♭5 ♭7), up to 3 a turn' },
-    { at:S.castAt, text:`Three strings: cast on a rival within ${SONIC_BEAM_REACH} hexes` },
-    { at:cast(sc.plan.launchAt), text:'Three ghost-fires leave the strings…' },
+  const cast = t => sc.castAt + t / 1000;
+  const lay = { at:0, text:'Your Action Token: stick a noroi card on one Lost Chord, anywhere — only you can see it' };
+  if (ending === 'wasted') return [lay,
+    { at:S.wasteAt - 1.4, text:'It lasts until your next turn…' },
+    { at:S.wasteAt, text:'Nobody took it — the card burns to ash, for everyone to see' },
+  ];
+  return [lay,
+    { at:S.stepAt - 0.6, text:'Until your next turn… a rival walks onto it' },
+    { at:sc.shatterAt, text:'The card springs out — the ghost shamisen plays' },
     { at:cast(sc.plan.slapAt), text:'呪 — the charm strikes' },
-    { at:sc.landed, text:`Their scale IS Iwato for ${CURSE_TURNS} turns — every other note is discord: no fans` },
-    { at:sc.burnAt, text:'Each cursed turn burns a wisp' },
+    { at:sc.landed, text:`Their scale IS Iwato on that note — ${HAUNTED_NOTES} haunted notes to play back` },
+    { at:sc.burnAt, text:'Each haunted note played in a melody lifts a ghost' },
     { at:sc.endAt, text:ending === 'exorcised'
-      ? `EXORCISED — ${EXORCISE_NOTES} different Iwato notes on their very next turn lift it`
-      : 'No exorcism — the curse runs out after two turns' },
+      ? `All ${HAUNTED_NOTES} played back — the curse lifts`
+      : `Not all played back — it runs out after ${CURSE_TURNS} of their turns` },
   ];
 }
 export function shamisenEndCard() {
-  return { title:'🎸 Cursed Shamisen', lines:[`Take it up · next turn tune ${STRINGS} Iwato strings (up to 3 a turn)`,
-    `Cast within ${SONIC_BEAM_REACH} hexes · your Action · ${CURSED_SHAMISEN_CD}-round cooldown`,
-    `Their scale = Iwato for ${CURSE_TURNS} turns · exorcise with ${EXORCISE_NOTES} Iwato notes`] };
+  return { title:'🎸 Cursed Shamisen', lines:['Stick a hidden noroi card on a Lost Chord · your Action Token',
+    `${CURSED_SHAMISEN_CD}-round cooldown · it lasts until your next turn, then burns`,
+    `Taken: Iwato on that note · ${HAUNTED_NOTES} haunted notes · up to ${CURSE_TURNS} turns`] };
 }
 
 /**
@@ -618,67 +639,93 @@ export function createAbilityDemo({ look = {}, reduced = () => globalThis.matchM
   }
   const keptIdx = (faces, pool) => keepBest(faces, pool, KEEP).keptIdx;
 
-  // ── 🎸 Cursed Shamisen ──
+  // ── 🎸 Cursed Shamisen (v3 + the noroi card) ──
   let curseLoop = 0;
   function buildShamisen({ color, rivalColor }) {
     const D = SHAMISEN_DEMO, sc = shamisenScript(D);
-    const ending = curseLoop++ % 2 === 0 ? 'exorcised' : 'expired';
+    const ending = SHAMISEN_ENDINGS[curseLoop++ % SHAMISEN_ENDINGS.length];
     const caps = shamisenCaptions(sc, ending, D);
-    const a = hexWorld(...D.roninCell), b = hexWorld(...D.rivalCell);
-    // ⚠️ THE INSTRUMENT HANGS ~3 m OVER HIM, so the shot is framed on the pair and
-    // lifted: the focus rises toward it and the span is widened to keep it in.
+    const a = hexWorld(...D.roninCell), b = hexWorld(...D.rivalCell), c = hexWorld(...D.trapCell);
+    // ⚠️ THE GHOST INSTRUMENT HANGS ~3 m OVER THE CURSED HEX, so the shot is
+    // framed on the pair and lifted (lookY).
     const focus = a.clone().lerp(b, 0.5);
     const span = a.distanceTo(b) + 5;
-    // ⚠️ AIMED HIGHER THAN THE OTHER DEMOS (lookY): the shamisen hangs ~4 m up.
-    const st = stageFor(around([D.roninCell, D.rivalCell], 1), { focus, span, color, lookY:2.6 });
-    const ronin = st.pawn('cosmic_ronin', color, D.roninCell, facingOf(D.roninCell, D.rivalCell));
+    const st = stageFor(around([D.roninCell, D.rivalCell, D.trapCell], 1), { focus, span, color, lookY:2.6 });
+    const ronin = st.pawn('cosmic_ronin', color, D.roninCell, facingOf(D.roninCell, D.trapCell));
     // The rival faces the lens (as in the Bushido demo) — edge-on, the charm and
     // the sick violet edge would be a sliver.
     const rival = st.pawn('Metalness_Monster', rivalColor, D.rivalCell, Math.PI / 2);
-    const vis = createCursedShamisenVisuals({ ronin, rival, color });
+    // 💎 the Lost Chord is the game's own crystal; 🪤 the card is the game's own card
+    const TRAP = 1;
+    const chords = createLostChords(st.scene, { pointFor:(n, y = 0) => hexWorld(...D.trapCell, y), L:LOST_CHORD_LOOK });
+    chords.clock(0); chords.place(TRAP, D.root, null, 'crystal');
+    const crystal = () => chords.floatAt(TRAP) ?? c.clone().setY(1.02);
+    // 📌 The card is drawn a little larger than the dial-in (size 0.9 → 1.3, the charm's own size on a
+    // Spirit): at pop-out size the paper on a crystal is a few pixels — the same call as the HUD dice.
+    const card = createNoroiCard({ root:st.scene, glyph:CURSED_SHAMISEN.ofudaGlyph, look:{ ...NOROI_CARD, size:1.3, stickY:0.5 } });
+    // the spring is anchored on the cursed hex, as in the arena (`cursedShamisenArena.js`)
+    const anchor = { group:new THREE.Group(), parts:[] }; anchor.group.position.copy(c); st.scene.add(anchor.group);
+    const vis = createCursedShamisenVisuals({ ronin:anchor, rival, color });
+    for (let i = 0; i < STRINGS; i++) vis.tune(i, '', -10000);
     vis.group.visible = false;
     st.scene.add(vis.group);
-    let t0 = 0, done = new Set(), last = { dim:0 };
+    const chest = () => ronin.group.position.clone().add(new THREE.Vector3(0.2, 1.75, 0));
+    const charm = () => rival.group.position.clone().add(new THREE.Vector3(0.04, 2.15, 0));
+    let t0 = 0, done = new Set(), last = { dim:0 }, hop = null;
     const once = (k, fn) => { if (!done.has(k)) { done.add(k); fn(); } };
+    const total = ending === 'wasted' ? sc.wasteTotal : sc.total;
     return {
       st, label:`cursed_shamisen:${ending}`, ending,
       start(now) { t0 = now; },
       update(now, t, red) {
         const d = (now - t0) / 1000, at = s => now - (d - s) * 1000;
-        if (d >= D.upAt) once('up', () => { vis.group.visible = true; if (soundOn) curseSfx?.pluck(midiHz(D.midi), { vel:0.7, dark:0.55 }); });
-        D.tuneAt.forEach((s, i) => { if (d >= s) once(`tune${i}`, () => {
-          vis.tune(i, sc.labels[i], at(s));
-          if (soundOn) curseSfx?.pluck(midiHz(D.midi + 12 + sc.ivs[i] + 12 * sc.octaves[i]), { delay:CURSED_SHAMISEN.tuneMs * 0.75 / 1000, detune:CURSED_SHAMISEN.detune });
-        }); });
-        if (d >= D.castAt) once('cast', () => { vis.cast(at(D.castAt), sc.ivs); if (soundOn && curseSfx) scheduleCast(curseSfx, sc.plan, D.midi, CURSED_SHAMISEN); });
-        if (d >= sc.burnAt) once('burn', () => { vis.burnOne(at(sc.burnAt)); if (soundOn) curseSfx?.burnOut(); });
-        if (d >= sc.endAt) once('end', () => {
-          if (ending === 'exorcised') { vis.exorcise(at(sc.endAt)); if (soundOn) curseSfx?.exorcise(midiHz(64)); }
-          else { vis.burnOne(at(sc.endAt)); if (soundOn) curseSfx?.expire(midiHz(D.midi + 12)); }
-        });
-        last = vis.update(now, { reduced:red, camera:st.camera });
-        ronin.frame(t, { acting:true, reduced:red, cameraPos:st.camera.position });
-        rival.frame(t, { reduced:red, cameraPos:st.camera.position });
-        // the reach, at the start: every hex within it, the rival's brightest
-        for (const [k2, tile] of st.tiles) {
-          const [q, r] = unkey(k2), dist = axialDist(q, r, ...D.roninCell);
-          tile.level = d > D.tuneAt[2] && d < D.castAt + 0.8 && dist > 0 && dist <= SONIC_BEAM_REACH
-            ? (key(...D.rivalCell) === k2 ? 0.55 : 0.16) * Math.min(1, (D.castAt + 0.8 - d) / 0.4) : 0;
-          tile.glow.material.opacity = tile.level;
-          tile.glow.material.color.set(CURSED_SHAMISEN.edgeColor);
+        chords.clock(d);
+        if (d >= D.layAt) once('lay', () => { card.lay(at(D.layAt), { from:chest(), at:crystal }); if (soundOn) curseSfx?.pluck(midiHz(D.midi), { vel:0.6, dark:0.6 }); });
+        if (ending === 'wasted') {
+          if (d >= D.wasteAt) once('ash', () => { card.crumble(at(D.wasteAt), { at:crystal, seen:true });
+            if (soundOn) curseSfx?.burnOut({ delay:ashPlan(NOROI_CARD, { seen:true }).burnAt / 1000 }); });
+        } else {
+          if (d >= D.stepAt) once('step', () => { hop = { from:rival.group.position.clone(), to:c.clone() }; });
+          if (d >= sc.shatterAt) once('shatter', () => {
+            const pos = crystal().clone(); chords.pickup(TRAP, { rise:1.4 });
+            const castAt = at(sc.castAt);
+            card.spring(at(sc.shatterAt), { at:pos, target:charm, castAt, slapAt:sc.plan.slapAt, beats:sc.plan.notes.map(n => castAt + n.at),
+              seen:true, landScale:CURSED_SHAMISEN.ofudaSize * 1.35 });
+          });
+          if (d >= sc.castAt) once('cast', () => { vis.group.visible = true; vis.cast(at(sc.castAt), sc.ivs); if (soundOn && curseSfx) scheduleCast(curseSfx, sc.plan, D.midi, CURSED_SHAMISEN); });
+          if (d >= sc.burnAt) once('burn', () => { vis.burnOne(at(sc.burnAt)); if (soundOn) curseSfx?.burnOut(); });
+          if (d >= sc.endAt) once('end', () => {
+            if (ending === 'exorcised') { vis.burnOne(at(sc.endAt)); vis.burnOne(at(sc.endAt)); vis.exorcise(at(sc.endAt)); if (soundOn) curseSfx?.exorcise(midiHz(64)); }
+            else { vis.expire(at(sc.endAt)); if (soundOn) curseSfx?.expire(midiHz(D.midi + 12)); }
+          });
         }
+        // her hop onto the cursed Lost Chord
+        let lift = 0;
+        if (hop) {
+          const u = Math.min(1, (d - D.stepAt) / (D.hopMs / 1000)), e = u * u * (3 - 2 * u);
+          lift = red ? 0 : Math.sin(u * Math.PI) * 0.6;
+          rival.group.position.lerpVectors(hop.from, hop.to, e); rival.group.position.y = STANDEE_Y + lift;
+          if (u >= 1) { rival.group.position.y = STANDEE_Y; lift = 0; }
+        }
+        const out = card.update(now, { camera:st.camera, reduced:red });
+        // the crystal under his card turns violet (his screen) — and while it burns
+        if (chords.has(TRAP)) chords.setClaim(TRAP, out.tint > 0.5 ? 'cursed' : null);
+        last = vis.update(now, { reduced:red, camera:st.camera });
+        chords.update(d, { reduced:red, camera:st.camera });
+        ronin.frame(t, { acting:true, reduced:red, cameraPos:st.camera.position });
+        rival.frame(t, { reduced:red, cameraPos:st.camera.position, lift });
         st.aim(t, red ? 0 : last.shake);
-        const tuned = D.tuneAt.filter(s => d >= s).length;
-        const cast = d >= D.castAt;
+        const laid = d >= D.layAt;
+        const ghosts = d >= sc.endAt ? 0 : d >= sc.burnAt ? HAUNTED_NOTES - 1 : HAUNTED_NOTES;
         return {
           caption:captionAt(caps, d), exposure:1 - 0.6 * Math.min(1, last.dim ?? 0),
-          chips:[{ label:'Strings', pips:STRINGS, left:cast ? 0 : tuned }, { label:`${CURSED_SHAMISEN_CD}-round CD`, on:cast }, { label:'Action', on:cast },
-            ...(d >= sc.landed && d < sc.endAt + 0.4 ? [{ label:`呪 cursed · ${d >= sc.burnAt ? 1 : 2} turn${d >= sc.burnAt ? '' : 's'}`, on:true }] : [])],
-          card:d >= sc.total - 1.6 && L.endCard === 'on' ? shamisenEndCard() : null,
-          over:d >= sc.total - 1.6 + (L.endCard === 'on' ? L.endMs : 300) / 1000,
+          chips:[{ label:'Action', on:laid }, { label:`${CURSED_SHAMISEN_CD}-round CD`, on:laid },
+            ...(ending !== 'wasted' && d >= sc.landed && d < sc.endAt + 0.4 ? [{ label:'👻 haunted', pips:HAUNTED_NOTES, left:ghosts }] : [])],
+          card:d >= total - 1.6 && L.endCard === 'on' ? shamisenEndCard() : null,
+          over:d >= total - 1.6 + (L.endCard === 'on' ? L.endMs : 300) / 1000,
         };
       },
-      dispose() { if (soundOn) curseSfx?.stopAll?.(); vis.dispose(); st.dispose(); },
+      dispose() { if (soundOn) curseSfx?.stopAll?.(); card.dispose(); chords.dispose(); vis.dispose(); anchor.group.removeFromParent(); st.dispose(); },
     };
   }
 

@@ -23,9 +23,10 @@
 // React may invoke a functional update more than once and a live draw in here
 // would advance the engine cursor once per invocation. See determinismCheck.mjs.
 
-import { canonicalRoot, getSpelledPool, pitchIndex } from "../../music/notes.js";
+import { canonicalRoot, getSpelledPool, pitchIndex, playableScale } from "../../music/notes.js";
 import { melodyModeFor } from "../../music/melodyIdentity.js";
-import { randomNote } from "../../music/cadence.js";
+import { randomNote, randomNoteBlend } from "../../music/cadence.js";
+import { isCursed, cursedPalette, cursedDrawShare, trapOf, ashPatch } from "./iwatoCurse.js";
 import { usedList } from "./economy.js";
 import { STOCK_REFILL_RATE, SHADOW_ILLUSION_SUSTAIN_DRAIN } from "../../data/gameConstants.js";
 import { rigAtrophyTick } from "./sonicRig.js";
@@ -89,11 +90,18 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
   // respelled into it — both here, before the player ever sees the stock.
   // Drawing in ns.scaleMode would spell this turn's new notes in last turn's
   // mode, the exact bug the old pivot's respell-on-declare existed to prevent.
+  // 🌑 UNDER THE IWATO CURSE THE DRAW SEEPS IN (Alex, 2026-10-09): the
+  // guaranteed slice is split between the cursed wheel (Iwato on the curse's
+  // root) and their own palette — ⅓ cursed on their 2nd cursed turn, ⅔ on their
+  // 3rd (`cursedDrawShare`). The other half stays all twelve. Same one draw per note.
+  const cursedInside = isCursed(ns) ? cursedPalette(spiritId, { ...ns, rootNote: paletteRoot, paletteMode }) : null;
+  const cursedShare  = cursedInside ? cursedDrawShare(ns.iwatoCurse.turnsLeft) : 0;
+  const ownInside    = cursedInside ? playableScale(paletteRoot, paletteMode) : null;
   let cursor = 0;
   const newStock = (ns.noteStock ?? []).map((note, idx) => {
     if (refreshing.has(idx)) {
       const draw = draws[cursor++] ?? 0;
-      return randomNote(paletteRoot, paletteMode, () => draw);
+      return cursedInside ? randomNoteBlend(cursedInside, ownInside, cursedShare, modePool, () => draw) : randomNote(paletteRoot, paletteMode, () => draw);
     }
     const pi = pitchIndex(note);
     return pi !== -1 ? modePool[pi] : note;
@@ -206,14 +214,15 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
     shadowIllusion: shadow.si,
     ...(shadow.drained > 0 ? { tempSustain: shadow.sustainLeft } : {}),
 
-    // 🪕 THE SHAMISEN'S STRINGS OPEN ON THE TURN AFTER HE TAKES IT UP (Alex,
-    // 2026-10-02: "after the ability was selected … from the next turn"). The
-    // take-up writes `ready:false`; his own next turn start is the only place it
-    // flips, so a take-up can never be tuned in the same turn it was made.
-    // `engine/systems/iwatoCurse.js` holds the rest of the rules.
-    ...(ns.shamisen && !ns.shamisen.ready ? { shamisen: { ...ns.shamisen, ready: true } } : {}),
+    // 🪤 THE CURSED SHAMISEN'S TRAP LASTS UNTIL HIS NEXT TURN (Alex,
+    // 2026-10-09). His own turn start is where an unsprung trap is WASTED; the
+    // Lost Chord is an ordinary note again and drifts from the next round end.
+    // 🪦 The noroi card burns in PUBLIC (rule 18): `ashPatch` leaves the record.
+    ...(trapOf(ns) ? ashPatch(trapOf(ns), 'wasted') : {}),
+    // 🪦 v1's strings (`shamisen: { strings, ready, root }`) are gone; an old
+    // sheet that still carries one is cleared here.
+    ...(ns.shamisen ? { shamisen: null } : {}),
   };
-
   // Recovery spends refreshed stock, so the refill cannot refund the cost.
   const recoveryDue=ns.recoveryNotesOwed??0;
   const recoverySlots=(patch.noteStock??ns.noteStock??[]).map((_,i)=>i)
@@ -249,6 +258,10 @@ export function startTurnNotes(ns, { draws = [], spiritId = null } = {}) {
       // the board and should not sound identical in the log.
       shadowSustainDrained: shadow.drained,
       shadowStarved:        shadow.starved,
+      // 🪤 the Cursed Shamisen: an unsprung trap wasted; 🌑 how far the curse
+      // has seeped into this draw (0 uncursed).
+      trapWasted: trapOf(ns),
+      curseDrawShare: cursedShare,
     },
   };
 }

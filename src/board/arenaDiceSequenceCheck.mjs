@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {Vector3} from 'three';
 import {createArenaDiceSequence,arenaDiceSchedule,arenaDieTiming,diceBeat,ARENA_DICE_READ_AT,ARENA_DICE_GATHER_AT,ARENA_DICE_TIMING} from './arenaDiceSequence.js';
-import {COMBAT_DICE_SIDES} from './combatDice.js';
+import {COMBAT_DICE_SIDES,COMBAT_DIE_RADIUS,CARD_DIE_GOLD,createCombatDie} from './combatDice.js';
+import {CARD_DIE_LOOK,CARD_DIE_COLORS,cardDieOf} from './arenaDiceSequence.js';
+import {arenaFrame} from './arenaFrame.js';
+import {applyCard} from '../engine/systems/marqueeCards.js';
 
 for(const sides of COMBAT_DICE_SIDES){
  const values=Array.from({length:11},(_,i)=>1+i%sides),sequence=createArenaDiceSequence({drive:values,sustain:values,driveSides:sides,sustainSides:sides});
@@ -149,6 +152,68 @@ for(const starts of [[0,4.6],[4.6,0],[0,9],[2,2]]){
  const fizz=createArenaDiceSequence({drive:[6,1],sustain:[3],driveSides:6,sustainSides:6,drivePool:[6,11]});
  assert.deepEqual(fizz.update(ARENA_DICE_READ_AT).sums,[7,3],'a fizzled 1 still lands and reads 1');
  seq.dispose?.();fizz.dispose?.();
+}
+
+// 🃏 THE CARD DIE (Alex's dial-in on the Special Dice Bench, 2026-10-09).
+{
+ let n=0;const ok=(c,m)=>{assert.ok(c,m);n++;};
+ ok(CARD_DIE_LOOK.size===1.15&&CARD_DIE_LOOK.ring===.31&&CARD_DIE_LOOK.entrance==='deal'&&CARD_DIE_LOOK.lead===1.2&&CARD_DIE_LOOK.gap===.5&&CARD_DIE_LOOK.label&&CARD_DIE_LOOK.trail&&CARD_DIE_LOOK.highlight&&CARD_DIE_LOOK.encore,'the dial-in is the look');
+ ok(COMBAT_DIE_RADIUS[8]===.84&&COMBAT_DIE_RADIUS[12]===.80,'the d8 and d12 grew (Alex: "a bit bigger")');
+ // cardDieOf reads the battle
+ const loaded={cardPlayed:'loaded6',atkFixed:applyCard([6,6,6,6,6],3,'loaded6').fixed};
+ ok(JSON.stringify(cardDieOf(loaded))===JSON.stringify({card:'loaded6',kind:'loaded',color:CARD_DIE_COLORS.loaded,name:'Loaded 6',icon:'🎲',placed:true,face:6}),'a Loaded card is a SET die showing its face');
+ ok(cardDieOf({cardPlayed:'fullStack',atkFixed:applyCard([6,6],2,'fullStack').fixed}).placed===false,'Full Stack is a THROWN bonus die');
+ ok(cardDieOf({cardPlayed:'loaded6',atkFixed:[{idx:2,face:6}]})===null,'a replay from before the bonus die draws as it did (no card die)');
+ ok(cardDieOf({cardPlayed:'encore',atkFixed:[]})?.kind==='keep'&&cardDieOf({})===null,'Encore has no die of its own; no card, nothing');
+ // A set die: drive = 3 own kept + the card's 6 LAST (throwPool keeps throw order; the bonus die is appended).
+ const t0=1000,flat=(a,b)=>Math.hypot(a.x-b.x,a.z-b.z);
+ const seq=createArenaDiceSequence({drive:[5,6,4,6],sustain:[3,3],drivePool:[6,6,6,6],droppedDrive:[2,1],droppedDrivePool:[6,6],poolStart:[2,0],driveCard:cardDieOf(loaded),driveColor:'#ff6600',now:t0});
+ const card=seq.cardEntry;
+ ok(card&&card.placed&&card.value===6&&card.index===3,'the card die is the last kept Drive value');
+ ok(seq.headers[0].mesh.userData.text==='DRIVE · 3d6 · best 3 of 5  + LOADED 6','the header names YOUR dice, then the card');
+ const edges=card.die.group.children.find(o=>o.isGroup).children[0].material.color.getHexString();
+ ok(edges===CARD_DIE_GOLD.slice(1),'the card die has gold edges (finish rim)');
+ ok(Math.abs(card.die.group.userData.sides-6)<1e-9,'Loaded is a d6');
+ seq.update(0,{now:t0});ok(!card.die.group.visible&&card.fx.deal.visible,'the deal: the card is on its way, the die not yet risen');
+ seq.update(0,{now:t0+1200});ok(card.die.group.visible&&!card.fx.deal.visible,'…and before anyone throws, the die stands on the table');
+ ok(card.die.group.userData.result===6&&flat(card.die.group.position,card.landed)<1e-6,'…face up on 6, on its spot — never thrown');
+ seq.update(1.9,{now:t0+1200});ok(flat(card.die.group.position,card.landed)<1e-6,'…and it does not move while your dice fly');
+ ok(seq.headers[0].mesh.visible,'its header is up before the throw lands');
+ const own=seq.entries.filter(e=>e.pool===0&&!e.dropped&&!e.card);
+ ok(own.every(e=>e.delay>=2),'your own dice still leave at their own beat');
+ const read=seq.update(seq.schedule.readAt,{now:t0+9000});
+ ok(read.sums[0]===21,'the total counts the card: 5 + 6 + 4 + 6');
+ ok(seq.totals[0].mesh.userData.text==='21 TOTAL STRENGTH  (card +6)','…and says what the card gave');
+ ok(own.every(e=>card.dock.x<e.dock.x-1.2-CARD_DIE_LOOK.gap+1e-6),'the card die takes the first seat, a gap before your dice');
+ ok(Math.abs(card.die.group.scale.x-.85*1.15)<1e-9,'the card die is 115% of yours');
+ ok(card.fx.ring&&Math.abs(card.fx.ring.material.opacity)<=.31+1e-9&&card.fx.ring.visible,'its ring is on, at .31');
+ ok(card.fx.label.mesh.userData.text==='LOADED 6','its name is on the floor');
+ seq.update(1,{reduced:true,now:t0});ok(card.die.group.visible&&!card.fx.deal.visible,'reduced motion: the die is simply there');
+ seq.dispose();
+ // A thrown bonus die: flies first, with a trail; Bigger Cab on d6s is a +d8.
+ const cab=createArenaDiceSequence({drive:[6,5,3],sustain:[4],drivePool:[6,6,8],driveCard:cardDieOf({cardPlayed:'biggerCab',atkFixed:applyCard([6,6,6],2,'biggerCab').fixed})});
+ const c2=cab.cardEntry,mine=cab.entries.filter(e=>e.pool===0&&!e.card);
+ ok(c2&&!c2.placed&&c2.die.group.userData.sides===8&&c2.fx.trail&&!c2.fx.deal,'a thrown card die: a d8, with a trail, no deal');
+ ok(mine.every(e=>c2.delay<e.delay),'…it leaves the hand first');
+ ok(c2.fx.label.mesh.userData.text==='+d8','…named +d8');
+ cab.update(cab.schedule.readAt);ok(cab.totals[0].mesh.userData.text==='14 TOTAL STRENGTH  (card +3)','…and its number is named in the total');
+ cab.dispose();
+ // Encore: the lowest kept die wears the gold rim and gets the ring as it docks.
+ const enc=createArenaDiceSequence({drive:[6,2,5],sustain:[1],drivePool:[6,6,6],driveCard:{card:'encore',kind:'keep',color:CARD_DIE_GOLD,name:'Encore',icon:'➕'}});
+ const saved=enc.entries.find(e=>e.encore);ok(saved&&saved.value===2&&!enc.cardEntry,'Encore marks the die it saved (the lowest kept)');
+ enc.update(0);ok(!saved.fx.ring.visible,'…its ring waits for the gather');enc.update(enc.schedule.readAt);ok(saved.fx.ring.visible,'…and shows once it docks');
+ ok(enc.headers[0].mesh.userData.text.startsWith('DRIVE · 3d6'),'Encore adds no die to the header');enc.dispose();
+ // No card: the sequence is the one it always was.
+ const plain=createArenaDiceSequence({drive:[4,4],sustain:[2]});ok(!plain.cardEntry&&!plain.entries.some(e=>e.fx),'no card, no card die');plain.dispose();
+ // ⚠️ THE PLAYED CARD REBUILDS THE ARENA'S DICE: before 2026-10-09 the key did not change and the table kept the pre-card throw.
+ const spirits=[{id:'a',num:7,corner:'blue',color:'#62dbff'},{id:'b',num:16,corner:'red',color:'#b0a0ff'}];
+ const sw={attackerId:'a',defenderId:'b',swingClash:true,swingKey:'k1',diceVals:[6],defenderDiceVals:[3],dicePool:[6],defenderDicePool:[6]};
+ const before=arenaFrame({spirits,noteStates:{},battle:sw}).battle,after=arenaFrame({spirits,noteStates:{},battle:{...sw,cardPlayed:'loaded6',atkFixed:loaded.atkFixed,diceVals:[6,6],dicePool:[6,6]}}).battle;
+ ok(before.key!==after.key&&after.cardPlayed==='loaded6'&&after.atkFixed[0].pin,'Thrash: a played card changes the key and rides into the frame');
+ const so={attackerId:'a',defenderId:'b',sonicAttack:true,sonicId:'s1',diceHits:[true],diceVals:[6],dicePool:[6],sonicVersion:2};
+ ok(arenaFrame({spirits,noteStates:{},battle:so}).battle.key!==arenaFrame({spirits,noteStates:{},battle:{...so,cardPlayed:'fullStack',atkFixed:[{idx:1,pin:true,bonus:true}]}}).battle.key,'Sonic: the same');
+ const gold=createCombatDie({sides:8,value:3,finish:'card'});ok(gold.group.children.find(o=>o.isGroup).children[0].material.color.getHexString()===CARD_DIE_GOLD.slice(1),'createCombatDie finish:card → gold edges');gold.dispose();
+ console.log(`🃏 card die: ${n} checks`);
 }
 // Catch the interrupted edit that previously prevented preview initialization.
 const js=readFileSync(new URL('../../.scratch/sonic-rework/barrage.mjs',import.meta.url),'utf8'),html=readFileSync(new URL('../../.scratch/sonic-rework/barrage.html',import.meta.url),'utf8');

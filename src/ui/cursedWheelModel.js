@@ -16,15 +16,21 @@ const { C, R, R_IN } = WHEEL_GEO;
 export const slotXY = (k, r) => { const a = (-90 + k * 30) * Math.PI / 180; return [C + r * Math.cos(a), C + r * Math.sin(a)]; };
 
 /** @returns slots[12] with k, chip xy, whether Iwato (on the RONIN'S root), whether it was the rival's own. */
-export function cursedWheelModel({ spiritId, root, roninRoot, hand = [] }) {
+/** @param roninRoot the CURSE'S root (v3: the trapped Lost Chord; the name is v1's)
+ *  @param haunted   v3: the haunted notes `[{ pc, lifted }]` (`iwatoCurse.js` hauntedNotes) */
+export function cursedWheelModel({ spiritId, root, roninRoot, hand = [], haunted = [] }) {
   const m = wheelModel({ spiritId, root, hand });
   const iw = new Set(iwatoPcs(roninRoot));
   const slots = m.slots.map(s => ({ pc:s.pc, k:s.k, xy:slotXY(s.k, R), inner:slotXY(s.k, R_IN), iwato:iw.has(s.pc),
-    ownLost:s.inPal && !iw.has(s.pc), name:String(s.name).replace(/b$/, '♭').replace(/#$/, '♯'), degree:iwatoDegree(s.pc, roninRoot), held:s.held.length }));
+    ownLost:s.inPal && !iw.has(s.pc), name:String(s.name).replace(/b$/, '♭').replace(/#$/, '♯'), degree:iwatoDegree(s.pc, roninRoot), held:s.held.length,
+    haunted:haunted.some(h => h.pc === s.pc && !h.lifted), lifted:haunted.some(h => h.pc === s.pc && h.lifted) }));
   const iwatoPoly = slots.filter(s => s.iwato).sort((a, b) => a.k - b.k).map(s => s.inner.map(v => v.toFixed(1)).join(',')).join(' ');
   const ownPoly = slots.filter(s => m.palPcs.has(s.pc)).sort((a, b) => a.k - b.k).map(s => s.inner);
   const heldIwato = new Set(hand.map(n => pitchIndex(n)).filter(pc => iw.has(pc))).size;
-  return { slots, iwatoPoly, ownPoly, names:iwatoNames(roninRoot), heldIwato, accent:m.look.accent };
+  // 👻 v3: how many of the still-haunted notes the hand could play right now
+  const heldHaunted = slots.filter(s => s.haunted && s.held > 0).length;
+  return { slots, iwatoPoly, ownPoly, names:iwatoNames(roninRoot), heldIwato, heldHaunted,
+    hauntedLeft:slots.filter(s => s.haunted).length, liftedCount:slots.filter(s => s.lifted).length, accent:m.look.accent };
 }
 
 /** Jagged crack lines across the rival's own palette shape — seeded, so a replay cracks the same way. */

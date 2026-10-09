@@ -10,11 +10,11 @@ import { fileURLToPath } from 'node:url';
 import {
   ABILITY_DEMO, DEMO_ABILITIES, hasDemo, shukuchiScript, bushidoScenario, SCENARIO_ORDER, KEEP, demoWarp,
   bushidoCaptions, captionAt, bushidoEndCard, shukuchiEndCard, popoutPlace, driveLandings, ring,
-  SHAMISEN_DEMO, shamisenScript, shamisenCaptions, shamisenEndCard,
+  SHAMISEN_DEMO, SHAMISEN_ENDINGS, shamisenScript, shamisenCaptions, shamisenEndCard,
 } from './abilityDemo.js';
-import { isIwato, CURSE_TURNS, EXORCISE_NOTES, STRINGS } from '../board/cursedShamisen.js';
-import { CAST_RANGE } from '../engine/systems/iwatoCurse.js';
+import { isIwato, CURSE_TURNS, HAUNTED_NOTES, CREEPY_IVS, stringIv } from '../board/cursedShamisen.js';
 import { CURSED_SHAMISEN_CD } from '../data/gameConstants.js';
+import { NOROI_CARD, NOROI_SPRING_CAST_DELAY_MS } from '../board/noroiCard.js';
 import { axialDist } from '../board/hexGeometry.js';
 import { planStrike, BUSHIDO_STRIKE } from '../board/bushidoStrike.js';
 import { BARRAGE_LAUNCH, SONIC_DICE, SONIC_GATE } from '../board/sonicBarrageTiming.js';
@@ -122,21 +122,30 @@ for (const name of SCENARIO_ORDER) {
   ok(captionAt(caps, SONIC_GATE - 1).includes(`${b.d8s} of your d6s`), `${name}: the d8 caption is the real count`);
 }
 
-section('4b · the Cursed Shamisen: the script is the rule');
+section('4b · the Cursed Shamisen: the script is the rule (v3, the trap)');
 {
   const D = SHAMISEN_DEMO, sh = shamisenScript();
-  ok(D.strings.length === STRINGS && D.strings.every(n => isIwato(n, D.root)), `${STRINGS} strings, every one Iwato on his root`);
-  ok(sh.reach > 0 && sh.reach <= CAST_RANGE, `the rival stands within the cast's reach (${sh.reach} ≤ ${CAST_RANGE})`);
-  ok(D.tuneAt.every((t, i) => t > D.upAt && (!i || t > D.tuneAt[i - 1])) && D.castAt > D.tuneAt.at(-1), 'taken up, then tuned one by one, then cast');
-  ok(sh.landed > D.castAt && sh.burnAt > sh.landed && sh.endAt > sh.burnAt && sh.total > sh.endAt, 'the cast lands, a turn burns, then it ends');
+  ok(D.haunted.length === HAUNTED_NOTES && D.haunted.every(n => isIwato(n, D.root) && CREEPY_IVS.includes(stringIv(n, D.root))), `${HAUNTED_NOTES} haunted notes, every one a creepy Iwato note on the cursed note`);
+  ok(D.stepAt > D.layAt + NOROI_CARD.layMs / 1000 && D.wasteAt > D.layAt + NOROI_CARD.layMs / 1000, 'laid (the card has stuck), then sprung — or wasted');
+  ok(Math.abs(sh.castAt - D.stepAt - NOROI_SPRING_CAST_DELAY_MS / 1000) < 1e-9 && sh.shatterAt > D.stepAt && sh.shatterAt < sh.castAt,
+    '⏱ the arena\'s clock: the step, the shatter (the card comes out), then the cast at the shared delay');
+  ok(sh.landed > sh.castAt && sh.burnAt > sh.landed && sh.endAt > sh.burnAt && sh.total > sh.endAt, 'the spring lands, a ghost lifts, then it ends');
+  ok(sh.burntAt > sh.ashAt && sh.wasteTotal > sh.burntAt, 'wasted: the card burns, then the loop ends');
+  ok(SHAMISEN_ENDINGS.join() === 'exorcised,expired,wasted', 'the loop takes turns through all three endings (rule 18: the waste is shown too)');
+  {
+    const caps = shamisenCaptions(sh, 'wasted');
+    ok(/only you can see it/.test(captionAt(caps, 0.1)) && /noroi card/.test(captionAt(caps, 0.1)), 'wasted: the noroi card, hidden');
+    ok(/burns to ash, for everyone/.test(captionAt(caps, 999)), 'wasted: the ash is public');
+  }
   for (const end of ['exorcised', 'expired']) {
     const caps = shamisenCaptions(sh, end);
     ok(caps.every((c, i) => !i || c.at >= caps[i - 1].at), `${end}: captions in order`);
-    ok(captionAt(caps, sh.landed + 0.1).includes(`${CURSE_TURNS} turns`), `${end}: the curse's length is the rule's`);
-    ok(end === 'exorcised' ? captionAt(caps, 999).includes(`${EXORCISE_NOTES} different Iwato`) : /runs out/.test(captionAt(caps, 999)), `${end}: the ending says how`);
+    ok(/only you can see it/.test(captionAt(caps, 0.1)) && /Action Token/.test(captionAt(caps, 0.1)), `${end}: the trap — the token, hidden`);
+    ok(captionAt(caps, sh.landed + 0.1).includes(`${HAUNTED_NOTES} haunted notes`), `${end}: the haunted count is the rule's`);
+    ok(end === 'exorcised' ? /curse lifts/.test(captionAt(caps, 999)) : captionAt(caps, 999).includes(`${CURSE_TURNS} of their turns`), `${end}: the ending says how`);
   }
   const card = shamisenEndCard().lines.join(' ');
-  ok(card.includes(`${CAST_RANGE} hexes`) && !/\bDb\b/.test(card) && card.includes(`${CURSED_SHAMISEN_CD}-round`), 'the summary reads the real costs (no Db)');
+  ok(card.includes('Action Token') && !/\bDb\b/.test(card) && card.includes(`${CURSED_SHAMISEN_CD}-round`), 'the summary reads the real costs (no Db)');
 }
 
 section('5 · where the window goes');
@@ -159,6 +168,7 @@ ok(/createBushidoStrikeVisuals\(/.test(mod) && /createSonicClashVisuals\([^]*bea
 ok(/createStandeeSteps\(/.test(mod) && /STANDEE_MOVE/.test(mod), 'Shukuchi is the shipped standee step');
 ok(/createStandee\(/.test(mod), 'the real standees');
 ok(/createCursedShamisenVisuals\(/.test(mod) && /scheduleCast\(curseSfx/.test(mod), 'the Shamisen is the arena\'s own curse, with its own cast score');
+ok(/createNoroiCard\(/.test(mod) && /createLostChords\(/.test(mod), '🪤 the noroi card and its crystal are the game\'s own (`noroiCard.js`, `lostChords.js`)');
 ok(/curseSfx\?\.stopAll\?\.\(\)/.test(mod), 'closing the window cuts the scheduled cast');
 ok(!/arenaVisuals/.test(mod.replace(/\/\/.*$/gm, '')), 'does not drag the whole arena in');
 ok(/canUseWebGL\(\)/.test(hooks) && /return ok \? get : null/.test(hooks), 'no WebGL2 → no player (text guide stays)');

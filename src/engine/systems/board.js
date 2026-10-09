@@ -7,7 +7,7 @@
 // state.board.last* for the client to read for logs/FX.
 
 import { SPOTLIGHT_POOL, makeBoardToken } from "../../board/boardHelpers.js";
-import { marqueeCount, pickMarquee, occupiedHexes, rollMarqueeKind } from "./marqueeSpaces.js";
+import { marqueeCount, pickMarquee, occupiedHexes, rollMarqueeKind, pendingMarquees, pendingMarqueeHexes, plannedMarqueeHexes } from "./marqueeSpaces.js";
 import { ALL_HEXES } from "../../board/hexMap.js";
 import { TOKEN_MAX, TOKEN_BASE_POOL, TOKEN_PER_ROUND_BASE, TOKEN_DRIFT_TURNS, CHARGE_ZONE_COOLDOWN, LIMELIGHT_HEX } from "../../data/gameConstants.js";
 import { liveUnlockPcs } from "../../music/stackSlots.js";
@@ -185,7 +185,15 @@ export function applyTokensDrifted(state, { occupied }, rng) {
   const occ = new Set(occupied);
   const moved = [];
   const pinned = liveUnlockPcs(state.noteStates);
+  // 🪤 A LOST CHORD UNDER THE CURSED SHAMISEN'S TRAP HOLDS ITS HEX (Alex,
+  // 2026-10-09: "does not simply vanish and change locations like other notes
+  // might, even if it was its turn to do so"). Hex AND age, like a pinned unlock
+  // — which is also its cover: a note that stays put is not proof of a curse.
+  // Read inline (`iwatoCurse.js` `armedTrapHexes` is the same one-liner) so this
+  // reducer takes no new import.
+  const trapped = new Set(Object.values(state.noteStates ?? {}).map(ns => ns?.shamisenTrap?.hexNum).filter(n => n != null));
   const out = tokens.map(t => {
+    if (trapped.has(t.num)) return t;
     const age = (t.turnsOnBoard ?? 0) + 1;
     // 📌 Pinned tokens hold BOTH hex and age — resetting the age instead would
     // let one drift the instant its owner's root moved on, which is precisely
@@ -209,34 +217,44 @@ export function applyTokensDrifted(state, { occupied }, rng) {
 // -- Event hexes --------------------------------------------------------------
 
 /**
- * Spirit steps on a marquee -- the hex burns out and ANOTHER LIGHTS AT ONCE
+ * Spirit steps on a marquee -- the hex burns out and ANOTHER IS CHOSEN AT ONCE
  * (Alex, 2026-09-29 — `systems/marqueeSpaces.js`, `MARQUEE_QUIZ_DESIGN.md` §11):
  * in a quadrant that has none — the one just emptied, or an unseated quadrant —
  * at least `MARQUEE_RELIGHT_MIN_DIST` from the hex just taken. Never two in a
  * quadrant. At four seats that is always the same quadrant (persistent).
  *
- * Two `rng` draws when it relights (quadrant, then hex). A board with nowhere
- * free leaves it short; the client's round-end top-up (`applyEventHexSpawned`)
- * tries again.
+ * ⏳ …BUT IT LIGHTS WHEN THE TURN ENDS, not now (Alex, 2026-10-09: *"New
+ * marquee spaces shouldn't appear again on the same turn if one was taken"*).
+ * The pick waits in `board.marqueePending` and `TURN_ENDED` lights it
+ * (`lightPendingMarquees`). ⚠️ The draws stay HERE, in the same order — two to
+ * place it, one for its kind — so moving the lighting moved no random number.
+ *
+ * A board with nowhere free leaves it short; the client's round-end top-up
+ * (`applyEventHexSpawned`) tries again.
  */
 export function applyEventHexTriggered(state, { hexNum, usedTrivia = null }, rng) {
   if (!state.board.eventHexes.includes(hexNum)) return state;
   const left = state.board.eventHexes.filter(n => n !== hexNum);
+  const waiting = pendingMarquees(state.board);
+  // Lit + already waiting count toward "one per seat" and "one per quadrant".
+  const planned = [...left, ...waiting.map(p => p.hexNum)];
   const want = marqueeCount(state);
-  const relit = rng && left.length < want
-    ? pickMarquee(rng, left, { occupied: occupiedHexes(state), awayFrom: hexNum })
+  const relit = rng && planned.length < want
+    ? pickMarquee(rng, planned, { occupied: occupiedHexes(state), awayFrom: hexNum })
     : null;
   // 🎤 The relit marquee rolls its kind (one more draw, after the two placing it).
   const kinds = { ...(state.board.marqueeKinds ?? {}) }; delete kinds[hexNum];
-  if (relit != null) kinds[relit] = rollMarqueeKind(rng);
+  const kind = relit != null ? rollMarqueeKind(rng) : null;
   return {
     ...state,
     board: {
       ...state.board,
       marqueeKinds: kinds,
-      eventHexes: relit != null ? [...left, relit] : left,
+      eventHexes: left,
+      marqueePending: relit != null ? [...waiting, { hexNum: relit, kind, from: hexNum }] : waiting,
       eventRespawnIn: 0,
-      lastEventRespawn: relit != null ? { hexNum: relit, from: hexNum } : null,
+      // Nothing lit YET — the turn end reports it (`deferred: true`).
+      lastEventRespawn: null,
       // 🎪 null means "the caller drew nothing" (a trigger with no question),
       // which must LEAVE the history alone rather than clearing it.
       usedTrivia: usedTrivia ?? state.board.usedTrivia ?? [],
@@ -262,10 +280,13 @@ export function applyEventRespawnTicked(state) {
  */
 export function applyEventHexSpawned(state, { occupied = [] } = {}, rng) {
   const evHexes = state.board.eventHexes;
-  if (evHexes.length >= marqueeCount(state)) {
+  // ⏳ A marquee waiting for its turn end (`marqueePending`) is already one of
+  // the seat's — counting only the lit ones would light a second beside it.
+  const planned = plannedMarqueeHexes(state.board);
+  if (planned.length >= marqueeCount(state)) {
     return { ...state, board: { ...state.board, lastEventRespawn: null } };
   }
-  const pick = pickMarquee(rng, evHexes, { occupied: [...occupiedHexes(state), ...occupied] });
+  const pick = pickMarquee(rng, planned, { occupied: [...occupiedHexes(state), ...occupied, ...pendingMarqueeHexes(state.board)] });
   if (pick == null) return { ...state, board: { ...state.board, lastEventRespawn: null } };
   return {
     ...state,

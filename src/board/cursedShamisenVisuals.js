@@ -13,7 +13,12 @@
 //   ③ THE INFECTION — their neon edge (and base, and halo) turns a sick violet, miasma rises off them,
 //     the two wisps that are left circle them, and the fans fall out of time
 //     (`fans.sync`, for the caller's crowd).
-//   ④ THE COUNTDOWN — the two wisps ARE the 2 turns: `burnOne()` burns one out.
+//   ④ THE GHOSTS — ⭐ v3 (2026-10-09): ALL THREE wisps circle the rival — they
+//     are the three HAUNTED NOTES — and `burnOne()` lifts one (it rises and
+//     burns out). The last one still slaps the ofuda on as it arrives.
+//     ⏳ PLACEHOLDER for v3: the spring reuses the v1 cast (a ghost shamisen
+//     over the cursed hex plays the haunted notes); the trap's own laying /
+//     armed animation is still to be designed (`IWATO_CURSE_V3_SPEC.md`).
 //   ⑤ EXORCISM — the ofuda burns from the bottom up, the wisps scatter, the edge
 //     flashes back, the crowd cheers (`fans.cheer`). EXPIRY — it peels and falls.
 //
@@ -27,7 +32,7 @@
 // (`createShamisenStage` there); `.scratch/cursed-shamisen-preview` and the
 // loadout's pop-out (`ui/abilityDemo.js`) drive it too.
 import * as THREE from 'three';
-import { CURSED_SHAMISEN, STRINGS, CURSE_TURNS, WISP_COLORS, STRING_COLORS, planCast, hushAt, wispArc, orbitPoint, easeInOut } from './cursedShamisen.js';
+import { CURSED_SHAMISEN, STRINGS, HAUNTED_NOTES, WISP_COLORS, STRING_COLORS, planCast, hushAt, wispArc, orbitPoint, easeInOut } from './cursedShamisen.js';
 
 const additive = (color, opacity = 0) => new THREE.MeshBasicMaterial({ color, transparent:true, opacity, depthWrite:false,
   blending:THREE.AdditiveBlending, toneMapped:false, side:THREE.DoubleSide });
@@ -64,7 +69,7 @@ const dotTex = () => canvasTex(64, 64, (g) => {
   gr.addColorStop(0, '#fff'); gr.addColorStop(0.35, '#fffa'); gr.addColorStop(1, '#fff0'); g.fillStyle = gr; g.fillRect(0, 0, 64, 64);
 });
 /** The ofuda: a paper talisman — cream, red borders, the glyph in black brush, a red seal. */
-function ofudaTex(glyph) {
+export function ofudaTex(glyph) {
   return canvasTex(128, 320, (g, w, h) => {
     g.fillStyle = '#efe4c8'; g.fillRect(0, 0, w, h);
     for (let i = 0; i < 260; i++) { g.fillStyle = `rgba(120,90,50,${Math.random() * 0.06})`; g.fillRect(Math.random() * w, Math.random() * h, 2, 2); }
@@ -264,11 +269,11 @@ export function createCursedShamisenVisuals({ ronin, rival, color = '#4488ff', l
       for (const w of wisps) { w.state = 'idle'; w.head.visible = false; }
       return true;
     },
-    /** ④ a cursed turn ends: one wisp burns out. */
+    /** ④ a haunted note is lifted: one ghost rises and burns out. (v3: the
+     *  caller ends the curse — `exorcise` on the last lift, `expire` on time.) */
     burnOne(now = performance.now()) {
       const w = [...wisps].reverse().find(x => x.state === 'orbit'); if (!w) return false;
       w.state = 'burning'; w.t0 = now; S.turnsLeft = Math.max(0, S.turnsLeft - 1);
-      if (S.turnsLeft === 0) api.expire(now);
       return true;
     },
     /** ⑤ exorcised: the charm burns, the wisps scatter, the crowd cheers. */
@@ -358,7 +363,7 @@ export function createCursedShamisenVisuals({ ronin, rival, color = '#4488ff', l
           puff(chest(), 0xffffff, 2.4, 380, now);
           sparks(chest(), reduced ? 0 : 26, new THREE.Color(wc().rim), 0.3, 1.6, 800, now);
           S.shake = Math.max(S.shake, reduced ? 0 : L.slapShake);
-          S.turnsLeft = CURSE_TURNS; setInfect(1, L.infectMs, now);
+          S.turnsLeft = HAUNTED_NOTES; setInfect(1, L.infectMs, now);
         }
         if (castMs >= P.total) S.phase = 'cursed';
       }
@@ -371,15 +376,14 @@ export function createCursedShamisenVisuals({ ronin, rival, color = '#4488ff', l
         const posAt = ms => {
           if (w.state === 'flight') {
             const u = clamp01((ms - w.t0) / L.wispFlightMs);
-            const dest = P.wisps[w.i].slap ? chest() : orbitPoint(rivalPos(), (S.castAt + P.wisps[w.i].arrive) / 1000, w.k, CURSE_TURNS, L);
+            const dest = orbitPoint(rivalPos(), (S.castAt + P.wisps[w.i].arrive) / 1000, w.k, HAUNTED_NOTES, L);   // v3: the slapping one circles too
             return new THREE.Vector3().copy(wispArc(w.from, dest, u, L.wispArc));
           }
           if (w.state === 'scatter') { const u = (ms - w.t0) / 1000, d = w.from.clone().sub(chest()).setY(0.3).normalize(); return w.from.clone().addScaledVector(d, u * L.scatter); }
-          return new THREE.Vector3().copy(orbitPoint(rivalPos(), ms / 1000, w.k, CURSE_TURNS, L));
+          return new THREE.Vector3().copy(orbitPoint(rivalPos(), ms / 1000, w.k, HAUNTED_NOTES, L));
         };
         if (w.state === 'flight' && now - w.t0 >= L.wispFlightMs) {
-          if (P.wisps[w.i].slap) { w.state = 'gone'; all.forEach(s => { s.visible = false; }); continue; }
-          w.state = 'orbit';
+          w.state = 'orbit';   // v3: every ghost stays — one per haunted note
         }
         let alpha = 1, scale = 1;
         if (w.state === 'burning') {
@@ -389,7 +393,10 @@ export function createCursedShamisenVisuals({ ronin, rival, color = '#4488ff', l
           if (!reduced && Math.random() < 0.3) sparks(w.head.position, 2, new THREE.Color(wc().rim), 0.1, 1.4, 500, now);
         }
         if (w.state === 'scatter') { const u = (now - w.t0) / 900; alpha = 1 - u; if (u >= 1) { w.state = 'gone'; all.forEach(s => { s.visible = false; }); continue; } }
-        const at = w.state === 'burning' ? orbitPoint(rivalPos(), now / 1000, w.k, CURSE_TURNS, L) : posAt(now);
+        // 👻 a lifted ghost RISES as it burns out (v3: "rises and dissipates")
+        const at = w.state === 'burning'
+          ? new THREE.Vector3().copy(orbitPoint(rivalPos(), now / 1000, w.k, HAUNTED_NOTES, L)).add(new THREE.Vector3(0, 1.4 * clamp01((now - w.t0) / L.burnMs), 0))
+          : posAt(now);
         w.head.visible = true; w.head.position.copy(at); w.head.scale.set(size * scale, size * 1.7 * scale, 1);
         w.head.material.opacity = alpha * (0.85 + 0.15 * Math.sin(now * 0.04 + w.i * 3));
         w.trail.forEach((s, k) => {

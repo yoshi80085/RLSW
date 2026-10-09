@@ -316,19 +316,26 @@ export function makeInitialNoteState(spiritId, rand = Math.random) {
     shadowIllusion:   null,
     lastMoveBudget:   0,       // 👤 steps granted at the last melody commit
 
-    // 🎸 THE IWATO CURSE (`engine/systems/iwatoCurse.js`, 2026-10-02).
-    // `shamisen` — the Ronin's instrument once taken up: `{ strings, ready, root }`.
-    //   `ready` flips at his next turn start (`turnFlow`), and the cast clears it.
-    // `iwatoCurse` — on a CURSED Spirit: `{ by, roninRoot, strings, turnsLeft }`.
-    //   Their palette is Iwato on `roninRoot` while it stands (`livePalette`).
-    // 🪦 `shamisenCurse: { turnsLeft, paidThisRound }` (the glow-and-debt
-    // Shamisen of 2026-08-26) is gone with its mechanic. See §2.3.00.
-    shamisen:         null,
+    // 🎸 THE IWATO CURSE — v3 "the trap" (`engine/systems/iwatoCurse.js`, 2026-10-09).
+    // `shamisenTrap` — on the RONIN: `{ hexNum, note, key }`, the Lost Chord he
+    //   cursed. Hidden (only his screen draws it); cleared at his next turn start
+    //   (wasted), by his own pickup (disarmed) or a Rival's (sprung).
+    // `iwatoCurse` — on a CURSED Spirit: `{ key, by, root, fromHex, targets,
+    //   lifted, turnsLeft }`. Their palette is Iwato on `root` (the
+    //   trapped note) while it stands (`livePalette`); `targets` are the three
+    //   haunted notes as intervals above `root`, `lifted` the ones played back.
+    // 🪦 v1's `shamisen: { strings, ready, root }` and the glow-and-debt
+    // `shamisenCurse` are gone with their mechanics. See §2.3.00.
+    shamisenTrap:     null,
     iwatoCurse:       null,
-    // `curseEnded` — `{ key, how:'exorcised'|'expired' }`, the last curse to END
+    // `curseEnded` — `{ key, how:'exorcised'|'expired', lifted }` (exorcised = all three lifted), the last curse to END
     //   on this Spirit, kept so every client draws HOW it ended (the burn or the
     //   fade) from state rather than from a local event. Overwritten by the next.
     curseEnded:       null,
+    // `shamisenAsh` — on the RONIN: `{ key, trapKey, hexNum, note, how }`, his last
+    //   trap that caught no one ('wasted' · 'disarmed' · 'fizzled' · 'orphaned').
+    //   Public (rule 18): every client burns the noroi card from it. Overwritten by the next.
+    shamisenAsh:      null,
     // 🌀 Hops left in the CURRENT turn once Shukuchi has been fired. 0 = not
     // mid-move, which is also what a fresh sheet and every new turn carry —
     // `turnFlow` resets it. ⚠️ One counter, no companion "active" flag: two

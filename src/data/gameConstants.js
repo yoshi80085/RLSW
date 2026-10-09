@@ -265,9 +265,10 @@ export const SHADOW_ILLUSION_CD    = 2;   // rounds — was 3, respecced 2026-09
 // which fires at the start of the OWNER's turn, so it has ALWAYS been per round
 // by `cooldowns.js`'s convention. The doc was describing the code it already had.
 export const SHADOW_ILLUSION_TURNS = 2;
-// 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02, `RONIN_ABILITY_DESIGN.md`
-// §2.3.00): three strings tuned in the chord step, cast on a rival, whose palette
-// becomes Iwato for their next two turns. The rules are
+// 🎸 CURSED SHAMISEN — THE IWATO CURSE, v3 "THE TRAP" (2026-10-09,
+// `IWATO_CURSE_V3_SPEC.md`): the Action Token curses a hidden Lost Chord; the
+// Rival who takes it gets an Iwato wheel with three haunted notes to lift, for
+// up to three of their turns. The cooldown starts when the trap is LAID. The rules are
 // `engine/systems/iwatoCurse.js`; the cooldown is the universal one in
 // `cooldowns.js` (2) — this name is what the docs quote.
 export const CURSED_SHAMISEN_CD    = 2;   // rounds — gap between activations
@@ -311,8 +312,8 @@ export const SHADOW_ILLUSION_SUSTAIN_DRAIN = 1;
 
 // 🪦 THE GLOW-AND-DEBT SHAMISEN (2026-08-26 → 2026-10-02) is gone: its
 // `CURSED_SHAMISEN_DURATION` (3) and `CURSED_SHAMISEN_PAYOFF_COST` (1 Db/round)
-// went with it. The Iwato curse's own numbers (3 strings, 2 cursed turns, 3
-// Iwato notes to exorcise) live with its look in `board/cursedShamisen.js`.
+// went with it. The Iwato curse's own numbers (3 haunted notes, 3 cursed turns,
+// the creepy weights) live with its look in `board/cursedShamisen.js`.
 
 // 🫁 THE RIG BREATHES — SEQUENCING.md §5.H⁶, shipped 2026-08-20.
 //

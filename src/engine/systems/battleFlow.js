@@ -1083,6 +1083,7 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
         ...(state.boardCards ?? []).map(c => c.hexNum),
         ...state.board.chargeZones.map(z => z.num),
         ...state.board.eventHexes,
+        ...(state.board.marqueePending ?? []).map(p => p.hexNum),   // ⏳ chosen, lights at the turn end
         ...state.board.boardTokens.map(t => t.num),
         state.board.spotlightHex, LIMELIGHT_HEX,
       ];

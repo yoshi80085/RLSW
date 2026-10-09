@@ -65,7 +65,7 @@ import { EventModal } from "./ui/EventModal.jsx";
 import { TRIVIA_BOT_ODDS, drawMarqueeQuestion } from "./data/trivia.js";
 import { MarqueeHand } from "./ui/MarqueeHand.jsx";
 import { MarqueeCardPick } from "./ui/MarqueeCardPick.jsx";
-import { marqueeCount, quadrantOf, marqueeKindOf } from "./engine/systems/marqueeSpaces.js";
+import { marqueeCount, quadrantOf, marqueeKindOf, plannedMarqueeHexes, pendingMarqueeHexes } from "./engine/systems/marqueeSpaces.js";
 import { communityParticipants, botAnswers, communityOutcome, marqueeDrawCount, roundLimitMs } from "./engine/systems/marqueeRound.js";
 import { marqueeMarkerList } from "./board/marqueeMarkers.js";
 import {
@@ -139,11 +139,12 @@ import { turnStarted, turnEnded, turnSkipped, moveBudgetSet, moveStep as engineM
 import { slimeBites, slideTarget, SLIME_VIBE_DAMAGE } from "./engine/systems/slime.js";
 import { SLIME_AP_COST, SLIME_MOVE_STEPS, SLIME_LIFETIME_TURNS, SLIME_TRAIL_MAX, ELEVEN_DRIVE } from "./data/gameConstants.js";
 import { ABILITY_CD, cooldownLeft, canFire, firePatch } from "./engine/systems/cooldowns.js";
-// 🎸 THE IWATO CURSE — the Cursed Shamisen's rules (`RONIN_ABILITY_DESIGN.md` §2.3.00).
-import { SHAMISEN_SKILL, CAST_RANGE as SHAMISEN_RANGE, STRINGS as SHAMISEN_STRINGS, CURSE_TURNS, EXORCISE_NOTES,
-         hasShamisen, stringsOf, shamisenRoot, canTakeUp, takeUpPatch, tuningOpen, tuneCheck, tunePatch, stringVoicing,
-         castCheck, castPatches, isCursed, exorciseWindow, livePalette, endCursedTurn, curseScene } from "./engine/systems/iwatoCurse.js";
-import { CURSED_SHAMISEN, planCast, isIwato, iwatoNames } from "./board/cursedShamisen.js";
+// 🎸 THE IWATO CURSE — the Cursed Shamisen's rules, v3 "the trap" (`IWATO_CURSE_V3_SPEC.md`).
+import { SHAMISEN_SKILL, CURSE_TURNS, HAUNTED_NOTES, hasShamisen, trapOf, layCheck, layPatch, springOutcome, orphanedTraps,
+         cursesStandingBy, isCursed, livePalette, hauntedNotes, curseRoot, endCursedTurn, curseScene, ashPatch } from "./engine/systems/iwatoCurse.js";
+import { CURSED_SHAMISEN, planCast, iwatoNames } from "./board/cursedShamisen.js";
+// 🪤 The noroi card's clocks — the cast's sound waits as long as the arena's picture does.
+import { NOROI_CARD, NOROI_SPRING_CAST_DELAY_MS, ashPlan } from "./board/noroiCard.js";
 import { CursedWheel } from "./ui/CursedWheel.jsx";
 import { PSYCHO_BUSHIDO_AP_COST, PSYCHO_BUSHIDO_MIN_RANGE, PSYCHO_BUSHIDO_MAX_RANGE,
          PSYCHO_BUSHIDO_STACK_COST, psychoBushidoD8s, SHADOW_ILLUSION_TURNS,
@@ -2994,10 +2995,18 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   }
 
   // 🌑 Curse-aware (`iwatoCurse.js` livePalette): under the Iwato curse this IS
-  // Iwato on the Ronin's root, so every note-colour, the live discord check and
+  // Iwato on the curse's root (the trapped note), so every note-colour, the live discord check and
   // the wheel read the same palette the commit will score. Uncursed it is
   // exactly `playableScale(rootNote, scaleMode)`.
   const currentScale = acting && isCursed(actingNoteState) ? livePalette(acting.id, actingNoteState) : playableScale(rootNote, scaleMode);
+  // 🪤 THE CURSED SHAMISEN'S TRAP IS HIDDEN — drawn ONLY on its Ronin's screen
+  // (Alex, 2026-10-09: "invisible to any other player"). Online: the seat this
+  // client plays. Hot-seat: the Ronin's own (human) turn. Nothing else reads it.
+  const viewerSeesTrap = roninId => netRef.current ? netRef.current.mySpiritId === roninId : (acting?.id === roninId && !acting?.cpu);
+  const myTrap = (() => {
+    for (const sp of spirits) { const t = trapOf(noteStates[sp.id]); if (t && viewerSeesTrap(sp.id)) return { ...t, roninId: sp.id }; }
+    return null;
+  })();
   const intervals = getIntervalNotes(rootNote, scaleMode);
   const { fourth: fourthNote, fifth: fifthNote,
           tritone: tritoneNote, majorThird: majorThirdNote,
@@ -3860,32 +3869,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // `true` — every caller that predates this — still means Drive.
       const dest = stackCommitDest
         || (typeof _forceChordMode === 'string' ? _forceChordMode : 'drive');
-      // 🪕 THE THIRD DESTINATION — the Cursed Shamisen's strings (2026-10-02).
-      // ⭐ Same budget, same stock slot, same flight as a stack commit: Alex —
-      // the sacrifice is "a note that could have been used for his Drive or
-      // Sustain", so a string is paid for in exactly the coin those are.
-      // `iwatoCurse.js` `tuneCheck` says which notes and when.
-      if (dest === 'strings') {
-        const note = noteStock[idx];
-        const check = tuneCheck(actingNoteState, note);
-        if (!check.ok) { addLog(`🎸 ${check.reason[0].toUpperCase()}${check.reason.slice(1)}.`); return; }
-        const next = tunePatch(actingNoteState, note);
-        const i = stringsOf(actingNoteState).length;
-        const voicing = stringVoicing({ ...actingNoteState, ...next });
-        setNoteField(acting.id, {
-          ...next,
-          usedStockIdx: usedAdd(usedStockIdx, idx),
-          stackCommitsThisTurn: (actingNoteState?.stackCommitsThisTurn ?? 0) + 1,
-        });
-        if (typeof _flyEvent === 'object' && _flyEvent) fireBurst('out', { seat: `hand:${idx}`, letter: note });
-        // The string plucks in its own octave — a repeat rings an octave higher.
-        shamisenSfx().pluck(midiHz(shamisenMidi(shamisenRoot(actingNoteState)) + 12 + voicing.ivs[i] + 12 * voicing.octaves[i]),
-          { delay: CURSED_SHAMISEN.tuneMs * 0.75 / 1000, detune: CURSED_SHAMISEN.detune });
-        const left = SHAMISEN_STRINGS - i - 1;
-        addLog(`🪕 ${note} → string ${i + 1} (${voicing.labels[i]}${voicing.octaves[i] ? ', an octave up' : ''}). ${left > 0 ? `${left} to tune.` : 'All three strings sing — the curse is ready to cast.'}`);
-        if (left === 0 && stackCommitDest === 'strings') setStackCommitDest(null);
-        return;
-      }
+      // 🪦 v1's third destination (the Cursed Shamisen's strings) is gone — the v3
+      // Shamisen is a trap on the board (2026-10-09, `IWATO_CURSE_V3_SPEC.md`).
       const stack = dest === 'sustain' ? (actingNoteState?.sustainStack ?? []) : (actingNoteState?.driveStack ?? []);
       const destCap = dest === 'sustain' ? actingStackCapSustain : actingStackCapDrive;
       if (stack.length >= destCap) {
@@ -4232,7 +4217,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       const open = {
         driveOpen:   budgetLeft > 0 && (actingNoteState?.driveStack   ?? []).length < actingStackCapDrive,
         sustainOpen: budgetLeft > 0 && (actingNoteState?.sustainStack ?? []).length < actingStackCapSustain,
-        stringsOpen: budgetLeft > 0 && tuningOpen(actingNoteState),   // 🪕 the Shamisen's strings
       };
       // ⏎ Enter = Continue to Melody (Alex, 2026-09-28). The returned `true`
       // preventDefaults the keydown, so a focused button is not ALSO clicked.
@@ -4320,6 +4304,30 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   useEffect(() => { numpadHandlerRef.current = numpadMove; });
   useEffect(() => {
     const onKey = (e) => { if (numpadHandlerRef.current(e)) e.preventDefault(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, []);
+
+  // 🧭 NUMPAD 5 FACES NORTH (Alex, 2026-10-09: *"Give a North orientation button
+  // … This helps a lot when trying to use the num pad to move"*). 5 is the
+  // middle of the pad and the one key the walk leaves free, so it re-squares the
+  // pad to the board: after it, 8 is screen-up again. The same turn as the
+  // board's 🧭 N button (arenaRenderer `north`) — zoom and tilt are kept.
+  // ⚠️ By `e.code` like the walk: with Num Lock on its `e.key` is '5', which the
+  // Riff-Off reads as a string — so it is also off for the whole of a battle.
+  // 📌 Not turn-gated: turning your own camera is never an act on the match.
+  function numpadNorth(e) {
+    if (e.code !== 'Numpad5' || e.repeat || e.ctrlKey || e.altKey || e.metaKey) return false;
+    const t = e.target;
+    if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName ?? ''))) return false;
+    if (battleState || !arenaCameraRef.current) return false;
+    arenaCameraRef.current.north();
+    return true;
+  }
+  const northKeyHandlerRef = useRef(() => false);
+  useEffect(() => { northKeyHandlerRef.current = numpadNorth; });
+  useEffect(() => {
+    const onKey = (e) => { if (northKeyHandlerRef.current(e)) e.preventDefault(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -4514,15 +4522,20 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     commit.logs.forEach(addLog);
 
-    // 🔥 THE EXORCISM'S MOMENT — the lift itself is already in `patch`.
+    // 🔥 THE LAST LIFT'S MOMENT — the lift itself is already in `patch`.
     if (report.exorcised) {
       const exKey = `${acting.id}:${Date.now()}`;
       // The curse is already gone from the patch; the wheel still needs its key to burn.
       const was = actingNoteState?.iwatoCurse ?? {};
-      setExorciseFx({ spiritId: acting.id, key: exKey, roninRoot: was.roninRoot ?? 'C', by: was.by ?? null });
+      setExorciseFx({ spiritId: acting.id, key: exKey, roninRoot: curseRoot(was), by: was.by ?? null,
+        haunted: hauntedNotes(acting.id, actingNoteState).map(h => ({ pc: h.pc, lifted: true })) });
       setTimeout(() => setExorciseFx(prev => (prev?.key === exKey ? null : prev)), Math.max(CURSED_SHAMISEN.ofudaBurnMs, 2400) + 600);
       shamisenSfx().exorcise(midiHz(64));
-      triggerEffectFlash(acting.id, '🔥', 'EXORCISED!', '#ffd27a');
+      triggerEffectFlash(acting.id, '🔥', 'CURSE LIFTED!', '#ffd27a');
+    } else if (report.liftedNow?.length) {
+      // 👻 one (or more) haunted notes played back: a ghost lifts.
+      shamisenSfx().burnOut();
+      triggerEffectFlash(acting.id, '👻', report.liftedNow.length === 1 ? 'GHOST LIFTED' : `${report.liftedNow.length} GHOSTS LIFTED`, '#cdb6ff');
     }
 
     // ── 3. PRESENTATION — everything the kernel cannot know ──────────────────
@@ -4641,6 +4654,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // defender who banked capped FP during the last turn gets a clean slate).
     fameThisTurnRef.current = {};
 
+    // 🪤 An eliminated Ronin never reaches "his next turn": clear his trap now
+    // (a curse already sprung runs on — Alex, 2026-10-09). 🪦 Its card burns in public (rule 18).
+    for (const id of orphanedTraps(spirits, engineRef.current.noteStates ?? {})) {
+      const t = trapOf(engineRef.current.noteStates?.[id]);
+      setNoteField(id, ashPatch(t, 'orphaned'));
+      shamisenAshTheatre(id, `🪦 ${spirits.find(s => s.id === id)?.name ?? 'The Ronin'} is out — the noroi card he left on the ${t?.note ?? ''} Lost Chord crumbles to ash. It caught no one.`);
+    }
+
     const ns = engineRef.current.noteStates?.[spiritId];
     if (!ns) return;
 
@@ -4657,6 +4678,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // ── Theatre, off the report — no rules re-derived from the patch ─────────
     const nm = spirits.find(s => s.id === spiritId)?.name;
     if(report.recoveryPaid) addLog(`🎸 ${nm} spends ${report.recoveryPaid} notes getting up.`);
+    // 🪦 THE WASTED TRAP IS PUBLIC (Alex, 2026-10-09, rule 18): the noroi card burns for everyone.
+    if (report.trapWasted) shamisenAshTheatre(spiritId, `🪦 A noroi card crumbles to ash on the ${report.trapWasted.note} Lost Chord — ${nm}'s trap caught no one.`);
     if(report.sustainFray?.frayed) {
       showSpentNotes(spiritId,report.sustainFray.lostNotes,'sustain');
       addLog('🛡️ '+nm+' releases '+report.sustainFray.frayed+' fading Sustain note(s); the root holds.');
@@ -4843,7 +4866,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (skillId === 'tentacle')     addLog(`🐙 ${spirit?.name} — TENTACLE! Thrash from any hex of your slime trail. The road you reach through is spent — and it does NOT re-face you.`);
     if (skillId === 'psycho_bushido')  addLog(`🌀 ${spirit?.name} — PSYCHO BUSHIDO! Draw on a rival ${PSYCHO_BUSHIDO_MIN_RANGE}–${PSYCHO_BUSHIDO_MAX_RANGE} hexes directly in front and strike — the farther the draw, the harder the blow (+2 / +3 / +4). ${PSYCHO_BUSHIDO_AP_COST} AP, ${PSYCHO_BUSHIDO_STACK_COST} off your Drive stack, ${PSYCHO_BUSHIDO_CD}-round cooldown.`);
     if (skillId === 'shadow_illusion') addLog(`👤 ${spirit?.name} — SHADOW ILLUSION! Split into a second, identical Ronin (${SHADOW_ILLUSION_CD}-round cooldown). It moves on its own legs at your full range and 🎵 picks up Lost Chord notes for you — rivals can't tell which body is real, and whoever guesses wrong burns their whole turn. ⚠️ It drinks ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain every turn it stands, and dies when you have none left.`);
-    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Take it up, and from your next turn tune its ${SHAMISEN_STRINGS} strings with Iwato notes in the chord step. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes (your Action Token) — their scale becomes Iwato for ${CURSE_TURNS} turns.`);
+    if (skillId === 'cursed_shamisen') addLog(`🎸 ${spirit?.name} — CURSED SHAMISEN! Spend your Action Token to secretly curse one Lost Chord on the board. Until your next turn, the rival who takes it is haunted: their scale becomes Iwato on that note, and three haunted notes on their wheel must be played back to lift it.`);
     // 🪦 THE SIX THEORY UNLOCK LOGS AND THE DISCORD-GRANT TABLE WENT WITH THE
     // BRANCH (2026-09-02). They taught the pardon ladder at the moment of
     // purchase; the ladder is universal and free now (`music/context.js`), so
@@ -5107,10 +5130,10 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const { q, used } = drawMarqueeQuestion(pickVal, engineRef.current.board?.usedTrivia ?? []);
     if (!q) return;
     // The hex burns out as the question is drawn — there is no choice step
-    // any more to walk away from — and the next marquee lights at once.
+    // any more to walk away from. ⏳ The next marquee is chosen now but lights
+    // when this turn ENDS (Alex, 2026-10-09: "New marquee spaces shouldn't
+    // appear again on the same turn if one was taken") — logged at `turnEnded`.
     dispatch(eventHexTriggered(spiritId, hexNum, used));
-    const relit = engineRef.current.board.lastEventRespawn;
-    if (relit?.from === hexNum) addLog(`🎪 A new ${marqueeKindOf(engineRef.current.board, relit.hexNum) === 'community' ? '🎤 community ' : ''}marquee lights up at #${relit.hexNum}.`);
     const prize = drawMarqueeCard(cardVal);
 
     if (kind === 'community') {
@@ -5376,6 +5399,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // note twice, ~0.7 s apart. The 2D board (and a 3D arena that never came up) keeps this.
     const arenaPlaysIt = typeof document !== 'undefined' && !!document.querySelector('[data-board-view="3d"][data-arena-ready]');
     if (!arenaPlaysIt) playNoteSound(tok.note, { holdTime: 0.6, fadeTime: 0.8, volume: 0.22 });
+    // 🪤 THE CURSED SHAMISEN'S TRAP — read BEFORE the pickup lands (the twin of
+    // `policies/transition.js` `collectPickups`). The note is banked as usual below.
+    springShamisenTrap(spiritId, hexNum);
     dispatch(tokenPickedUp(spiritId, hexNum));
     // 🗡️ SHREDDING RONIN — the virtuoso finds more music in it: ~50% of the time he
     // pockets a SECOND (fresh in-scale) note from the same find. Roll once, here.
@@ -8260,49 +8286,72 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     return true;
   }
 
-  // ── 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02) ─────────────────────
-  // `RONIN_ABILITY_DESIGN.md` §2.3.00 is the spec; `engine/systems/iwatoCurse.js`
-  // holds every rule, and these two functions only apply its patches and play
-  // the moment. The other halves: tuning is a third chord-step destination
-  // (`clickNoteStock`, dest 'strings'); the curse's turns end in `endTurn`; the
-  // exorcism is in the melody commit's own patch; the picture is the arena's
-  // (`curseScene` → `board/cursedShamisenArena.js`).
-  // 🪦 The glow-and-debt Shamisen (`shamisenCurse`, the 1 Db/round debt, the
-  // cooldown accelerator and the reset-on-hit) is gone with its constants.
+  // ── 🎸 CURSED SHAMISEN — THE IWATO CURSE, v3 "THE TRAP" (2026-10-09) ────────
+  // `IWATO_CURSE_V3_SPEC.md` is the spec; `engine/systems/iwatoCurse.js` holds
+  // every rule, and these two functions only apply its patches and play the
+  // moment. The other halves: the trap's expiry is his own turn start
+  // (`turnFlow.js`); it holds its hex in the drift (`board.js`); the curse's
+  // turns end in `endTurn`; the lifts are in the melody commit's own patch; the
+  // picture is the arena's (`curseScene` → `board/cursedShamisenArena.js`).
+  // ⚠️ HIDDEN: no log names the cursed note while it is armed — only the
+  // Ronin's own screen marks it (`myTrap`). 🪦 v1's take-up / strings / cast are gone.
 
-  // 🪕 TAKE IT UP — free, off cooldown; the strings open on his NEXT turn.
-  function takeUpShamisen() {
-    const ns = engineRef.current.noteStates[acting.id] ?? {};
-    if (!canTakeUp(ns)) return;
-    setNoteField(acting.id, takeUpPatch(ns));
-    const root = ns.rootNote ?? 'C';
-    triggerEffectFlash(acting.id, '🎸', 'SHAMISEN', CURSED_SHAMISEN.edgeColor);
-    addLog(`🎸 ${acting.name} takes up the CURSED SHAMISEN, tuned to ${root}. From next turn the chord step can string it with Iwato notes — ${iwatoNames(root).join(' ')} — up to ${SHAMISEN_STRINGS} a turn. Everyone can count the strings.`);
-    // One low open string, so the take-up is heard as well as seen.
-    shamisenSfx().pluck(midiHz(shamisenMidi(root)), { vel: 0.7, dark: 0.55 });
-  }
-
-  // ⚡ THE CAST — three strings, a rival within reach, the Action Token and the clock.
-  function resolveIwatoCast(targetId) {
+  // 🪤 LAY IT — the Action Token and the cooldown, on a Lost Chord anywhere.
+  function layShamisenTrap(num) {
     const live = engineRef.current;
     const ns = live.noteStates[acting.id] ?? {};
-    const rival = spirits.find(sp => sp.id === targetId);
-    if (!rival || rival.knockedOut || rival.id === acting.id) return;
-    const check = castCheck({ ns, rivalNs: live.noteStates[targetId], from: HEX_BY_NUM[acting.num], to: HEX_BY_NUM[rival.num],
-      tokenUsed: live.turn.actionTokenUsed });
-    if (!check.ok) { addLog(`🎸 ${check.reason}`); return; }
-    const voicing = stringVoicing(ns);
-    const root = shamisenRoot(ns);
-    const patches = castPatches(ns, acting.id, `${acting.id}>${targetId}@${live.turn.count}`);
-    // ⚡ The bill, once: the Action Token (no AP), then the clock.
+    const token = (live.board.boardTokens ?? []).find(t => t.num === num) ?? null;
+    const check = layCheck({ ns, roninId: acting.id, noteStates: live.noteStates, token, tokenUsed: live.turn.actionTokenUsed });
+    if (!check.ok) { if (token) addLog(`🎸 ${check.reason}`); return; }
     dispatch(beatsSpent(0, true));
     setAction(null);
-    setNoteField(acting.id, patches.ronin);
-    setNoteField(targetId, patches.rival);
-    addLog(`🎸 ${acting.name} plays the CURSED SHAMISEN — ${voicing.labels.join(' · ')} — and the ghost-fire crosses to ${rival.name}. 呪 For their next ${CURSE_TURNS} turns their scale IS Iwato on ${root} (${iwatoNames(root).join(' ')}): every other note is discord — no fans. 🔥 They can exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`);
-    triggerEffectFlash(targetId, '呪', 'CURSED!', CURSED_SHAMISEN.edgeColor);
-    // 🔊 The cast's score, built on HIS strings (the same beat plan the arena draws).
-    scheduleCast(shamisenSfx(), planCast(CURSED_SHAMISEN, voicing.ivs), shamisenMidi(root), CURSED_SHAMISEN);
+    setNoteField(acting.id, layPatch(ns, token, `${acting.id}#${live.turn.count}`));
+    // ⏳ PLACEHOLDER for the laying animation (to be designed): one low,
+    // unresolved pluck in the cursed note, and the crystal turns violet on HIS
+    // screen. No log line: the trap is hidden.
+    try { shamisenSfx().pluck(midiHz(shamisenMidi(token.note)), { vel: 0.6, dark: 0.6 }); } catch { /* no audio: the lay stands */ }
+  }
+
+  // 🌑 THE SPRING — called by `checkTokenPickup` BEFORE the token leaves the board.
+  // 🪦 A trap that caught no one (wasted · disarmed · fizzled · orphaned): the log
+  // line every seat reads, and the burn's crackle when the card catches. The
+  // PICTURE is the arena's, from `shamisenAsh` (`curseScene().ashes`).
+  function shamisenAshTheatre(roninId, line) {
+    addLog(line);
+    try { shamisenSfx().burnOut({ delay: ashPlan(NOROI_CARD, { seen: viewerSeesTrap(roninId) }).burnAt / 1000 }); }
+    catch (err) { console.warn('[shamisen] ash theatre skipped:', err?.message ?? err); }
+  }
+  function springShamisenTrap(pickerId, hexNum) {
+    const live = engineRef.current;
+    const out = springOutcome({ noteStates: live.noteStates ?? {}, pickerId, hexNum, turnKey: live.turn?.count ?? '' });
+    if (!out) return;
+    for (const [id, p] of Object.entries(out.patches)) setNoteField(id, p);
+    const ronin = spirits.find(sp => sp.id === out.roninId);
+    const rival = spirits.find(sp => sp.id === out.targetId);
+    const ash = out.patches[out.roninId]?.shamisenAsh;
+    // 🪦 His own note: the trap is gone, no curse — and the card burns in public (rule 18).
+    if (out.kind === 'disarmed') {
+      shamisenAshTheatre(out.roninId, `🪦 ${ronin?.name} takes back his own cursed Lost Chord (${ash?.note ?? ''}) — the noroi card on it crumbles to ash.`);
+      return;
+    }
+    if (out.kind === 'fizzled') {
+      shamisenAshTheatre(out.roninId, `🪤 ${rival?.name} takes a CURSED Lost Chord — but a curse already haunts them, and ${ronin?.name}'s noroi card crumbles to ash.`);
+      return;
+    }
+    const c = out.patches[out.targetId].iwatoCurse;
+    addLog(`🌑 The Lost Chord ${rival?.name} just took was CURSED by ${ronin?.name}! 呪 Their scale IS Iwato on ${c.root} (${iwatoNames(c.root).join(' ')}) — every other note is discord, no fans. ${HAUNTED_NOTES} haunted notes are marked on their Scale Wheel: each one played in a melody lifts a ghost. Up to ${CURSE_TURNS} of their turns, counting this one.`);
+    // ⚠️ THEATRE ONLY, AND GUARDED: this runs INSIDE `checkTokenPickup`, before
+    // the token is taken and the note banked — a sound or flash that throws (no
+    // audio context: a headless run, a locked-down browser) must never cost the
+    // pickup itself. (v1's cast had the sound last, so a throw there was silent.)
+    try {
+      triggerEffectFlash(out.targetId, '呪', 'CURSED!', CURSED_SHAMISEN.edgeColor);
+      // 🔊 The cast's score, built on the HAUNTED notes, in the cursed note's key.
+      // ⏱ It starts when the arena's ghost shamisen does: after the hop and the
+      // shatter the noroi card comes out of (`NOROI_SPRING_CAST_DELAY_MS`).
+      const castPlan = planCast(CURSED_SHAMISEN, c.targets), castMidi = shamisenMidi(c.root);
+      setTimeout(() => { try { scheduleCast(shamisenSfx(), castPlan, castMidi, CURSED_SHAMISEN); } catch { /* no audio: silent */ } }, NOROI_SPRING_CAST_DELAY_MS);
+    } catch (err) { console.warn('[shamisen] spring theatre skipped:', err?.message ?? err); }
   }
 
 
@@ -9838,6 +9887,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // beat/token resets, queue advance. React then runs the not-yet-extracted
     // ticks below using the engine's report.
     const report = dispatch(turnEnded()).turn.lastReport;
+    // 🎪 ⏳ A marquee taken during the turn that just ended lights now (`marqueeSpaces.js` `lightPendingMarquees`).
+    {
+      const relit = engineRef.current.board.lastEventRespawn;
+      if (relit?.deferred) for (const h of relit.lit ?? [relit.hexNum])
+        addLog(`🎪 A new ${marqueeKindOf(engineRef.current.board, h) === 'community' ? '🎤 community ' : ''}marquee lights up at #${h}.`);
+    }
 
     // ── 🌟 LIMELIGHT FAME FAUCET — PAY THE POSE, NOT THE SEAT ─────────────────
     // Holding the centre stage (start AND end your turn on hex 56) is the
@@ -9891,8 +9946,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // ── 🌑 THE IWATO CURSE COUNTS THE CURSED SPIRIT'S OWN TURNS ───────────────
     // ⚠️ Here, at the end of THEIR turn — never on the round clock, or a rival
     // who acts right after the Ronin would serve two cursed turns and one who
-    // acts right before him one (`iwatoCurse.js`). The exorcism, if they found
-    // one, already lifted it in the melody commit's patch.
+    // acts right before him one (`iwatoCurse.js`). A third lift, if they found
+    // it, already ended it in the melody commit's patch.
     {
       const end = endCursedTurn(engineRef.current.noteStates?.[acting.id]);
       if (end.patch) {
@@ -9901,7 +9956,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           addLog(`🌑 The Iwato curse on ${s?.name} runs out — their Scale Wheel is their own again.`);
           shamisenSfx().expire(midiHz(60));
         } else {
-          addLog(`🌑 ${s?.name} stays CURSED for ${end.turnsLeft} more turn${end.turnsLeft !== 1 ? 's' : ''} — and the window to exorcise it has closed.`);
+          addLog(`🌑 ${s?.name} stays CURSED for ${end.turnsLeft} more turn${end.turnsLeft !== 1 ? 's' : ''}.`);
           shamisenSfx().burnOut();
         }
       }
@@ -10025,7 +10080,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // 🎪 Since 2026-09-29 a marquee relights THE MOMENT one is taken (one per
       // seat, `systems/marqueeSpaces.js`), so this is only the fallback for a
       // board that had nowhere free at the time.
-      if (engineRef.current.board.eventHexes.length < marqueeCount(engineRef.current)) {
+      // ⏳ Lit + waiting (`plannedMarqueeHexes`): a marquee chosen but not yet lit is not a shortfall.
+      if (plannedMarqueeHexes(engineRef.current.board).length < marqueeCount(engineRef.current)) {
         // The board is short and the cooldown is clear — light one (engine rng).
         // The engine re-arms the timer itself if it is STILL short afterwards,
         // so a double-trigger recovers over two rounds instead of snapping back.
@@ -10037,6 +10093,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             ...boardCards.map(c => c.hexNum),
             ...engineRef.current.board.chargeZones.map(z => z.num),
             ...engineRef.current.board.eventHexes,
+            ...pendingMarqueeHexes(engineRef.current.board),
           ];
           dispatch(eventHexSpawned(occupied));
           const evReport = engineRef.current.board.lastEventRespawn;
@@ -11126,10 +11183,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     }
     if (action === "shukuchi") { resolveShukuchiHop(num); return; }
     if (action === "cursed_shamisen") {
-      // 🎸 Any visible rival within reach. `resolveIwatoCast` re-checks every rule.
-      const rival = spirits.find(sp => sp.num === num && sp.id !== acting?.id && !sp.knockedOut && !isHiddenBySmoke(sp));
-      if (rival && attackReachFor('cursed_shamisen')?.near.includes(num)) resolveIwatoCast(rival.id);
-      else addLog(`🎸 Click a rival within ${SHAMISEN_RANGE} hexes to curse them.`);
+      // 🪤 Any Lost Chord, anywhere. `layShamisenTrap` re-checks every rule.
+      // ⚠️ A miss says nothing in the log — the trap is hidden.
+      if (boardTokens.some(t => t.num === num)) layShamisenTrap(num);
       return;
     }
     if (action === "move") {
@@ -11284,11 +11340,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           : rings >= DISPLACE_MIN_RINGS && rings <= DISPLACE_MAX_RINGS && !occupied.has(h.num)) near.add(h.num);
       }
     } else if (kind === 'shukuchi') near = shukuchiLandingSet();
-    // 🎸 The Iwato curse: every hex within its reach, any direction (`iwatoCurse.js` CAST_RANGE).
-    else if (kind === 'cursed_shamisen') { for (const h of ALL_HEXES) if (axialDist(h.q, h.r, spHex.q, spHex.r) <= SHAMISEN_RANGE) near.add(h.num); }
+    // 🪤 The Iwato curse's trap: every Lost Chord on the board, any distance.
+    else if (kind === 'cursed_shamisen') { for (const t of boardTokens) near.add(t.num); }
     near.delete(acting.num);
     // A warp or a hop LANDS — nobody is hit, so nothing is marked as a target.
-    const lands = kind === 'displace' || kind === 'shukuchi';
+    const lands = kind === 'displace' || kind === 'shukuchi' || kind === 'cursed_shamisen';
     const targets = lands ? [] : [...near].filter(n =>
       spirits.some(s => s.num === n && s.id !== acting.id && !s.knockedOut && !isHiddenBySmoke(s))
       || shadowDecoys.some(d => d.num === n && d.id !== acting.id));
@@ -12169,6 +12225,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     blurb:'Straight-down tactical camera. No wandering, and battles play out from here. Zoom and pan keep it; tilting leaves it' },
                   { id:'arena',  icon:'◈', label:'Arena',    accent:'#66ddff', blurb:'Reset to the arena camera' },
                   { id:'spirit', icon:'◎', label:'Spirit',   accent:'#80e8ff', blurb:'Frame the active Spirit' },
+                  // 🧭 a turn, not a preset — BoardViewport routes 'north' to the runtime without leaving ⌗ Top
+                  { id:'north',  icon:'🧭', label:'Face north', accent:'#9fe6b0', blurb:'Turn so board north is up, keeping zoom and tilt — numpad 8 is then screen-up. Numpad 5 does this too' },
                 ],
                 onPick: id => arenaCameraRef.current?.view(id) },
               { kind:'buttons', icon:'🔍', label:'Zoom', color:'#66ddff',
@@ -12344,19 +12402,19 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
             hand: mine ? noteStock : [],
             available: i => !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i),
             line: melodyLine, onPick: composing ? wheelPick : undefined, onHoverNote: wheelHoverNote };
-          // 🌑 THE IWATO CURSE ON THE WHEEL (`ui/CursedWheel.jsx`, moment ③): ink
-          // from the rim, their own scale cracked and grey, the five Iwato notes
-          // lit — the rule, taught by the picture. Public: a cursed rival's wheel
+          // 🌑 THE IWATO CURSE ON THE WHEEL (`ui/CursedWheel.jsx`): ink from the
+          // rim, their own scale cracked and grey, the five Iwato notes lit and
+          // the three HAUNTED ones black and pulsing — the rule, taught by the picture. Public: a cursed rival's wheel
           // reads cursed to everyone who looks at it on their turn.
           const curse = actingNoteState?.iwatoCurse;
           const exorcising = exorciseFx?.spiritId === acting.id;
           const cursedWheel = isCursed(actingNoteState) || exorcising;
           return <ScaleWheelCard spiritId={acting.id} root={rootNote} next={next}>
             {cursedWheel
-              ? <CursedWheel {...wheel} roninRoot={curse?.roninRoot ?? exorciseFx?.roninRoot ?? 'C'}
+              ? <CursedWheel {...wheel} roninRoot={curse ? curseRoot(curse) : (exorciseFx?.roninRoot ?? 'C')}
+                  haunted={exorcising ? (exorciseFx.haunted ?? []) : hauntedNotes(acting.id, actingNoteState)}
                   phase={exorcising ? 'exorcised' : 'cursed'} turnsLeft={curse?.turnsLeft ?? 0}
                   since={exorcising ? exorciseFx.key : (curse?.key ?? 0)}
-                  canExorcise={exorciseWindow(actingNoteState)}
                   roninColor={seatColor(curse?.by ?? exorciseFx?.by)} />
               : <ScaleWheel {...wheel} />}
           </ScaleWheelCard>;
@@ -13325,48 +13383,41 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               );
             })()}
             {/* 🪦 Exorcism UI — removed 2026-08-26 */}
-            {/* 🎸 CURSED SHAMISEN — THE IWATO CURSE (2026-10-02, §2.3.00).
-                ONE button walks the whole life of the curse, and its label says
-                which step he is on — take it up · strings open next turn · n/3
-                strings (tuned in the chord step) · cast. ⚠️ The refusals are in
-                the label for the same reason as Bushido's: recharging, skint,
-                out of actions and "tune first" have four different answers. */}
+            {/* 🎸 CURSED SHAMISEN — v3 "THE TRAP" (2026-10-09, IWATO_CURSE_V3_SPEC.md).
+                ONE button: arm it, then click any Lost Chord. ⚠️ The refusals
+                are in the label (recharging / out of actions / a trap already
+                set / a curse still haunting a rival / no Lost Chords). */}
             {hasConfirmed && characterId(acting?.id) === 'cosmic_ronin'
               && hasShamisen(actingNoteState) && (() => {
-              const ns     = actingNoteState ?? {};
-              const cd     = cooldownLeft(ns, SHAMISEN_SKILL);
-              const up     = !!ns.shamisen;
-              const tuned  = stringsOf(ns).length;
-              const strung = up && tuned >= SHAMISEN_STRINGS;
-              const canUp  = canTakeUp(ns);
-              const canCast = strung && cd <= 0 && !actionTokenUsed;
-              const armed  = action === 'cursed_shamisen';
-              const live   = canUp || canCast;
-              const hue    = CURSED_SHAMISEN.edgeColor;
-              const label  = !up ? (cd > 0 ? `Shamisen 🕒${cd}` : 'Take up Shamisen')
-                : !ns.shamisen.ready ? 'Shamisen · strings next turn'
-                : !strung ? `Shamisen · ${tuned}/${SHAMISEN_STRINGS} strings`
-                : cd > 0 ? `Curse 🕒${cd}`
-                : actionTokenUsed ? 'Curse (no action left)' : 'Cast the curse';
+              const ns       = actingNoteState ?? {};
+              const cd       = cooldownLeft(ns, SHAMISEN_SKILL);
+              const trap     = trapOf(ns);
+              const haunting = cursesStandingBy(noteStates, acting.id);
+              const check    = layCheck({ ns, roninId: acting.id, noteStates, tokenUsed: actionTokenUsed });
+              const armed    = action === 'cursed_shamisen';
+              const live     = check.ok && boardTokens.length > 0;
+              const hue      = CURSED_SHAMISEN.edgeColor;
+              const label    = trap ? 'Trap set'
+                : haunting.length ? 'Curse haunting'
+                : cd > 0 ? `Shamisen 🕒${cd}`
+                : actionTokenUsed ? 'Curse (no action left)'
+                : !boardTokens.length ? 'Curse (no Lost Chords)'
+                : armed ? 'Pick a Lost Chord…' : 'Curse a Lost Chord';
               return (
                 <>
-                  <div style={{position:'relative',display:'inline-block'}} {...(strung ? reachHover('cursed_shamisen') : {})}>
+                  <div style={{position:'relative',display:'inline-block'}} {...(live ? reachHover('cursed_shamisen') : {})}>
                   <RailBtn className={live ? 'btn active' : 'btn'}
                     cooldown={{left:cd, max:ABILITY_CD[SHAMISEN_SKILL], color:hue}}
                     style={{borderColor: live ? hue : actingHueDim, color: live ? '#d9c2ff' : actingHueDim}}
                     disabled={!live && !armed}
-                    title={!up
-                      ? `Cursed Shamisen — take it up (free). From your NEXT turn the chord step can tune its ${SHAMISEN_STRINGS} strings with Iwato notes (1 ♭2 4 ♭5 ♭7 on your root), up to ${SHAMISEN_STRINGS} a turn out of the same commits as Drive and Sustain. All three tuned: curse a rival within ${SHAMISEN_RANGE} hexes.`
-                      : !strung
-                      ? `The strings: ${tuned}/${SHAMISEN_STRINGS}, tuned to ${shamisenRoot(ns)}. ${ns.shamisen.ready ? 'Tune them in the chord step — the third destination beside Drive and Sustain.' : 'They open on your next turn.'} Every rival can count them.`
-                      : `Cast the Iwato curse on a rival within ${SHAMISEN_RANGE} hexes — your Action Token, ${CURSED_SHAMISEN_CD}-round cooldown. For their next ${CURSE_TURNS} turns their scale IS Iwato: every other note is discord (no fans), unless they exorcise it on their very next turn with ${EXORCISE_NOTES} different Iwato notes.`}
+                    title={trap
+                      ? `Your trap is set on a Lost Chord (#${trap.hexNum}, ${trap.note}) until your next turn. Only you can see it.`
+                      : haunting.length
+                      ? 'Your curse still haunts a rival — one Shamisen curse at a time.'
+                      : `Curse one Lost Chord anywhere on the board — your Action Token, ${CURSED_SHAMISEN_CD}-round cooldown. Only you can see which. Until your next turn, the rival who takes it is cursed: their scale becomes Iwato on that note (every other note is discord — no fans), with ${HAUNTED_NOTES} haunted notes marked on their wheel to play back. Up to ${CURSE_TURNS} of their turns. Take it yourself and the trap is simply gone.`}
                     onClick={() => {
                       if (armed) { setAction(null); return; }
-                      if (canUp) { takeUpShamisen(); return; }
-                      if (canCast) {
-                        setAction('cursed_shamisen');
-                        addLog(`🎸 THE IWATO CURSE — click a rival within ${SHAMISEN_RANGE} hexes to curse them.`);
-                      }
+                      if (live) setAction('cursed_shamisen');
                     }}>
                     🎸 {label}
                   </RailBtn>
@@ -13836,40 +13887,6 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                             </Bracket>
                           );
                         })}
-                        {/* 🪕 THE THIRD DESTINATION — the Cursed Shamisen's strings
-                            (2026-10-02, §2.3.00). Shown from the take-up on, so
-                            the turn he cannot yet tune still says WHEN he can.
-                            Same row grammar as Drive and Sustain: a destination
-                            switch and a fill count, in the curse's violet. The
-                            tuned notes themselves hang over him on the board. */}
-                        {actingNoteState?.shamisen && (() => {
-                          const sh    = actingNoteState.shamisen;
-                          const tuned = stringsOf(actingNoteState);
-                          const open  = tuningOpen(actingNoteState);
-                          const dis   = !open || budgetLeft <= 0;
-                          const on    = stackCommitDest === 'strings';
-                          const col   = CURSED_SHAMISEN.edgeColor;
-                          const labels = stringVoicing(actingNoteState).labels;
-                          return (
-                            <Bracket corner="sm" color={col} plate="🎸 STRINGS"
-                              plateRight={`${tuned.length} / ${SHAMISEN_STRINGS}`}
-                              className={on ? 'step-active' : ''}
-                              style={{marginBottom:6}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6,padding:"8px 9px"}}>
-                                <button type="button" className="stack-chip"
-                                  data-tip-anchor="strings-btn"
-                                  disabled={dis} aria-pressed={on}
-                                  onClick={()=>setStackCommitDest('strings')}
-                                  title={`Iwato on ${shamisenRoot(actingNoteState)}: ${iwatoNames(shamisenRoot(actingNoteState)).join(' ')}. Any of them, repeats too (a repeat rings an octave higher).`}
-                                  style={{flex:1, color: on ? col : undefined, background: on ? col : undefined}}>
-                                  {!sh.ready ? 'Strings open next turn'
-                                    : tuned.length >= SHAMISEN_STRINGS ? `Tuned · ${labels.join(' · ')}`
-                                    : tuned.length ? `Strings · ${labels.join(' · ')}` : 'Strings'}
-                                </button>
-                              </div>
-                            </Bracket>
-                          );
-                        })()}
                         {/* Note stock for stack editing — visible when a dest is selected and budget remains */}
                         {stackCommitDest && budgetLeft > 0 && (
                           <Bracket corner="sm" color="#8daee5" plate="STOCK"
@@ -13899,13 +13916,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                    the stacks, so "which stack pays this note" isn't a question yet
                                    — the answer changes with the very click you're about to make. */
                                 const showUnlockedD = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
-                                // 🪕 Tuning strings: the Iwato notes glow the curse's violet and
-                                // everything else greys — the grid answers "which of these can
-                                // go on a string" before the click, not after it.
-                                const tuningStrings  = stackCommitDest === 'strings';
-                                const iwatoHere      = tuningStrings && isIwato(note, shamisenRoot(actingNoteState));
-                                const hexBorder = tuningStrings ? (iwatoHere ? CURSED_SHAMISEN.edgeColor : "#444455")
-                                  : showAsDiscord ? "#444455" : showUnlockedD ? UNLOCKED_DISCORD.border : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
+                                const hexBorder = showAsDiscord ? "#444455" : showUnlockedD ? UNLOCKED_DISCORD.border : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
                                 // 🎨 ONE HUE, as everywhere else now. `hexText` and `hexBg`
                                 // are gone with the clip-path chip that needed three values
                                 // to say one thing; a NoteHex derives the rest from the hue.
@@ -13913,7 +13924,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                 const targetStack = stackCommitDest === 'sustain' ? sStack : dStack;
                                 const targetCh = stackCommitDest === 'sustain' ? sCh : dCh;
                                 const targetFull = stackCommitDest === 'sustain' ? sFull : dFull;
-                                const previewChord = !used && !targetFull && !tuningStrings ? spiritChord(acting?.id, [...targetStack, note]) : null;
+                                const previewChord = !used && !targetFull ? spiritChord(acting?.id, [...targetStack, note]) : null;
                                 const dDrive   = previewChord ? previewChord.drive   - targetCh.drive   : 0;
                                 const dSustain = previewChord ? previewChord.sustain - targetCh.sustain : 0;
                                 return (
@@ -14747,7 +14758,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 // turns red or blue is the one that pays, by construction.
                 lostChords:{
                   tokens:boardTokens.map(tok => ({ num:tok.num, note:tok.note,
-                    claim:actingNoteState ? (unlockClaim(actingNoteState, tok.note, acting?.id)?.which ?? null) : null })),
+                    // 🪤 the Ronin's own trap wears 'cursed' — on HIS screen only (`myTrap`).
+                    claim:myTrap?.hexNum === tok.num ? 'cursed'
+                      : actingNoteState ? (unlockClaim(actingNoteState, tok.note, acting?.id)?.which ?? null) : null })),
                   drifted:engineState.board.lastTokensDrifted, thrashed:engineState.board.lastThrashTokens,
                   hover:hovered, tones:Object.fromEntries(spirits.map(s => [s.id, toneOf(toneBySpirit, s.id)])),
                 },
@@ -14759,7 +14772,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 // their Spirit's entrance lands (board/openingAct.js).
                 opening:openingSched, fansHeld,
                 // 🎸 The Iwato curse, read off the sheets alone (`iwatoCurse.js` curseScene).
-                shamisen:curseScene(spirits, noteStates),
+                // 🪤 + this seat's OWN armed trap (`myTrap`) — the noroi card is thrown only here.
+                shamisen:{ ...curseScene(spirits, noteStates), trap: myTrap },
                 shadowDecoy, shadowDecoys, vortices:gravityVortices, lite:liteFx,
                 // 🟪 The move tiles (board/moveTiles.js): the same `reachable` sets the
                 // SVG click layer uses, so the picture can never offer a step the
@@ -16116,6 +16130,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                         would have bottomed out at 0.45 × 0.55 = 0.25 and beaten
                         against the chip's own per-token `animationDelay` at a
                         difference frequency. Two siblings, two clocks, no interference. */}
+                    {/* 🪤 the Ronin's own trap — on HIS screen only (⏳ placeholder mark) */}
+                    {myTrap?.hexNum === tok.num && (
+                      <polygon data-shamisen-trap={tok.num} points={pointyCorners(cx, cy, HS * UNLOCK_GLOW.hexR)}
+                        fill={`${CURSED_SHAMISEN.edgeColor}33`} stroke={CURSED_SHAMISEN.edgeColor} strokeWidth={2.4}
+                        strokeDasharray="5 3"
+                        style={{color: CURSED_SHAMISEN.edgeColor,
+                          animation:`unlock-hex-pulse ${UNLOCK_GLOW.period}s ease-in-out infinite`}}/>
+                    )}
                     {claim && (
                       <polygon points={pointyCorners(cx, cy, HS * UNLOCK_GLOW.hexR)}
                         fill={`${glow}${UNLOCK_GLOW.fillAlpha}`} stroke={glow}

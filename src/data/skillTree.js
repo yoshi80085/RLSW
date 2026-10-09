@@ -34,7 +34,6 @@ import {
   PSYCHO_BUSHIDO_STACK_COST, SHADOW_ILLUSION_TURNS,
   SHUKUCHI_CD, SHUKUCHI_MAX_HOPS, SHUKUCHI_HOP_RINGS, SHUKUCHI_AP_PER_HOP,
   SHADOW_ILLUSION_SUSTAIN_DRAIN,
-  SONIC_BEAM_REACH,
 } from "./gameConstants.js";
 
 export const SKILL_TREE = {
@@ -141,14 +140,14 @@ export const SKILL_TREE = {
           desc:`Iaijutsu draw — strike a rival standing ${PSYCHO_BUSHIDO_MIN_RANGE} to ${PSYCHO_BUSHIDO_MAX_RANGE} hexes DIRECTLY IN FRONT of you. ⚡ THEY BRACE, YOU BURST: the rival throws their Sustain as a shield, then you throw your Drive and charge on your dice — and each die you keep hits the shield in turn. Whatever gets THROUGH is the damage, and pushes them back a hex for every 2 points that got through. If the shield holds, nothing happens to either of you. ⭐ THE FARTHER THE DRAW, THE BIGGER YOUR DICE: ${psychoBushidoD8s(PSYCHO_BUSHIDO_MIN_RANGE)} of your d6s become d8s at ${PSYCHO_BUSHIDO_MIN_RANGE} hexes, ${psychoBushidoD8s(4)} at 4, ${psychoBushidoD8s(PSYCHO_BUSHIDO_MAX_RANGE)} at ${PSYCHO_BUSHIDO_MAX_RANGE}. ⚠️ TOO CLOSE AND YOU CANNOT DRAW AT ALL — there is no run-up, and a rival at 1 or 2 hexes is simply not a target. Any body in the lane blocks it, your own 👤 shadow included. You arrive on the hex in front of them with your guard down. ${PSYCHO_BUSHIDO_AP_COST} Action Points flat, ${PSYCHO_BUSHIDO_CD}-round cooldown — and ⭐ IT BURNS ${PSYCHO_BUSHIDO_STACK_COST} NOTES OFF THE TOP OF YOUR DRIVE STACK before the dice. Losing notes RE-POINTS what you are hunting on the board, so a draw is a choice about your chord as well as about your rival.` },
         { id:'shadow_illusion', label:'Shadow Illusion', icon:'👤', gated:false,
           desc:`Split into a second, identical Ronin, born stacked on your own hex (${SHADOW_ILLUSION_CD}-round cooldown) — nobody sees which one appeared. Rivals cannot tell the double from the real you: it blocks, it faces, and it walks the board on its own steps, refreshed each turn to match your movement range at no cost to your Action Points. 🎵 It can also PICK UP LOST CHORD NOTES for you — an illusion made of sound can carry a sound. It cannot take ⚡ charge zones or 🎪 event spaces, and hazards pass straight through it. ⚠️ IT FEEDS ON YOU: ${SHADOW_ILLUSION_SUSTAIN_DRAIN} Sustain at the start of every turn it stands, and it comes apart the moment you have none to give — you are at your most fragile exactly while nobody can tell which body to hit. Lasts ${SHADOW_ILLUSION_TURNS} turns. Pops if it is struck, if you attack, or if you are attacked. Whoever attacks it burns their AP and Action Token for nothing.` },
-        // 🎸 THE IWATO CURSE (2026-10-02, `RONIN_ABILITY_DESIGN.md` §2.3.00). The
-        // numbers in this text are the rules' own: 3 strings / 2 cursed turns / 3
-        // Iwato notes to exorcise are `board/cursedShamisen.js`, the reach is
-        // `iwatoCurse.js` `CAST_RANGE` (= SONIC_BEAM_REACH). ⚠️ Written as literals
-        // because importing `iwatoCurse.js` here would loop through `cooldowns.js`,
-        // which imports this file — `test:shamisen` pins the text to the numbers.
+        // 🎸 THE IWATO CURSE — v3 "THE TRAP" (Alex, 2026-10-09,
+        // `IWATO_CURSE_V3_SPEC.md`). The numbers in this text are the rules' own:
+        // 3 haunted notes / 3 cursed turns are `board/cursedShamisen.js`. ⚠️
+        // Written as literals because importing `iwatoCurse.js` here would loop
+        // through `cooldowns.js`, which imports this file — `test:shamisen` pins
+        // the text to the numbers.
         { id:'cursed_shamisen', label:'Cursed Shamisen', icon:'🎸', gated:false,
-          desc:`Curse a rival with Iwato, the haunted Japanese scale (1 ♭2 4 ♭5 ♭7, on YOUR root). 🪕 TAKE IT UP on your turn and from your NEXT turn the chord step has a third place to put a note: the Shamisen's 3 strings. Each string takes one Iwato note — up to 3 a turn, out of the same 3 commits as your Drive and Sustain, so every string is a note your attack or your guard did not get. Repeats ring an octave higher. ⚡ With all 3 strings tuned, CAST it on a rival within ${SONIC_BEAM_REACH} hexes (your Action Token, ${CURSED_SHAMISEN_CD}-round cooldown): ghost-fire leaves the strings and a charm slaps onto them. 🌑 For their next 2 turns their Scale Wheel IS Iwato — every other note in their hand is discord: no fans. 🔥 They can EXORCISE it on their very next turn with a melody holding 3 different Iwato notes. Everyone can count your strings, so they see it coming.` },
+          desc:`Set a hidden trap. 🪤 Spend your Action Token to stick a 呪 NOROI CARD on one Lost Chord anywhere on the board — only you can see it (${CURSED_SHAMISEN_CD}-round cooldown). It holds its hex until the start of your next turn; if nobody takes it, the card burns to ash in front of everyone. 🌑 The rival who picks it up banks the note — and is CURSED: their Scale Wheel becomes Iwato, the haunted Japanese scale (1 ♭2 4 ♭5 ♭7), on THAT note, so every other note in their hand is discord: no fans. 👻 Three haunted notes are marked on their wheel; each one they play in a melody lifts a ghost, and all three lift the curse. It lasts 3 of their turns — the one they stepped on it counts, so they get two melodies to lift it — and the curse seeps into the notes they draw (⅓ of their in-key notes come up Iwato, then ⅔). Take your own cursed note and the card simply burns. One curse at a time.` },
       ],
     },
     {

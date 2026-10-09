@@ -335,12 +335,40 @@ export function analyseTrack(track, currentScale, fourthNote, fifthNote) {
 // branch, and the same `u`, rescaled into that branch's slice, chooses the note.
 export function randomNote(rootNote, mode, rand = Math.random, guarantee = STOCK_PALETTE_GUARANTEE) {
   if (!rootNote) return NOTE_POOL[Math.floor(rand() * NOTE_POOL.length)];
-  const pool = getSpelledPool(rootNote, mode);
+  return randomNoteIn(playableScale(rootNote, mode), getSpelledPool(rootNote, mode), rand, guarantee);
+}
+/**
+ * `randomNote` with the guaranteed half drawn from an EXPLICIT palette — the
+ * 🌑 Iwato curse's (Alex, 2026-10-09: the draw follows the curse HALFWAY: the
+ * guaranteed half from the cursed wheel, the other half still all twelve).
+ * Same one-`rand()`-per-note contract. `pool` = the twelve, spelled.
+ */
+export function randomNoteIn(inside, pool, rand = Math.random, guarantee = STOCK_PALETTE_GUARANTEE) {
   const u = rand();
-  const inside = playableScale(rootNote, mode);
   const g = Math.min(1, Math.max(0, Number.isFinite(guarantee) ? guarantee : STOCK_PALETTE_GUARANTEE));
   if (inside.length && u < g) return inside[Math.min(inside.length - 1, Math.floor((u / g) * inside.length))];
   const rest = inside.length ? (u - g) / (1 - g) : u;
+  return pool[Math.min(pool.length - 1, Math.floor(rest * pool.length))];
+}
+/**
+ * 🌑 THE CURSE SEEPS IN (Alex, 2026-10-09): under the Iwato curse the guaranteed
+ * slice is SPLIT — `share` of it comes off the cursed wheel (`cursed`), the rest
+ * off the Spirit's own palette (`own`); the other half stays all twelve. `share`
+ * climbs with the curse (`board/cursedShamisen.js` `cursedDrawShare`: ⅓ on their
+ * 2nd cursed turn, ⅔ on their 3rd). Same one-`rand()`-per-note contract: the one
+ * `u` picks the branch, then the slice, then the note.
+ */
+export function randomNoteBlend(cursed, own, share, pool, rand = Math.random, guarantee = STOCK_PALETTE_GUARANTEE) {
+  const f = Math.min(1, Math.max(0, Number.isFinite(share) ? share : 0));
+  const g = Math.min(1, Math.max(0, Number.isFinite(guarantee) ? guarantee : STOCK_PALETTE_GUARANTEE));
+  const u = rand();
+  if (u < g) {
+    const v = u / g;
+    const pick = (arr, x) => arr[Math.min(arr.length - 1, Math.floor(x * arr.length))];
+    if (cursed.length && (v < f || !own.length)) return pick(cursed, f > 0 ? Math.min(v / f, 0.999999) : v);
+    if (own.length) return pick(own, f < 1 ? (v - f) / (1 - f) : v);
+  }
+  const rest = u >= g && g < 1 ? (u - g) / (1 - g) : u;
   return pool[Math.min(pool.length - 1, Math.floor(rest * pool.length))];
 }
 export function refillStock(rootNote, mode, size = 8, rand = Math.random, guarantee = STOCK_PALETTE_GUARANTEE) {

@@ -229,7 +229,7 @@ question.** That is worth protecting above any individual number:
 | 🌀 Shukuchi Arpeggio | Mobility | Distance | *Where can he NOT be next turn?* |
 | 🗡️ Psycho Bushido | Burst attack | Distance / LOS | *Can I stay out of his kill lane?* |
 | 👤 Shadow Illusion | Deception | Position / Sustain | *Which Ronin is real?* |
-| 🎸 Cursed Shamisen | Tempo / theft | **The rival's** cooldowns | *Was I paying attention to what he just used?* |
+| 🎸 Cursed Shamisen | Trap / denial | **The board's** Lost Chords (v3, 2026-10-09) | *Is that note safe to take — and can I play the tune back before it costs me the crowd?* |
 | ~~🎵 Wa no Koe~~ | 🪦 **CUT 2026-09-04** | — | — |
 
 ✅ **THE SIPHON KEEPS THE PROPERTY THIS TABLE EXISTS TO PROTECT, AND SHARPENS
@@ -416,6 +416,14 @@ a 3-player match — which pulls the other way and may cover it.
 
 ### 2.3 🎸 Cursed Shamisen — the Iwato curse
 
+> ⭐ **v3 "THE TRAP" — REWORKED AGAIN AND BUILT 2026-10-09 (Alex).** The spec is
+> now **`IWATO_CURSE_V3_SPEC.md`**: the Ronin's Action Token curses one hidden Lost
+> Chord; the Rival who takes it gets Iwato **on that note** with three creepy
+> haunted notes to play back (lifts accumulate; 3 of their turns, the springing one
+> counting = two cursed melodies; no refresh, the draw seeps in ⅓ → ⅔). §2.3.00 below (take up → strings → cast → exorcise) is **SUPERSEDED — kept
+> as the record**, as §2.3.0 was. (v2, "the haunting", 2026-10-03, was never built:
+> `IWATO_CURSE_V2_SPEC.md`.)
+
 > ⛔ **REWORKED A FOURTH TIME 2026-10-02 (Alex) — AND THE SIPHON IS SUPERSEDED.**
 > Board token (cut 2026-08-26) → cooldown self-buff (cut 2026-10-02) → cooldown theft
 > (the siphon, 2026-09-04, never built) → **the Iwato curse** (§2.3.00, below —
@@ -430,7 +438,7 @@ a 3-player match — which pulls the other way and may cover it.
 > **removed 2026-10-02** (record only; `test:shamisen` now pins the curse and asserts
 > the old one stays gone).
 
-#### 2.3.00 ⭐ THE IWATO CURSE — Alex, 2026-10-02
+#### 2.3.00 🪦 THE IWATO CURSE v1 — Alex, 2026-10-02 *(SUPERSEDED 2026-10-09 by `IWATO_CURSE_V3_SPEC.md` — record only)*
 
 > ⁉️ **OPEN, 2026-10-02 — THE CURSE LOST HALF ITS BITE.** Its punishment was
 > "every other note is discord: **no Db**, no fans". Db was cut the same day, so a

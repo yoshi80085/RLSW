@@ -7,7 +7,8 @@
 // still keeps with top-down view. A separate option to keep stationary …"*
 // §1 the clocks (behavioural) · §2 the held battle lens (behavioural, real
 // sonicCamera) · §3 the wiring the two depend on (source) · §4 the top-down
-// AXIS (behavioural) · §5 📌 Hold · §6 🧱 the solid layer (amps/fans/dice).
+// AXIS (behavioural) · §5 📌 Hold · §6 🧱 the solid layer (amps/fans/dice) ·
+// §7 🧭 Face north (Alex, 2026-10-09) — the turn (behavioural) and its wiring.
 import * as THREE from 'three';
 import { readFileSync } from 'node:fs';
 import { resolveSonicBarrage } from '../engine/systems/sonicBarrage.js';
@@ -16,7 +17,7 @@ import { barrageContact, barrageTime, barrageSimulationTime, barrageHitstop, bar
 import { scheduleSonicBarrage } from './sonicPresentation.js';
 import { barrageDelay } from '../audio/sonicBarrageAudio.js';
 import { createSonicCamera } from './sonicCamera.js';
-import { TOP_OFFSET, TOP_TOLERANCE, onTopAxis, topAxisAngle } from './topDownView.js';
+import { TOP_OFFSET, TOP_TOLERANCE, onTopAxis, topAxisAngle, lensHeading, facesNorth, turnLens, northLens, NORTH_TOLERANCE } from './topDownView.js';
 import { SOLID_LAYER, isSolidMesh, markSolid, markOccluders, OCCLUDER_LAYER, DECAL_LAYER } from './solidLayer.js';
 
 let pass = 0, fail = 0;
@@ -119,7 +120,7 @@ console.log('§5 📌 Hold = the Auto camera switch, off (the ☰ toggle since 2
   const r = read('./arenaRenderer.js'), v = read('../ui/BoardViewport.jsx'), c = read('../rlsw-simulator-v3_8_1.jsx');
   ok('renderer: leaving the axis ends top-down and tells the client', /function leaveTopIfTilted\(\)\{\s*if\(!topView\|\|onTopAxis\(camera\.position,controls\.target\)\)return;\s*topView=false;syncBattleCamera\(\);onTopView\?\.\(false\);/.test(r)
     && /const change=\(\)=>\{dirty=true;leaveTopIfTilted\(\);\}/.test(r));
-  ok('renderer: ⌗ Top places the lens on the SAME axis it is judged by', /camera\.position\.set\(\.\.\.TOP_OFFSET\)/.test(r) && /import \{ TOP_OFFSET, onTopAxis \} from '\.\/topDownView\.js'/.test(r));
+  ok('renderer: ⌗ Top places the lens on the SAME axis it is judged by', /camera\.position\.set\(\.\.\.TOP_OFFSET\)/.test(r) && /import \{ TOP_OFFSET, onTopAxis(?:, [\w, ]+)? \} from '\.\/topDownView\.js'/.test(r));
   ok('renderer: a preset does not inherit a flick\'s damping tail', /controls\._sphericalDelta\?\.set\(0,0,0\)/.test(r));
   ok('viewport: the arena\'s "tilted off" reaches the client', /onTopView: on => \{ if \(!cancelled\) latest\.current\.onTopView\?\.\(on\); \}/.test(v));
   // 🎛️ The toolbar's 📌 Hold was the ☰ Auto camera switch inverted; with the
@@ -190,6 +191,67 @@ console.log('§6 🧱 amps, fans and dice are a solid layer above the board');
     ok('🔢 combatDice tags its printed numbers', /ink\.name='Printed face numbers';ink\.userData\.solidDecal=true;/.test(read('./combatDice.js')));
   }
   ok('…at the arena\'s tone mapping and exposure', /foreground\.toneMapping = renderer\.toneMapping;/.test(src) && /foreground\.toneMappingExposure = renderer\.toneMappingExposure;/.test(src));
+}
+
+console.log('§7 🧭 face north turns the lens and nothing else');
+{
+  const P = (x, y, z) => ({ x, y, z });
+  const hyp = (p, t) => Math.hypot(p.x - t.x, p.z - t.z), dist = (p, t) => Math.hypot(p.x - t.x, p.y - t.y, p.z - t.z);
+  const close = (a, b, eps = 1e-9) => Math.abs(a - b) < eps;
+  // the ◈ Arena preset's lens (frameView: 27, 20.8, 37 off the target) and a ring of orbits round an off-centre target
+  const target = P(3.2, .4, -1.7);
+  const lenses = [P(27 + 3.2, 21.2, 37 - 1.7)];
+  for (let a = -Math.PI; a < Math.PI; a += Math.PI / 7) lenses.push(P(target.x + 22 * Math.sin(a), 15, target.z + 22 * Math.cos(a)));
+  let north = true, keeps = true, aim = true;
+  for (const lens of lenses) {
+    const n = northLens(lens, target);
+    north &&= facesNorth(n, target) && close(n.x, target.x, 1e-6) && n.z > target.z;
+    keeps &&= close(dist(n, target), dist(lens, target), 1e-6) && n.y === lens.y && close(hyp(n, target), hyp(lens, target), 1e-6);
+    aim &&= target.x === 3.2 && target.z === -1.7;   // the target is read, never moved
+  }
+  ok('every lens ends due SOUTH of its target (board north is world −z, so it faces north)', north);
+  ok('…at the same distance and the same height — zoom and tilt are kept', keeps);
+  ok('…and the look-at point is not touched', aim);
+  // board north really is world −z: arenaPoint maps py → z, and the numpad's 8 is −90° (py falling)
+  ok('board north is world −z (arenaPoint maps py to z, so a smaller py is further −z)', /\(h\.py-2415\)\/200/.test(read('./arenaVisuals.js')));
+  ok('⌗ Top already faces north (so 🧭 is a no-op under the lock and cannot tilt it off the axis)',
+    facesNorth(P(TOP_OFFSET[0] * 35, TOP_OFFSET[1] * 35, TOP_OFFSET[2] * 35), P(0, 0, 0))
+    && onTopAxis(northLens(P(0, 33, 12), P(0, 0, 0)), P(0, 0, 0)));
+  // the short way round: never more than half a circle, either side
+  const east = P(10, 5, 0), west = P(-10, 5, 0), o = P(0, 0, 0);
+  ok('lens east of target: heading +90°, turned −90° (the short way)', close(lensHeading(east, o), Math.PI / 2) && close(-lensHeading(east, o), -Math.PI / 2));
+  ok('lens west of target: heading −90°, turned +90°', close(lensHeading(west, o), -Math.PI / 2));
+  let short = true;
+  for (const lens of lenses) short &&= Math.abs(lensHeading(lens, target)) <= Math.PI + 1e-12;
+  ok('no turn is ever more than half a circle', short);
+  // the eased swing is a turn about the vertical at every step, so the lens never dips or zooms mid-swing
+  const from = lenses[0], turn = -lensHeading(from, target);
+  let steady = true;
+  for (let e = 0; e <= 1; e += .05) { const p = turnLens(from, target, turn * e); steady &&= p.y === from.y && close(dist(p, target), dist(from, target), 1e-6); }
+  ok('mid-swing the lens keeps its height and distance (a turn, never a dip or a zoom)', steady);
+  ok('a lens already facing north reports so (a press does nothing, rather than a twitch)',
+    facesNorth(P(0, 9, 12), o) && facesNorth(turnLens(P(0, 9, 12), o, NORTH_TOLERANCE * .9), o) && !facesNorth(turnLens(P(0, 9, 12), o, NORTH_TOLERANCE * 2), o));
+  ok('a lens straight overhead counts as north (no heading to turn from)', facesNorth(P(0, 9, 0), o));
+
+  const r = read('./arenaRenderer.js'), v = read('../ui/BoardViewport.jsx'), c = read('../rlsw-simulator-v3_8_1.jsx');
+  ok('the runtime exposes north(): it counts as taking over (director + battle lens nudged), like zoom',
+    /north\(\)\{[^}]*refocus=null;sonicCamera\.userNudge\(\);director\.userNudge\(now\);/.test(r));
+  ok('…does nothing when already facing north, else swings by −lensHeading',
+    /if\(facesNorth\(camera\.position,controls\.target\)\)\{northSwing=null;return;\}/.test(r) && /turn:-lensHeading\(camera\.position,controls\.target\)/.test(r));
+  ok('…the swing is eased in the render loop, instant under reduced motion, and keeps the loop drawing',
+    /else if\(northSwing\) \{\s*northPose\(now\);/.test(r) && /const k=reduced\?1:Math\.min\(1,\(now-northSwing\.start\)\/NORTH_MS\)/.test(r) && /\|\|!!refocus\|\|!!northSwing;/.test(r));
+  ok('…a drag, a ☰ view and zoom all cancel it (the player took the lens back)',
+    /const takeOver=\(\)=>\{refocus=null;northSwing=null;/.test(r) && /refocus=null;northSwing=null;sonicCamera\.userNudge\(\);frameView\(name\)/.test(r) && /zoom\(factor\)\{refocus=null;northSwing=null;/.test(r));
+  ok('…a refocus started mid-swing starts from the finished north pose', /function startRefocus\(now,ms=REFOCUS_MS\)\{\s*if\(northSwing\)\{northSwing\.start=-Infinity;northPose\(now\);\}/.test(r));
+  ok('BoardViewport: view(\'north\') turns WITHOUT leaving ⌗ Top, and cameraRef.north() exists',
+    /if \(name === 'north'\) \{ runtime\.current\?\.north\(\); return; \}\s*if \(name === 'top'\)/.test(v) && /north\(\) \{ runtime\.current\?\.north\(\); \}/.test(v));
+  ok('…and the 🧭 N button sits on the board whenever the arena is up', /\{ready && <button className="btn" data-face-north[^>]*onClick=\{\(\) => runtime\.current\?\.north\(\)\}>🧭 N<\/button>\}/.test(v)
+    && /\{enabled && \(failed \|\| ready\) &&/.test(v));
+  ok('the ☰ Camera view submenu lists 🧭 Face north', /\{ id:'north',\s+icon:'🧭', label:'Face north'/.test(c));
+  ok('Numpad 5 faces north — by e.code, off in a battle (the Riff-Off reads e.key \'5\'), off in a text field',
+    /e\.code !== 'Numpad5'/.test(c) && /if \(battleState \|\| !arenaCameraRef\.current\) return false;\s*arenaCameraRef\.current\.north\(\);/.test(c)
+    && /northKeyHandlerRef\.current = numpadNorth/.test(c));
+  ok('…and the walk still owns no Numpad5 (4/5/6 stay out of NUMPAD_DIRS)', !/Numpad5/.test(read('../ui/numpadMove.js')));
 }
 
 console.log(fail ? `\n❌ topViewCheck: ${fail} failed, ${pass} passed` : `\n✅ topViewCheck: ${pass} assertions passed`);

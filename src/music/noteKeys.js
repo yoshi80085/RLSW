@@ -54,13 +54,11 @@ export function stockIndexForKey(stock, want, available = () => true) {
 
 /** Tab's cycle over the stacks that can still take a note.
  *  null (no stack picked yet) → the first open one; Drive ⇄ Sustain after that.
- *  🪕 `stringsOpen` adds the Cursed Shamisen's strings as a third stop (Drive →
- *  Sustain → Strings), and only when he has strings to tune — closed by default
- *  so every Spirit without one cycles exactly as before. Never the FIRST pick:
- *  a bare key with nothing chosen still means Drive.
+ *  🪦 v1's third stop (the Cursed Shamisen's strings) went with the strings,
+ *  2026-10-09 — the v3 Shamisen is a trap on the board, not a chord-step row.
  *  Returns null when nothing is open. */
-export function nextStackDest(current, { driveOpen = true, sustainOpen = true, stringsOpen = false } = {}) {
-  const open = [driveOpen && 'drive', sustainOpen && 'sustain', stringsOpen && 'strings'].filter(Boolean);
+export function nextStackDest(current, { driveOpen = true, sustainOpen = true } = {}) {
+  const open = [driveOpen && 'drive', sustainOpen && 'sustain'].filter(Boolean);
   if (!open.length) return null;
   const at = open.indexOf(current);
   return open[(at + 1) % open.length];

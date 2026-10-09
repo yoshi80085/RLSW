@@ -74,7 +74,14 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
           // ⚠️ The two ROLL marks MUST cross into the frame: `arenaVisuals`
           // runs both staged clocks off them, and a frame without them is a
           // battle frozen at t=0 (the 2026-09-24 "bugged out" report).
-          ...(battle.swingClash ? {swingClash:true,key:battle.swingKey,swingStartedAt:battle.swingStartedAt,
+          // 🃏 THE PLAYED CARD IS PART OF THE KEY (2026-10-09). A card played at the
+          // roll RE-THROWS the attacker's dice (combat.js applyMarqueeCardPlayed),
+          // but the key stayed the same, so the arena kept the dice it had built
+          // before the card — the table showed the old throw while the totals used
+          // the new one, and the card looked like it did nothing. A new key
+          // rebuilds them; both battle clocks run off the ROLL marks, not the build.
+          ...(battle.swingClash ? {swingClash:true,key:`${battle.swingKey}${battle.cardPlayed?`:card:${battle.cardPlayed}`:''}`,swingStartedAt:battle.swingStartedAt,
+            cardPlayed:battle.cardPlayed??null,atkFixed:(battle.atkFixed??[]).map(f=>({...f})),
             swingRollAt:battle.swingRollAt,swingRivalRollAt:battle.swingRivalRollAt,viewer:battle.viewer,
             diceVals:[...battle.diceVals],defenderDiceVals:[...battle.defenderDiceVals],
             dicePool:[...battle.dicePool],defenderDicePool:[...battle.defenderDicePool],
@@ -85,7 +92,8 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
             atkTotal:battle.atkTotal,defTotal:battle.defTotal,damage:battle.damage,tied:battle.tied,
             attackerWon:battle.attackerWon} : {}),
           ...(battle.sonicAttack && !battle.riffOff && battle.diceHits ? {
-            volley:true, key:battle.sonicId ?? `${turn}:${battle.attackerId}:${battle.defenderId}`,
+            volley:true, key:`${battle.sonicId ?? `${turn}:${battle.attackerId}:${battle.defenderId}`}${battle.cardPlayed?`:card:${battle.cardPlayed}`:''}`,
+            cardPlayed:battle.cardPlayed??null, atkFixed:(battle.atkFixed??[]).map(f=>({...f})),
             sonicStartedAt:battle.sonicStartedAt,sonicInterrupted:battle.sonicInterrupted,
             dicePool:[...(battle.dicePool ?? [])], diceVals:[...(battle.diceVals ?? [])],
             diceHits:[...battle.diceHits], shieldValue:battle.shieldValue,
@@ -144,7 +152,7 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
     // voice). `claim` is the acting Spirit's hunt colour, from `unlockClaim`.
     lostChords:lostChords ? {
       tokens:(lostChords.tokens ?? []).filter(t => Number.isFinite(t?.num) && t.note)
-        .map(t => ({ num:t.num, note:t.note, claim:t.claim ?? null })),
+        .map(t => ({ num:t.num, note:t.note, claim:t.claim ?? null })),   // claim: 'drive' | 'sustain' | 'cursed' (🪤 the Ronin's own screen only)
       drifted:lostChords.drifted?.moved ? { moved:lostChords.drifted.moved.map(m => ({ from:m.from, to:m.to })) } : null,
       thrashed:lostChords.thrashed?.added ? { added:[...lostChords.thrashed.added] } : null,
       hover:Number.isFinite(lostChords.hover) ? lostChords.hover : null,
@@ -153,16 +161,23 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
     // 🎪 The lit marquees (public board state) — board/marqueeMarkers.js.
     marquees:(marquees ?? []).filter(m => Number.isFinite(m?.hex))
       .map(m => ({ hex:m.hex, corner:m.corner ?? null, color:m.color ?? null, community:!!m.community })),
-    // 🎸 THE IWATO CURSE (cursedShamisenArena.js). Public by design: rivals count
-    // the strings (Alex — "in plain sight"), and a curse is cast in front of
-    // everyone. Smoke still hides a Ronin's instrument; a curse on a hidden
+    // 🎸 THE IWATO CURSE (cursedShamisenArena.js) — v3. The sprung curse and the
+    // ash are public: cast in front of everyone. ⚠️ The armed TRAP is hidden: it
+    // enters this frame ONLY from the Ronin's own seat (`trap`, the client's
+    // `myTrap`), where the noroi card is thrown and stuck. A curse on a hidden
     // Spirit keeps its key (so it is not replayed) but loses its target.
     shamisen:shamisen ? {
-      instruments:(shamisen.instruments ?? []).filter(i => visible.has(i.roninId))
-        .map(i => ({ roninId:i.roninId, color:i.color, strings:[...(i.strings ?? [])] })),
+      instruments:[],
       curses:(shamisen.curses ?? []).map(c => ({ key:c.key, roninId:c.roninId, color:c.color,
-        targetId:visible.has(c.targetId) ? c.targetId : null, ivs:[...(c.ivs ?? [])],
-        turnsLeft:c.turnsLeft, ended:c.ended ?? null })),
+        targetId:visible.has(c.targetId) ? c.targetId : null, fromHex:Number.isFinite(c.fromHex) ? c.fromHex : null,
+        ivs:[...(c.ivs ?? [])], lifted:c.lifted ?? 0, turnsLeft:c.turnsLeft, ended:c.ended ?? null })),
+      // 🪤 THIS VIEWER'S OWN armed trap — the client passes it only for the
+      // Ronin's own seat (`myTrap`), so only his arena throws the noroi card.
+      trap:shamisen.trap && Number.isFinite(shamisen.trap.hexNum) ? { key:String(shamisen.trap.key), hexNum:shamisen.trap.hexNum,
+        note:shamisen.trap.note ?? null, roninId:shamisen.trap.roninId ?? null } : null,
+      // 🪦 a trap that caught no one burns in public (rule 18)
+      ashes:(shamisen.ashes ?? []).filter(a => a?.key && Number.isFinite(a.hexNum))
+        .map(a => ({ key:a.key, trapKey:a.trapKey ?? null, hexNum:a.hexNum, roninId:a.roninId ?? null, how:a.how ?? null })),
     } : null,
     // The arm's visible trail is already public board geometry.
     tentacle:tentacle ? {key:tentacle.key, pts:tentacle.pts.map(p=>({x:p.x,y:p.y}))} : null,

@@ -141,15 +141,16 @@ for (let k = 0; k < 4; k += 1) {
 ok(roninEnds === 2 && s.noteStates[RONIN].hammerCharges === 2, `two Ronin turn ends from 1 → capped at 2 (got ${s.noteStates[RONIN].hammerCharges})`);
 
 // The commit: a hammered note pays and moves, but does not lift a curse.
-const curse = { roninRoot: 'D', turnsLeft: 2, key: 'K1' };
+// v3 (2026-10-09): Iwato on D, haunted ♭2 ♭5 ♭7 (Eb Ab C) — every one must be played to lift it.
+const curse = { root: 'D', turnsLeft: 3, key: 'K1', by: 'x', targets: [1, 6, 10], lifted: [] };
 const mk = (line, srcs) => ({ spirits: [{ id: 'r', name: 'Rival', speed: 5 }], noteStates: { r: {
   ...makeInitialNoteState(RONIN, () => 0.5), rootNote: 'E', paletteMode: 'lydian',
   melodyLine: line, melodySrcIdx: srcs, iwatoCurse: curse } } });
-const allPlayed = commitMelodyEconomy(mk(['D', 'G', 'C'], [0, 1, 2]), 'r', {});
-ok(allPlayed.ok && allPlayed.report.exorcised, 'control: three different Iwato notes played from the hand exorcise');
-const oneHammered = commitMelodyEconomy(mk(['D', 'G', 'C'], [0, 1, 'hammer']), 'r', {});
-ok(oneHammered.ok && !oneHammered.report.exorcised && !('iwatoCurse' in oneHammered.patch),
-  '⭐ the same line with C hammered on does NOT exorcise (Alex: only notes played count)');
+const allPlayed = commitMelodyEconomy(mk(['Eb', 'Ab', 'C'], [0, 1, 2]), 'r', {});
+ok(allPlayed.ok && allPlayed.report.exorcised, 'control: the three haunted notes played from the hand lift the curse');
+const oneHammered = commitMelodyEconomy(mk(['Eb', 'Ab', 'C'], [0, 1, 'hammer']), 'r', {});
+ok(oneHammered.ok && !oneHammered.report.exorcised && !(oneHammered.patch.iwatoCurse?.lifted ?? []).includes(10),
+  '⭐ the same line with C hammered on does NOT lift C (Alex: only notes played count) — the curse stays on');
 ok(oneHammered.hexes === 3, `…but the hammered note still counts toward movement (Alex: yes) — ${oneHammered.hexes} hexes`);
 ok(playedNotes(['D', 'G', 'C'], [0, 'pull', 2]).join() === 'D,C', 'playedNotes drops technique seats only');
 const paid = commitMelodyEconomy({ spirits: [{ id: RONIN, name: 'R', speed: 5 }], noteStates: { [RONIN]: {

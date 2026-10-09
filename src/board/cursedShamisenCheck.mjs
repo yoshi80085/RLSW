@@ -1,5 +1,5 @@
-// ─── test:cursedshamisen — the Iwato curse, before it is ported (2026-10-02) ──
-// The rules the animation stands on (the scale, tuning, exorcism), the cast's
+// ─── test:cursedshamisen — the Iwato curse's look (v1 2026-10-02 → v3 2026-10-09) ──
+// The rules the animation stands on (the scale, the haunted-note draw), the cast's
 // beat plan, the wheel overlay's geometry against the REAL wheel, the visuals
 // driven headless through a whole curse (tune → cast → cursed → burn/exorcise →
 // back to exactly how it was found), the sound laid on the same plan, and lever
@@ -9,8 +9,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import * as THREE from 'three';
 import {
-  IWATO, CURSED_SHAMISEN, STRINGS, CURSE_TURNS, EXORCISE_NOTES, iwatoPcs, iwatoNames, isIwato, iwatoDegree,
-  canTune, exorcises, curseSlots, planCast, hushAt, wispArc, orbitPoint, stringOctaves, stringIv, CAST_SCORE, DEFAULT_STRINGS,
+  IWATO, CURSED_SHAMISEN, STRINGS, CURSE_TURNS, HAUNTED_NOTES, CREEPY_IVS, iwatoPcs, iwatoNames, iwatoDegree,
+  pickHaunted, hauntRand, curseSlots, planCast, hushAt, wispArc, orbitPoint, stringOctaves, stringIv, CAST_SCORE, DEFAULT_STRINGS,
 } from './cursedShamisen.js';
 import { createCursedShamisenVisuals } from './cursedShamisenVisuals.js';
 import { scheduleCast } from '../audio/shamisenCurseSfx.js';
@@ -27,9 +27,9 @@ const colDist = (a, b) => Math.hypot(a.r - b.r, a.g - b.g, a.b - b.b);
 
 section('0 · one copy of every number');
 ok(Object.isFrozen(CURSED_SHAMISEN) && Object.isFrozen(IWATO), 'the look and the scale are frozen');
-ok(STRINGS === 3 && CURSE_TURNS === 2 && EXORCISE_NOTES === 3, 'three strings, two turns, three notes to exorcise (Alex, 2026-10-02)');
+ok(STRINGS === 3 && CURSE_TURNS === 3 && HAUNTED_NOTES === 3, 'three strings on the ghost instrument, three cursed turns, three haunted notes (v3, Alex 2026-10-09)');
 
-section('1 · the scale is Iwato, on the RONIN\'S root');
+section('1 · the scale is Iwato (v3: on the trapped note)');
 ok(JSON.stringify(IWATO) === JSON.stringify([0, 1, 5, 6, 10]), 'Iwato = 1 ♭2 4 ♭5 ♭7');
 ok(JSON.stringify(iwatoPcs('D')) === JSON.stringify([2, 3, 7, 8, 0]), 'on D: D E♭ G A♭ C');
 ok(iwatoNames('D').join(' ') === 'D E♭ G A♭ C', 'spelled with flats');
@@ -39,12 +39,13 @@ ok(JSON.stringify(shared) === JSON.stringify([0, 5]), 'it shares only 1 and 4 wi
 ok(iwatoDegree('Ab', 'D') === '♭5' && iwatoDegree('A', 'D') === null, 'degrees read right; non-Iwato is null');
 ok(curseSlots('D').filter(s => s.iwato).length === 5, 'five slots light on the cursed wheel');
 
-section('2 · tuning a string');
-ok(canTune([], 'Eb', 'D'), 'an Iwato note tunes a string');
-ok(!canTune([], 'E', 'D'), 'a non-Iwato note does not');
-ok(canTune(['Eb'], 'D#', 'D'), 'repeats ARE allowed (Alex: "any random note from the scale")');
-ok(!canTune(['Eb'], 'D#', 'D', { distinct:true }), '…and the old "distinct" proposal is one switch away (enharmonics included)');
-ok(!canTune(['D', 'Eb', 'G'], 'C', 'D'), 'a fourth string does not exist');
+section('2 · the haunted notes — three different, creepy, seeded');
+for (let i = 0; i < 200; i++) {
+  const h = pickHaunted(hauntRand(`curse-${i}`), HAUNTED_NOTES);
+  if (h.length !== 3 || new Set(h).size !== 3 || !h.every(iv => CREEPY_IVS.includes(iv))) { ok(false, `draw ${i} is not three different creepy notes: ${h}`); break; }
+}
+ok(true, 'every draw: three different notes from ♭2 4 ♭5 ♭7 — never the root (Alex: "all 3 notes come from creepy notes")');
+ok(JSON.stringify(pickHaunted(hauntRand('same'), 3)) === JSON.stringify(pickHaunted(hauntRand('same'), 3)), 'the same key draws the same notes on every client');
 
 section('2b · the octave rule — a repeated note rings an octave higher');
 ok(JSON.stringify(stringOctaves([0, 0, 0])) === '[0,1,2]', 'D·D·D = low, middle, high');
@@ -55,12 +56,6 @@ ok(stringIv('C', 'D') === 10 && stringIv('Eb', 'D') === 1 && stringIv('D', 'D') 
   ok(new Set(same).size >= 3, 'three of the same note still make a melody of three different heights');
   const all = [[0, 0, 0], [1, 6, 10], [10, 10, 10], [6, 0, 6]].flatMap(t => planCast(CURSED_SHAMISEN, t).notes.map(n => n.semis));
   ok(all.every(x => x >= -14 && x <= 24), 'no tuning pushes the melody off the instrument'); }
-
-section('3 · exorcism');
-ok(exorcises(['G', 'C', 'D', 'E'], 'D'), 'three different Iwato notes lift it');
-ok(!exorcises(['G', 'C', 'E', 'F'], 'D'), 'two do not');
-ok(!exorcises(['G', 'G', 'G', 'C'], 'D'), 'repeats do not count twice');
-ok(exorcises(['Ab', 'G#', 'Eb', 'C'], 'D'), 'enharmonic spellings count once');
 
 section('4 · the cast, beat by beat');
 for (const [look, ivs] of [[CURSED_SHAMISEN, undefined], [{ ...CURSED_SHAMISEN, phraseTempo:0.5, wispStagger:0 }, [0, 0, 0]], [{ ...CURSED_SHAMISEN, bell:'off', hushMs:1800, phraseTempo:1.6 }, [6, 1, 10]]]) {
@@ -73,7 +68,7 @@ for (const [look, ivs] of [[CURSED_SHAMISEN, undefined], [{ ...CURSED_SHAMISEN, 
   ok(P.notes.filter(n => CAST_SCORE[n.i].s != null).every(n => ((n.semis % 12) + 12) % 12 === (ivs ?? DEFAULT_STRINGS)[CAST_SCORE[n.i].s]), 'his strings ARE the melody\'s heart');
   ok(P.notes.some(n => n.trem > 0) && P.notes.some(n => n.bend !== 0 || look.bend === 0) && P.notes.at(-1).dyad === 1, 'the tremolo, the slides and the unresolved ♭2 are in it');
   ok(P.wisps.filter(w => w.slap).length === 1 && P.wisps.at(-1).slap, 'exactly one — the last — becomes the ofuda');
-  ok(STRINGS - 1 === CURSE_TURNS, 'the wisps left circling ARE the countdown');
+  ok(STRINGS === HAUNTED_NOTES, 'one wisp per haunted note — v3: they ALL circle the rival');
   ok(P.slapAt === P.wisps.at(-1).arrive && P.infectStart === P.slapAt, 'the infection starts on the slap');
   ok(P.total > P.infectEnd && P.hushOut === P.infectEnd, 'the world comes back after the infection');
   ok(look.bell === 'on' ? P.bellAt === look.bellAt : P.bellAt === null, 'the bell lever is obeyed');
@@ -97,8 +92,16 @@ const cm = cursedWheelModel({ spiritId:'Metalness_Monster', root:'E', roninRoot:
 ok(cm.slots.filter(s => s.iwato).length === 5, 'five Iwato slots on the rival\'s wheel');
 const phryg = new Set(pcsOf(playableScale('E', 'phrygian')));
 ok(cm.slots.filter(s => s.ownLost).every(s => phryg.has(s.pc) && !iwatoPcs('D').includes(s.pc)), '"lost" = their own notes the curse does not keep');
-ok(cm.heldIwato === 3 && exorcises(hands.can, 'D'), 'the preview\'s "can" hand really can (G, C, D)');
-ok(cursedWheelModel({ spiritId:'Metalness_Monster', root:'E', roninRoot:'D', hand:hands.cannot }).heldIwato === 0 && !exorcises(hands.cannot, 'D'), '…and "cannot" really cannot');
+ok(cm.heldIwato === 3, 'the preview\'s "can" hand holds three Iwato notes (G, C, D)');
+ok(cursedWheelModel({ spiritId:'Metalness_Monster', root:'E', roninRoot:'D', hand:hands.cannot }).heldIwato === 0, '…and "cannot" holds none');
+{ // 👻 v3: the haunted marks — Eb (♭2) haunted, Ab (♭5) lifted, G (the 4) plain Iwato
+  const hm = cursedWheelModel({ spiritId:'Metalness_Monster', root:'E', roninRoot:'D', hand:['G', 'Eb', 'E'], haunted:[{ pc:3, lifted:false }, { pc:8, lifted:true }] });
+  const at = p => hm.slots.find(s => s.pc === p);
+  ok(at(3).haunted && !at(3).lifted && at(8).lifted && !at(8).haunted && !at(7).haunted && !at(7).lifted, 'haunted / lifted / plain marked on the right slots');
+  ok(hm.hauntedLeft === 1 && hm.liftedCount === 1 && hm.heldHaunted === 1, 'the readout\'s counts: one left, one lifted, one held');
+  const wj = read('../ui/CursedWheel.jsx');
+  ok(/cw-haunt-ring/.test(wj) && /fill=\{s\.haunted \? '#000'/.test(wj), 'a haunted note is black with a breathing ring (colour AND motion)');
+}
 
 section('6 · the visuals, headless, through a whole curse');
 function fakeStandee(pos, colour) {
@@ -125,21 +128,24 @@ function run(path) {
   ok(mid.dim > 0.3 && mid.tint > 0.3, 'the world hushes and goes violet during the cast');
   step(P.total - P.phraseEnd + 100);
   const after = step(50);
-  ok(v.state.phase === 'cursed' && v.state.turnsLeft === CURSE_TURNS, 'cursed, with two turns on the clock');
+  ok(v.state.phase === 'cursed' && v.state.turnsLeft === HAUNTED_NOTES, 'cursed, with three ghosts');
+  ok(v.group.children.filter(c => c.isSprite && c.renderOrder === 30 && c.visible).length === HAUNTED_NOTES, '⭐ v3: all three ghosts circle the rival (the slapping one too)');
   ok(rival.group.children.some(c => c.isMesh && c.renderOrder === 25), 'the ofuda is ON the rival (it rides a shove with them)');
   ok(!rival.edge.material.emissive.equals(was), 'their edge has turned');
   ok(colDist(rival.halo.material.color, new THREE.Color('#ff6600')) > 0.2, '…and their halo with it');
   ok(rival.shadow.material.color.getHex() === 0 && rival.art.material.emissive.getHex() === 0xffffff, 'but never the shadow or the print');
   ok(after.dim < 0.05 && after.fans.sync < 0.3 && after.fans.dim < 0.8, 'the world is back; their fans are out of time and dim');
   if (path === 'expire') {
-    ok(v.burnOne(now) && v.state.turnsLeft === 1, 'a cursed turn burns one wisp');
+    ok(v.burnOne(now) && v.state.turnsLeft === 2, 'a lifted note burns one ghost');
     step(1200);
-    ok(v.burnOne(now) && v.state.phase === 'expired', 'the second ends the curse');
+    ok(v.state.phase === 'cursed', '…and the curse holds (v3: only the caller ends it)');
+    ok(v.expire(now) && v.state.phase === 'expired', 'out of turns: it expires');
     const end = step(CURSED_SHAMISEN.expireMs + 300);
     ok(end.fans.sync > 0.99 && colDist(rival.edge.material.emissive, was) < 1e-3, 'expired: the fans and the edge are back exactly');
     ok(!rival.group.children.some(c => c.renderOrder === 25), 'the ofuda has fallen off');
   } else {
-    ok(v.exorcise(now) && v.state.phase === 'exorcised', 'exorcised');
+    ok(v.burnOne(now) && v.burnOne(now) && v.burnOne(now) && v.state.turnsLeft === 0 && v.state.phase === 'cursed', 'three lifts burn the three ghosts');
+    ok(v.exorcise(now) && v.state.phase === 'exorcised', 'the paper lifts');
     const e = step(300);
     ok(e.fans.cheer > 0, 'their crowd cheers');
     step(CURSED_SHAMISEN.ofudaBurnMs + 400);
@@ -189,7 +195,7 @@ if (client) {
   // ✅ WIRED 2026-10-02 — this guard used to assert the opposite ("not imported yet").
   ok(/from "\.\/engine\/systems\/iwatoCurse\.js"/.test(client), 'the client plays by the engine\'s rules (iwatoCurse.js)');
   ok(/<CursedWheel\b/.test(client), 'a cursed Spirit\'s Scale Wheel is the infected one');
-  ok(/shamisen:curseScene\(/.test(client), 'the arena is handed the curse, read off the sheets');
+  ok(/shamisen:\{ \.\.\.curseScene\(spirits, noteStates\), trap: myTrap \}/.test(client), 'the arena is handed the curse, read off the sheets — plus this seat\'s OWN trap only (`myTrap`)');
 }
 ok(/createShamisenStage/.test(read('./arenaVisuals.js')), 'the arena mounts the curse\'s stage');
 ok(/createCursedShamisenVisuals/.test(read('./cursedShamisenArena.js')), '…which draws with these visuals');

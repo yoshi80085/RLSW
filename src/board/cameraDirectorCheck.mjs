@@ -285,7 +285,7 @@ console.log('§3 the renderer wiring');
   ok('the Sonic camera outranks it: the director is only asked when sonicCamera.update returns false', /if\(!sonicCamera\.update\(frame,model,dt,reduced(?:,visuals\.battleShot\(\))?\)\) \{(\s*\/\/[^\n]*)*\s*cameraShot=autoCamera(?:&&!topView)?\?director\.update\(/.test(r));
   ok('subjects are read every frame, before the Sonic check', r.indexOf('subjects.read(frame,now)') > 0 && r.indexOf('subjects.read(frame,now)') < r.indexOf('if(!sonicCamera.update('));
   ok('the director gets the real frame time (its own 100 ms cap), not the 50 ms-capped dt', /director\.update\(\{dtMs:wallDt\*1000,now,/.test(r));
-  ok('no controls.update() on a frame the director drives (or the break\'s refocus eases)', /if\(cameraShot\?\.driving\) \{[^}]*camera\.lookAt\(controls\.target\);dirty=true;\s*\} else if\(refocus\) \{[\s\S]{0,700}?if\(k>=1\)refocus=null;\s*\} else controls\.update\(\);/.test(r));
+  ok('no controls.update() on a frame the director drives (or the break\'s refocus / the 🧭 north swing eases)', /if\(cameraShot\?\.driving\) \{[^}]*camera\.lookAt\(controls\.target\);dirty=true;\s*\}(?: else if\(northSwing\) \{\s*northPose\(now\);[^\n]*\n\s*\})? else if\(refocus\) \{[\s\S]{0,700}?if\(k>=1\)refocus=null;\s*\} else controls\.update\(\);/.test(r));
   ok('the player\'s hands are OrbitControls start/end', /controls\.addEventListener\('start',takeOver\)/.test(r) && /controls\.addEventListener\('end',letGo\)/.test(r) && /removeEventListener\('start',takeOver\)/.test(r));
   ok('a click that picks a hex cannot reach them (keepGameplayClicks still guards the overlay)', /keepGameplayClicks\(overlay\.domElement\)/.test(r) && /OrbitControls\(camera,overlay\.domElement\)/.test(r));
   ok('toolbar view buttons and zoom count as taking over', /view\(name\)\{[\s\S]{0,260}?sonicCamera\.userNudge\(\);frameView\(name\);director\.userNudge/.test(r) && /zoom\(factor\)\{[^}]*director\.userNudge/.test(r));
@@ -315,7 +315,7 @@ console.log('§4 the switch and the badge');
   ok('the refocus keeps the viewing angle and lands at the idle distance', /dir:dir\.divideScalar\(r0\),r0,r1:CAMERA_DIRECTOR\.idleDistance\*fit/.test(r)
     && /controls\.target\.lerpVectors\(refocus\.t0,refocus\.goal,e\)/.test(r));
   ok('a drag, a ☰ view or zoom cancels the refocus; reduced motion snaps', /const takeOver=\(\)=>\{refocus=null;/.test(r)
-    && /refocus=null;sonicCamera\.userNudge\(\);frameView\(name\)/.test(r) && /zoom\(factor\)\{refocus=null;/.test(r) && /const k=reduced\?1:/.test(r));
+    && /refocus=null;(?:northSwing=null;)?sonicCamera\.userNudge\(\);frameView\(name\)/.test(r) && /zoom\(factor\)\{refocus=null;/.test(r) && /const k=reduced\?1:/.test(r));
   // 🎯 2026-10-08: a new turn brings the lens to its Spirit; each entrance gets a close-up.
   ok('a turn changing hands is noticed (not the first acting Spirit the arena sees)', /if\(frame\.actingId!==seenActing\)\{if\(seenActing!==undefined&&frame\.actingId!=null\)turnFocus=true;seenActing=frame\.actingId;\}/.test(r));
   ok('…and eases onto the new Spirit once the battle shot lets go — not under top-down, Auto camera off, mid-drag, or while the director flies',

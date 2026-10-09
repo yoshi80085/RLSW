@@ -49,11 +49,14 @@ export function rollDie(sides, rng, floor = 0) {
  * @returns {{ keptIdx:number[], droppedIdx:number[], vals:number[], pool:number[],
  *             droppedVals:number[], droppedPool:number[], fizzled:boolean }}
  */
-export function keepBest(values = [], pool = [], keep = values.length) {
+export function keepBest(values = [], pool = [], keep = values.length, pinned = []) {
   const k = Math.max(0, Math.min(values.length, keep));
+  // 🃏 A PINNED die (a marquee card's bonus die, `marqueeCards.js` applyCard)
+  // is kept whatever it shows, like the Eleven die: it sits in a seat of its own.
+  const pin = new Set(pinned);
   const order = values.map((v, i) => i).sort((a, b) =>
-    (pool[b] === ELEVEN_DIE) - (pool[a] === ELEVEN_DIE) || values[b] - values[a] || a - b);
-  const keptSet = new Set(order.slice(0, Math.max(k, pool.includes(ELEVEN_DIE) ? 1 : 0)));
+    (pool[b] === ELEVEN_DIE) - (pool[a] === ELEVEN_DIE) || pin.has(b) - pin.has(a) || values[b] - values[a] || a - b);
+  const keptSet = new Set(order.slice(0, Math.max(k, pool.includes(ELEVEN_DIE) ? 1 : 0, pin.size)));
   const keptIdx = values.map((v, i) => i).filter(i => keptSet.has(i));
   const droppedIdx = values.map((v, i) => i).filter(i => !keptSet.has(i));
   const fizzled = keptIdx.some(i => pool[i] === ELEVEN_DIE && values[i] === 1);
@@ -71,12 +74,17 @@ export function keepBest(values = [], pool = [], keep = values.length) {
 
 /**
  * Throw a whole pool and keep the best.
- * 🃏 `fixed` — a marquee card's loaded faces, [{ idx, face }]. ⚠️ The loaded
- * die is still ROLLED (one `rng.int`, like every die) and only then set, so a
- * card never shifts the stream (see the header).
+ * 🃏 `fixed` — a marquee card's dice, [{ idx, face?, pin? }]. `face` SETS that
+ * die's face; `pin` keeps it whatever it shows (the card's bonus die, which
+ * `applyCard` appends to the pool with one more seat — Alex, 2026-10-09).
+ * ⚠️ A set die is still ROLLED (one `rng.int`, like every die) and only then
+ * set, so a card never shifts the stream (see the header). A replay recorded
+ * before the bonus die carries `{ idx, face }` with no pin and throws exactly
+ * as it did.
  */
 export function throwPool(pool = [], keep = pool.length, rng, floor = 0, fixed = []) {
-  const load = new Map((fixed ?? []).map(f => [f.idx, f.face]));
+  const load = new Map((fixed ?? []).filter(f => Number.isFinite(f.face)).map(f => [f.idx, f.face]));
+  const pinned = (fixed ?? []).filter(f => f.pin && f.idx >= 0 && f.idx < pool.length).map(f => f.idx);
   const thrown = pool.map((s, i) => { const v = rollDie(s, rng, floor); return load.has(i) ? load.get(i) : v; });
-  return { thrown, ...keepBest(thrown, pool, keep) };
+  return { thrown, ...keepBest(thrown, pool, keep, pinned) };
 }

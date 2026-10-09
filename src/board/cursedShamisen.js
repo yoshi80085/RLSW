@@ -1,25 +1,32 @@
 // ─── 🎸 CURSED SHAMISEN — THE IWATO CURSE (the pure half) ───────────────────
-// Alex, 2026-10-02 — `RONIN_ABILITY_DESIGN.md` §2.3.00. The rules, in one line
-// each:
-//   · TUNING — a third chord-step destination: three strings, one IWATO note
-//     (1 ♭2 4 ♭5 ♭7 on the RONIN'S root) each, one string a turn, kept between
-//     turns.
-//   · THE CAST spends the three strings (plus the Action Token and cooldown).
-//   · THE CURSE — the rival's Scale Wheel becomes Iwato for their next 2 turns;
-//     their other notes are discord (no fans — the existing rule).
-//   · EXORCISM — on their very next turn, a melody with 3 DIFFERENT Iwato notes
-//     lifts it.
-// And Alex on the look: *"The animation of it is really what captures the hearts
-// of the players"* — five moments (tuning, the cast, the infection, the
-// countdown, exorcism/expiry), dialled in on `.scratch/cursed-shamisen-preview`
-// before any of it is ported.
+// ⭐ v3, "THE TRAP" (Alex, 2026-10-09 — `src/IWATO_CURSE_V3_SPEC.md`). The rules,
+// in one line each:
+//   · THE TRAP — the Ronin spends his Action Token to curse ONE Lost Chord
+//     anywhere on the board. Only he can see it. It holds its hex (no drift) and
+//     stays armed until the start of his next turn, then it is wasted.
+//   · THE SPRING — a Rival who picks it up banks the note as usual AND is cursed:
+//     their wheel is Iwato ON THE TRAPPED NOTE (1 ♭2 4 ♭5 ♭7 from it), with
+//     three HAUNTED notes marked — all three from the creepy degrees (♭2 4 ♭5
+//     ♭7, weighted toward ♭2 and ♭5); the trapped note only sets the key.
+//   · THE LIFTS — each haunted note they commit in a MELODY lifts one ghost;
+//     progress accumulates across turns; all three lift the paper.
+//   · THE CLOCK — 3 of the Rival's turns, the springing turn counting as the
+//     first (Alex, 2026-10-09: "2 rounds to deal with the curse in the melody";
+//     melody comes before the move, so the springing turn has none). After the
+//     third it expires. The haunted notes never change once sprung (no refresh).
+//   · THE DRAW SEEPS IN — the guaranteed slice of their new notes is split
+//     between the cursed wheel and their own palette: ⅓ cursed on their 2nd
+//     cursed turn, ⅔ on their 3rd (`CURSED_DRAW_SHARE`). The other half stays
+//     all twelve, as for everyone.
+// (v1 — take up, tune three strings, cast within 3 hexes, exorcise with 3
+// different Iwato notes — is `RONIN_ABILITY_DESIGN.md` §2.3.00, kept as record.)
 //
-// THIS FILE: the rule helpers (pure, engine-ready) and every number of the look
-// (`CURSED_SHAMISEN`, ONE copy — the preview reads its defaults from here), plus
-// the cast's beat plan. The three.js half is `cursedShamisenVisuals.js`, the
-// sound `audio/shamisenCurseSfx.js`, the wheel's infection `ui/CursedWheel.jsx`.
-//
-// ⛔ PREVIEW STAGE. Nothing in the client or the engine imports this yet.
+// THIS FILE: the scale helpers, the haunted-note draw (pure, seeded from the
+// curse's own key so every client agrees without touching the match's random
+// stream) and every number of the LOOK (`CURSED_SHAMISEN`, ONE copy), plus the
+// cast's beat plan — the spring plays it. The three.js half is
+// `cursedShamisenVisuals.js`, the sound `audio/shamisenCurseSfx.js`, the wheel
+// `ui/CursedWheel.jsx`, the rules `engine/systems/iwatoCurse.js`.
 import { pitchIndex } from '../music/notes.js';
 
 // ── 🎵 the scale ─────────────────────────────────────────────────────────────
@@ -29,9 +36,18 @@ export const IWATO = Object.freeze([0, 1, 5, 6, 10]);
 export const IWATO_DEGREES = Object.freeze(['1', '♭2', '4', '♭5', '♭7']);
 const FLATS = ['C', 'D♭', 'D', 'E♭', 'E', 'F', 'G♭', 'G', 'A♭', 'A', 'B♭', 'B'];
 
-export const STRINGS = 3;          // a shamisen has three
-export const CURSE_TURNS = 2;      // the rival's next two turns
-export const EXORCISE_NOTES = 3;   // different Iwato notes in one melody
+export const STRINGS = 3;          // a shamisen has three (the ghost instrument the spring plays)
+export const CURSE_TURNS = 3;      // v3: three of the Rival's turns, the springing turn the first → two cursed melodies
+/** The share of the guaranteed draw slice that comes off the cursed wheel, by
+ *  cursed turn already behind them (0 = the springing turn, drawn before it). */
+export const CURSED_DRAW_SHARE = Object.freeze([0, 1 / 3, 2 / 3]);
+export const cursedDrawShare = turnsLeft =>
+  CURSED_DRAW_SHARE[Math.min(CURSED_DRAW_SHARE.length - 1, Math.max(0, CURSE_TURNS - (turnsLeft ?? CURSE_TURNS)))];
+export const HAUNTED_NOTES = 3;    // v3: three different haunted notes, each lifted by a melody
+/** The creepy degrees (all of Iwato but the root) and how strongly each is drawn:
+ *  ♭2 and ♭5 (the tritone) favoured. Intervals above the curse's root. */
+export const CREEPY_IVS = Object.freeze([1, 5, 6, 10]);
+export const CREEPY_WEIGHTS = Object.freeze({ 1:3, 5:1, 6:3, 10:1 });
 
 /** The five Iwato pitch classes on a root (a note name or a pitch class). */
 export function iwatoPcs(root) {
@@ -47,21 +63,39 @@ export function iwatoDegree(note, root) {
   return i < 0 ? null : IWATO_DEGREES[i];
 }
 
-/**
- * Can this note go on a string? It must be Iwato on the Ronin's root. Repeats
- * ARE allowed (Alex, 2026-10-02: "any random note from the scale"); a repeated
- * pitch is tuned an octave higher (`stringOctaves`), so it still sings.
- * `distinct` keeps the old proposal one switch away. `strings` = notes already tuned.
- */
-export function canTune(strings, note, roninRoot, { distinct = false } = {}) {
-  if (strings.length >= STRINGS || !isIwato(note, roninRoot)) return false;
-  return !distinct || !strings.some(s => pitchIndex(s) === pitchIndex(note));
+// ── 👻 the haunted notes ─────────────────────────────────────────────────────
+/** A small seeded PRNG (mulberry32 over a string hash). The haunted notes are
+ *  drawn from the CURSE'S OWN KEY, so every client, a replay and the headless
+ *  path agree without consuming a draw from the match's seeded stream. */
+export function hauntRand(seed = '') {
+  let h = 2166136261 >>> 0;
+  for (const ch of String(seed)) { h ^= ch.charCodeAt(0); h = Math.imul(h, 16777619) >>> 0; }
+  return () => {
+    h = (h + 0x6D2B79F5) >>> 0;
+    let t = h; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
 }
-
-/** Does this melody exorcise the curse? 3 DIFFERENT Iwato pitch classes. */
-export function exorcises(line, roninRoot) {
-  const pcs = iwatoPcs(roninRoot);
-  return new Set(line.map(n => pitchIndex(n)).filter(pc => pcs.includes(pc))).size >= EXORCISE_NOTES;
+/**
+ * Draw `n` DIFFERENT creepy intervals, weighted (`CREEPY_WEIGHTS`), never one in
+ * `exclude`.
+ * @returns intervals above the curse's root
+ */
+export function pickHaunted(rand, n = HAUNTED_NOTES, { exclude = [] } = {}) {
+  const out = [];
+  const taken = iv => exclude.includes(iv) || out.includes(iv);
+  const weightedPick = pool => {
+    const total = pool.reduce((a, iv) => a + (CREEPY_WEIGHTS[iv] ?? 1), 0);
+    let u = rand() * total;
+    for (const iv of pool) { u -= CREEPY_WEIGHTS[iv] ?? 1; if (u < 0) return iv; }
+    return pool.at(-1);
+  };
+  while (out.length < n) {
+    const pool = CREEPY_IVS.filter(iv => !taken(iv));
+    if (!pool.length) break;
+    out.push(weightedPick(pool));
+  }
+  return out;
 }
 
 /** The rival's wheel under the curse: which of their twelve slots are Iwato. */

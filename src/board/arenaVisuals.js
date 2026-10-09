@@ -8,7 +8,7 @@ import { createShamisenStage } from './cursedShamisenArena.js';
 import { gatedSequenceTime } from './battleRollGate.js';
 import { SWING_GATE, SWING_CHARGED, SWING_DICE_PHASES } from './swingTiming.js';
 import { createSwingClashVisuals, knockbackWobble } from './swingClashVisuals.js';
-import { createArenaDiceSequence } from './arenaDiceSequence.js';
+import { createArenaDiceSequence, cardDieOf } from './arenaDiceSequence.js';
 import * as THREE from 'three';
 import { HEX_BY_NUM } from './hexMap.js';
 import { SCALE } from './constants.js';
@@ -144,9 +144,10 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   const effects=[],rigs=new Map(),pawns=new Map(),seen=new Set();
   let previous=null,hazardKey='',frame={},clock=0,lastTick=0,disposed=false,sonic=null,reducedMotion=false;
   let swing=null,battleShot=null;
-  // 🎸 The Iwato curse's instruments and curses (cursedShamisenArena.js) — the
-  // ghost shamisen over a Ronin who holds it, and every curse burning on a rival.
-  const shamisen=createShamisenStage({root,standee:id=>pawns.get(id)?.userData.standee??null});
+  // 🎸 The Iwato curse (cursedShamisenArena.js) — v3: each curse springs on its
+  // cursed Lost Chord's hex and burns on its rival until lifted or expired.
+  // 🪤 Its noroi card hangs on the FOREGROUND, with the crystals it sticks to and the standees it flies to.
+  const shamisen=createShamisenStage({root,floatRoot:foregroundScene,standee:id=>pawns.get(id)?.userData.standee??null,pointFor:arenaPoint});
   // 🎸 THE OPENING ACT (openingActStage.js): the Bardbarian's storm, the waiting
   // pads, the crash landings and the hop onto the home hex. Owns a pawn only
   // while its seat waits, falls or steps on — `pose` below, like the pyro reaction.
@@ -361,7 +362,9 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   // 💎 The Lost Chords as crystals (lostChords.js, Alex's dial-in 2026-10-08). The
   // crack and the light stay on the arena canvas; the crystal floats on the
   // FOREGROUND, above the SVG click layer, with the standees (its header says why).
-  const lostChords=createLostChordLayer(root,{pointFor:arenaPoint,floatRoot:foregroundScene,sound:typeof window!=='undefined'});
+  const lostChords=createLostChordLayer(root,{pointFor:arenaPoint,floatRoot:foregroundScene,sound:typeof window!=='undefined',
+    onShatter:(num,pos)=>shamisen.onShatter(num,pos)});   // 🪤 the noroi card shows out of the real shatter
+  shamisen.attachCrystals(lostChords.chords);
   const lasers=createArenaLasers(foregroundScene);
   const clearSonic=()=>{
     if(!sonic)return;
@@ -411,7 +414,8 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
         driveSides:battle.dicePool[0]??6,sustainSides:battle.sustainPool[0]??6,poolStart:SONIC_DICE.poolStart,
         drivePool:battle.dicePool,sustainPool:battle.sustainPool,
         droppedDrive:battle.droppedDiceVals??[],droppedDrivePool:battle.droppedDicePool??[],
-        droppedSustain:battle.sustainDropped??[],droppedSustainPool:battle.sustainDroppedPool??[]})
+        droppedSustain:battle.sustainDropped??[],droppedSustainPool:battle.sustainDroppedPool??[],
+        driveCard:cardDieOf(battle)})   // 🃏 the attacker's card die (arenaDiceSequence CARD_DIE_LOOK)
         :createSonicDiceVisuals({...common,dicePool:battle.dicePool,diceVals:battle.diceVals,diceHits:battle.diceHits});
       // ⭐ The dice land ON THE BOARD by the fight, thrown from each player's
       // chair (battleDirector.placeBattleDice) — you watch the Rival throw at you.

@@ -79,6 +79,7 @@ try {
 
   // ── the guards ──
   for (const [code, mods, why] of [['Numpad4', {}, '4 (no left neighbour)'], ['Numpad6', {}, '6 (no right neighbour)'],
+    ['Numpad5', {}, '5 (🧭 face north — turns the camera, never the Spirit)'],
     ['Digit8', {}, 'the top-row 8'], ['Numpad8', { repeat: true }, 'a held, auto-repeating 8'],
     ['Numpad8', { target: Object.assign(document.createElement('input'), {}) }, '8 typed into a text field']]) {
     const at = me().num;

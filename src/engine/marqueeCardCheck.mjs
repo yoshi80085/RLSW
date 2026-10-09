@@ -7,10 +7,10 @@ import { makeRng } from './rng.js';
 import { applyAction } from './reduce.js';
 import { attackRolled, attackRerolled, marqueeCardWon, marqueeCardArmed, marqueeCardPlayed, turnEnded } from './actions.js';
 import { attackParams } from './systems/attackParams.js';
-import { throwPool } from './systems/dicePool.js';
+import { throwPool, keepBest } from './systems/dicePool.js';
 import {
   MARQUEE_CARDS, MARQUEE_CARD_IDS, drawMarqueeCard, applyCard, weakestDieIdx, cardedRig,
-  wonCardPatch, armPatch, spendArmedPatch, armedCardId, handOf, botArmIdx, botReplaceIdx,
+  wonCardPatch, armPatch, spendArmedPatch, armedCardId, handOf, botArmIdx, botReplaceIdx, bonusDieOf,
 } from './systems/marqueeCards.js';
 import { drawMarqueeQuestion, TRIVIA_QUESTIONS } from '../data/trivia.js';
 import { MARQUEE_HAND_MAX, ELEVEN_DIE } from '../data/gameConstants.js';
@@ -18,7 +18,7 @@ import { HEX_BY_NUM } from '../board/hexMap.js';
 import { neighborInDirection } from '../board/hexGeometry.js';
 import { collectPickups } from './policies/transition.js';
 import { eventHexTriggered, eventHexSpawned, marqueeKindSet } from './actions.js';
-import { marqueeKindOf, rollMarqueeKind } from './systems/marqueeSpaces.js';
+import { marqueeKindOf, rollMarqueeKind, lightPendingMarquees, pendingMarquees, plannedMarqueeHexes, pickMarquee, occupiedHexes } from './systems/marqueeSpaces.js';
 import { botAnswers, communityOutcome, soloOutcome, communityParticipants, marqueeDrawCount, roundLimitMs } from './systems/marqueeRound.js';
 import { MARQUEE_COMMUNITY_SHARE, MARQUEE_BOT_ANSWER_S, MARQUEE_SOLO_SECONDS, MARQUEE_COMMUNITY_SECONDS } from '../data/gameConstants.js';
 import { TRIVIA_BOT_ODDS } from '../data/trivia.js';
@@ -52,29 +52,56 @@ eq('six cards in the deck', MARQUEE_CARD_IDS.length, 6);
 eq('weakest die = the LAST of the smallest size', weakestDieIdx([8, 8, 6, 6]), 3);
 eq('…never the Eleven die', weakestDieIdx([ELEVEN_DIE, 6, 6]), 2);
 eq('…and an Eleven-only pool has none', weakestDieIdx([ELEVEN_DIE]), -1);
-eq('Loaded 6 loads the tail d6', applyCard([8, 6, 6], 2, 'loaded6').fixed, [{ idx: 2, face: 6 }]);
-eq('Loaded 4 keeps the pool and keep', (({ pool, keep }) => ({ pool, keep }))(applyCard([6, 6, 6], 3, 'loaded4')), { pool: [6, 6, 6], keep: 3 });
-eq('Bigger Cab: d6 → d8', applyCard([6, 6], 2, 'biggerCab').pool, [6, 8]);
-eq('Bigger Cab: an all-d8 pool grows a d10', applyCard([8, 8], 2, 'biggerCab').pool, [8, 10]);
-eq('Full Stack: the weakest die becomes a d10', applyCard([8, 6, 6], 3, 'fullStack').pool, [8, 6, 10]);
+// ⭐ 2026-10-09: the card's die is a BONUS die — appended, one more seat, pinned (Alex's dial-in).
+const PIN = (idx, face) => [{ idx, pin: true, bonus: true, ...(face != null ? { face } : {}) }];
+eq('Loaded 6 adds a die SET on 6, pinned, in a seat of its own', applyCard([8, 6, 6], 2, 'loaded6'), { pool: [8, 6, 6, 6], keep: 3, fixed: PIN(3, 6), card: 'loaded6' });
+eq('Loaded 4 adds a die set on 4', applyCard([6, 6, 6], 3, 'loaded4').fixed, PIN(3, 4));
+eq('Bigger Cab: a bonus d8 on a d6 pool', applyCard([6, 6], 2, 'biggerCab'), { pool: [6, 6, 8], keep: 3, fixed: PIN(2), card: 'biggerCab' });
+eq('Bigger Cab: an all-d8 pool gets a bonus d10', applyCard([8, 8], 2, 'biggerCab').pool, [8, 8, 10]);
+eq('Bigger Cab: capped at a d12', applyCard([12], 1, 'biggerCab').pool, [12, 12]);
+eq('Full Stack: a bonus d10', applyCard([8, 6, 6], 3, 'fullStack'), { pool: [8, 6, 6, 10], keep: 4, fixed: PIN(3), card: 'fullStack' });
+eq('Full Stack on d10s and up still counts now (it was refused when it only bent a die)', applyCard([10, 12], 2, 'fullStack').card, 'fullStack');
 eq('Encore: one more die counts', applyCard([6, 6, 6, 6], 3, 'encore').keep, 4);
 eq('Encore may pass the usual keep cap of 5', applyCard([6, 6, 6, 6, 6, 6, 6, 6], 5, 'encore').keep, 6);
 eq('Encore on a pool that keeps every die does nothing → not spent', applyCard([6, 6], 2, 'encore').card, null);
 eq('no dice, no card', applyCard([], 0, 'loaded6').card, null);
-eq('Full Stack on a d10 or bigger does nothing', applyCard([10, 12], 2, 'fullStack').card, null);
 eq('an unknown card does nothing', applyCard([6, 6], 2, 'pickles').card, null);
-eq('the Eleven die is left alone', applyCard([ELEVEN_DIE, 6], 2, 'fullStack').pool, [ELEVEN_DIE, 10]);
+eq('the Eleven die is left alone (the bonus is added beside it)', applyCard([ELEVEN_DIE, 6], 2, 'fullStack').pool, [ELEVEN_DIE, 6, 10]);
+eq('…and an Eleven-only pool sizes Bigger Cab off a d6', applyCard([ELEVEN_DIE], 1, 'biggerCab').pool, [ELEVEN_DIE, 8]);
+eq('bonusDieOf finds the card die', bonusDieOf(applyCard([6, 6], 2, 'loaded5').fixed), PIN(2, 5)[0]);
+eq('…and Encore has none', bonusDieOf(applyCard([6, 6, 6], 2, 'encore').fixed), null);
 
-// ── 3. The loaded die in the throw ───────────────────────────────────────────
+// ── 3. The bonus die in the throw ────────────────────────────────────────────
 {
+  eq('keepBest: a pinned die is kept whatever it shows', keepBest([6, 6, 6, 1], [6, 6, 6, 6], 3, [3]).keptIdx, [0, 1, 3]);
+  eq('keepBest: no pins, the old rule', keepBest([6, 6, 6, 1], [6, 6, 6, 6], 3).keptIdx, [0, 1, 2]);
   const pool = [6, 6, 6, 6];
   const a = makeRng(7), b = makeRng(7);
   const plain = throwPool(pool, 2, a);
-  const loaded = throwPool(pool, 2, b, 0, [{ idx: 3, face: 6 }]);
-  eq('the loaded die lands on its face', loaded.thrown[3], 6);
-  eq('every other die lands as it would have', loaded.thrown.slice(0, 3), plain.thrown.slice(0, 3));
-  eq('⚠️ the loaded die still spends its rng draw — the stream does not shift', a.int(1000), b.int(1000));
-  ok('a loaded 6 is kept by keep-the-best', loaded.vals.includes(6));
+  const r = applyCard(pool, 2, 'loaded6'), set = throwPool(r.pool, r.keep, b, 0, r.fixed);
+  eq('the set die shows its face', set.thrown[4], 6);
+  eq('every die of your own lands as it would have', set.thrown.slice(0, 4), plain.thrown);
+  eq('…and your own kept dice are the same ones', set.vals.slice(0, -1), plain.vals);
+  { const e = makeRng(7); throwPool([...pool, 6], 3, e);   // five plain dice: five draws
+    eq('⚠️ the set die still spends its rng draw (one per die in pool order)', b.int(1000), e.int(1000)); }
+  // A replay recorded BEFORE the bonus die carries { idx, face } with no pin: it must throw exactly as it did.
+  const c = makeRng(7), d = makeRng(7);
+  const old = throwPool(pool, 2, c, 0, [{ idx: 3, face: 6 }]), oldRef = throwPool(pool, 2, d);
+  eq('a pre-bonus replay entry still sets that die and nothing else', old.thrown, [...oldRef.thrown.slice(0, 3), 6]);
+  // ⭐ Never nothing, never worse — the whole point (Alex: "the dice card doesn't make any effect").
+  let always = true, exact = true, worst = Infinity;
+  const sum = xs => xs.reduce((x, y) => x + y, 0);
+  for (const [pl, k] of [[[6, 6, 6], 3], [[6, 6, 6, 6, 6], 3], [[6, 6, 6, 6, 6, 6], 4], [[8, 8, 6, 6, 6, 6, 6, 6], 5]]) {
+    for (const id of ['loaded4', 'loaded5', 'loaded6', 'biggerCab', 'fullStack']) {
+      for (let seed = 1; seed <= 400; seed++) {
+        const card = applyCard(pl, k, id), t = throwPool(card.pool, card.keep, makeRng(seed), 0, card.fixed), base = throwPool(pl, k, makeRng(seed));
+        const gain = sum(t.vals) - sum(base.vals), bonusFace = t.thrown[card.pool.length - 1];
+        always &&= gain >= 1; exact &&= gain === bonusFace && t.keptIdx.includes(card.pool.length - 1); worst = Math.min(worst, gain);
+      }
+    }
+  }
+  ok(`⭐ every die card adds at least 1, over 10,000 throws (worst +${worst})`, always);
+  ok('⭐ …and adds exactly its own die: your own kept dice never change', exact);
 }
 
 // ── 4. The hand ──────────────────────────────────────────────────────────────
@@ -271,8 +298,15 @@ const game = st => ({ battle: st.battle, noteStates: st.noteStates });
         const from = quadrantOf(hex), open = new Set([...openQuadrants(st.board.eventHexes), from]);
         st = { ...st, spirits: st.spirits.map((s, i) => (i === 0 ? { ...s, num: hex } : s)) };
         st = applyAction(st, eventHexTriggered(st.spirits[0].id, hex, null), makeRng(seed * 100 + step));
+        // ⏳ 2026-10-09: chosen at the take, NOT lit until the turn ends.
+        const waiting = pendingMarquees(st.board);
+        if (st.board.eventHexes.length !== n - 1 || waiting.length !== 1 || st.board.lastEventRespawn != null
+          || st.board.eventHexes.includes(waiting[0].hexNum) || st.board.marqueeKinds[waiting[0].hexNum] !== undefined) {
+          ok(`${n}p seed ${seed}: a taken marquee's replacement waits, unlit, for the turn end`, false); break; }
+        if (plannedMarqueeHexes(st.board).length !== n) { ok(`${n}p: the waiting one still counts toward one per seat`, false); break; }
+        st = lightPendingMarquees(st);
         const relit = st.board.lastEventRespawn;
-        if (!(relit && relit.from === hex)) { ok(`${n}p seed ${seed}: a taken marquee relights at once`, false); break; }
+        if (!(relit && relit.from === hex && relit.deferred && pendingMarquees(st.board).length === 0)) { ok(`${n}p seed ${seed}: it lights at the turn end`, false); break; }
         const q = quadrantOf(relit.hexNum);
         if (!open.has(q)) { ok(`${n}p seed ${seed}: relit in the emptied quadrant or an empty one (got ${q} from ${from})`, false); break; }
         if (d(relit.hexNum, hex) < MARQUEE_RELIGHT_MIN_DIST) { ok(`${n}p: relit at least ${MARQUEE_RELIGHT_MIN_DIST} away`, false); break; }
@@ -282,7 +316,7 @@ const game = st => ({ battle: st.battle, noteStates: st.noteStates });
         seen.add(q === from ? 'same' : 'empty');
       }
     }
-    ok(`${n} players: 360 takes keep ${n} marquees, one per quadrant, relit ≥ ${MARQUEE_RELIGHT_MIN_DIST} away`, true);
+    ok(`${n} players: 360 takes keep ${n} marquees, one per quadrant, relit ≥ ${MARQUEE_RELIGHT_MIN_DIST} away — each waiting unlit until the turn end`, true);
     if (n === 4) eq('4 players: always the same quadrant', [...seen], ['same']);
     else ok(`${n} players: both the same quadrant and the empty one get used (${[...seen]})`, seen.has('same') && seen.has('empty'));
   }
@@ -294,6 +328,38 @@ const game = st => ({ battle: st.battle, noteStates: st.noteStates });
   eq('top-up: back to one per seat', filled.board.eventHexes.length, 3);
   ok('top-up: into a quadrant that had none', oneEach(filled));
   eq('top-up: a full board is left alone', applyAction(filled, eventHexSpawned([]), makeRng(3)).board.eventHexes, filled.board.eventHexes);
+
+  // ⏳ 2026-10-09 — Alex: "New marquee spaces shouldn't appear again on the same turn if one was taken."
+  {
+    let s0 = table(3, 7);
+    s0 = { ...s0, acting: s0.turnQueue[0] };
+    const actor = s0.acting, hex = s0.board.eventHexes[0];
+    s0 = { ...s0, spirits: s0.spirits.map(s => (s.id === actor ? { ...s, num: hex } : s)) };
+    const taken = applyAction(s0, eventHexTriggered(actor, hex, null), makeRng(77));
+    const [wait] = pendingMarquees(taken.board);
+    ok('⏳ the take leaves the board one short for the rest of the turn', taken.board.eventHexes.length === 2 && !!wait);
+    eq('⏳ …the round-end top-up does not fill the gap (the waiting one is counted)', applyAction(taken, eventHexSpawned([]), makeRng(5)).board.eventHexes, taken.board.eventHexes);
+    const ended = applyAction(taken, turnEnded(), makeRng(1));
+    ok('⏳ TURN_ENDED lights it, with its kind, and reports it as deferred', ended.board.eventHexes.includes(wait.hexNum)
+      && ended.board.marqueeKinds[wait.hexNum] === wait.kind && ended.board.lastEventRespawn?.deferred === true && pendingMarquees(ended.board).length === 0);
+    // the draws did not move: the SAME hex and kind as the old light-at-once rule drew
+    // Re-draw by hand exactly what the old light-at-once reducer drew — quadrant + hex, then kind — off the same seed.
+    const r = makeRng(77), left = s0.board.eventHexes.filter(n => n !== hex);
+    const oldHex = pickMarquee(r, left, { occupied: occupiedHexes(s0), awayFrom: hex }), oldKind = rollMarqueeKind(r);
+    ok('⏳ the replay stream is untouched: the same hex and kind the old rule drew, from the same three numbers',
+      wait.hexNum === oldHex && wait.kind === oldKind && wait.from === hex);
+    // someone standing on the chosen hex at the turn end: it waits another turn rather than lighting underfoot
+    const blocked = { ...taken, spirits: taken.spirits.map(s => (s.id === actor ? { ...s, num: wait.hexNum } : s)) };
+    const still = applyAction(blocked, turnEnded(), makeRng(1));
+    ok('⏳ a Spirit standing on it at the turn end: it stays waiting, never lights underfoot', !still.board.eventHexes.includes(wait.hexNum) && pendingMarquees(still.board).length === 1);
+    const moved = { ...still, spirits: still.spirits.map(s => (s.id === actor ? { ...s, num: hex } : s)) };
+    ok('⏳ …and lights at the next turn end once the hex is clear', applyAction(moved, turnEnded(), makeRng(1)).board.eventHexes.includes(wait.hexNum));
+    // two takes in one turn: both wait, in different quadrants
+    const hex2 = taken.board.eventHexes[0];
+    const two = applyAction({ ...taken, spirits: taken.spirits.map(s => (s.id === actor ? { ...s, num: hex2 } : s)) }, eventHexTriggered(actor, hex2, null), makeRng(78));
+    const q2 = plannedMarqueeHexes(two.board).map(quadrantOf);
+    ok('⏳ two takes in one turn: both wait, and lit + waiting stay one per quadrant', pendingMarquees(two.board).length === 2 && two.board.eventHexes.length === 1 && new Set(q2).size === 3);
+  }
 }
 
 // ── 11. 🎤 Solo and community marquees (MARQUEE_QUIZ_DESIGN.md §13) ──────────
@@ -321,7 +387,7 @@ const game = st => ({ battle: st.battle, noteStates: st.noteStates });
   for (let step = 0; step < 240; step++) {
     const hex = st.board.eventHexes[step % st.board.eventHexes.length];
     st = { ...st, spirits: st.spirits.map((s, i) => (i === 0 ? { ...s, num: hex } : s)) };
-    st = applyAction(st, eventHexTriggered('p0', hex, null), makeRng(1000 + step));
+    st = lightPendingMarquees(applyAction(st, eventHexTriggered('p0', hex, null), makeRng(1000 + step)));
     const r = st.board.lastEventRespawn;
     if (!r) continue;
     relits++; if (st.board.marqueeKinds[r.hexNum] === 'community') relitCommunity++;

@@ -16,6 +16,9 @@
 .cw-iwato{opacity:0;animation:cw-lit .6s ease-out forwards,cw-throb 2.2s ease-in-out 1.2s infinite;filter:drop-shadow(0 0 calc(7px * var(--glow)) var(--curse))}
 @keyframes cw-lit{from{opacity:0}to{opacity:1}}
 @keyframes cw-throb{0%,100%{opacity:1}50%{opacity:.55}}
+.cw-haunt-ring{transform-box:fill-box;transform-origin:center;animation:cw-haunt 1.6s ease-out infinite}
+@keyframes cw-haunt{from{transform:scale(1);opacity:.9}to{transform:scale(1.45);opacity:0}}
+.cw-haunted{filter:drop-shadow(0 0 calc(10px * var(--glow)) var(--curse))}
 .cw-hub{opacity:0;animation:cw-lit .8s .6s ease-out forwards;filter:drop-shadow(0 0 10px var(--curse))}
 .cw-wisp path{animation:cw-flick 1.1s ease-in-out infinite;transform-origin:0 0;filter:drop-shadow(0 0 5px var(--curse))}
 .cw-wisp.is-out path{animation:none;opacity:.15;fill:#3a3450}

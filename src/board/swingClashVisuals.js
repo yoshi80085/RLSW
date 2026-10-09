@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createArenaDiceSequence } from './arenaDiceSequence.js';
+import { createArenaDiceSequence, cardDieOf } from './arenaDiceSequence.js';
 import { sonicSceneLabel } from './sonicDiceVisuals.js';
 import { SWING_TIMING, SWING_DICE } from './swingTiming.js';
 import { SONIC_GLITTER, SONIC_WAVE, createSpiralGlitter, createHelixStations, writeHelixStations } from './sonicGlitter.js';
@@ -84,7 +84,8 @@ export function createSwingClashVisuals({battle,attacker,defender,pointFor,ampOr
     droppedDrive:battle.droppedDiceVals??[],droppedDrivePool:battle.droppedDicePool??[],
     droppedSustain:battle.defenderDroppedVals??[],droppedSustainPool:battle.defenderDroppedPool??[],
     defenderTitle:'RIVAL DRIVE',poolStart:D.poolStart,timing:D.timing,
-    driveColor:attacker.color,sustainColor:defender.color}); // 🎨 each player's own colour
+    driveColor:attacker.color,sustainColor:defender.color, // 🎨 each player's own colour
+    driveCard:cardDieOf(battle)}); // 🃏 the attacker's card die (arenaDiceSequence CARD_DIE_LOOK)
   dice.group.scale.setScalar(.65);dice.group.position.copy(mid).add(new THREE.Vector3(-lane.z,0,lane.x).multiplyScalar(3.4));
   dice.group.position.z-=4;group.add(dice.group);
   const power=[swingBeamPower(battle.atkTotal,battle.dicePool),swingBeamPower(battle.defTotal,battle.defenderDicePool)];

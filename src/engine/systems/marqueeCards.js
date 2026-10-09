@@ -16,19 +16,32 @@
 // nothing — `applyCard` reports `card: null` and the card stays in the hand.
 // Burning a prize for no effect would read as a bug, and it would be one.
 //
-// ⚠️ THE LOADED DIE STILL SPENDS ITS `rng.int`. `dicePool.js`'s determinism
-// contract is one draw per die in pool order; `throwPool` rolls the loaded die
-// like any other and then overwrites the face, so arming a card never shifts
-// the stream for anything thrown after it.
+// ⭐ THE CARD'S DIE IS A BONUS DIE (Alex, 2026-10-09 — `.scratch/special-dice/`,
+// his dial-in: rule "bonus"). Until then a die card BENT YOUR WEAKEST DIE, and
+// keep-the-best usually dropped exactly that die: measured over 20k throws a
+// die card did nothing 13–40% of the time, and Loaded 4 made the throw WORSE
+// about 1 in 3 (a 4 forced where a 5 or 6 would have landed). *"I find
+// sometimes that the dice card doesn't make any effect."* Now Loaded / Bigger
+// Cab / Full Stack ADD a die to the end of the pool with one more seat, and the
+// die is PINNED (`throwPool` keeps it whatever it shows). So it never does
+// nothing and never makes a throw worse. Loaded's face is SET, not thrown —
+// the arena puts it down face up before the throw (`arenaDiceSequence.js`).
+// 📌 Stronger than before (+4 to +6 a card, was +0 to +2.5). Balance is frozen;
+// this was a rule choice, flagged in MARQUEE_QUIZ_DESIGN §10.5.
+//
+// ⚠️ THE SET DIE STILL SPENDS ITS `rng.int`. `dicePool.js`'s determinism
+// contract is one draw per die in pool order; `throwPool` rolls the set die
+// like any other and then overwrites the face. The bonus die is LAST in the
+// pool, so every die of your own draws exactly what it drew without a card.
 import { MARQUEE_HAND_MAX, ELEVEN_DIE } from '../../data/gameConstants.js';
 
 /** The deck. `weight` is the draw weight (out of their sum, 12). Placeholders — balance is frozen. */
 export const MARQUEE_CARDS = Object.freeze({
-  loaded4:   { id: 'loaded4',   kind: 'loaded', face: 4, icon: '🎲', name: 'Loaded 4',   text: 'One of your dice lands on a 4.', weight: 3 },
-  loaded5:   { id: 'loaded5',   kind: 'loaded', face: 5, icon: '🎲', name: 'Loaded 5',   text: 'One of your dice lands on a 5.', weight: 2 },
-  loaded6:   { id: 'loaded6',   kind: 'loaded', face: 6, icon: '🎲', name: 'Loaded 6',   text: 'One of your dice lands on a 6.', weight: 1 },
-  biggerCab: { id: 'biggerCab', kind: 'bump',             icon: '🔼', name: 'Bigger Cab', text: 'Your weakest die grows a size: d6 → d8, d8 → d10.', weight: 3 },
-  fullStack: { id: 'fullStack', kind: 'd10',              icon: '⏫', name: 'Full Stack', text: 'Your weakest die becomes a d10.', weight: 1 },
+  loaded4:   { id: 'loaded4',   kind: 'loaded', face: 4, icon: '🎲', name: 'Loaded 4',   text: 'Adds a die set on 4. It always counts.', weight: 3 },
+  loaded5:   { id: 'loaded5',   kind: 'loaded', face: 5, icon: '🎲', name: 'Loaded 5',   text: 'Adds a die set on 5. It always counts.', weight: 2 },
+  loaded6:   { id: 'loaded6',   kind: 'loaded', face: 6, icon: '🎲', name: 'Loaded 6',   text: 'Adds a die set on 6. It always counts.', weight: 1 },
+  biggerCab: { id: 'biggerCab', kind: 'bump',             icon: '🔼', name: 'Bigger Cab', text: 'Adds a bonus die a size bigger than your smallest (a d8 on d6s). It always counts.', weight: 3 },
+  fullStack: { id: 'fullStack', kind: 'd10',              icon: '⏫', name: 'Full Stack', text: 'Adds a bonus d10. It always counts.', weight: 1 },
   encore:    { id: 'encore',    kind: 'keep',             icon: '➕', name: 'Encore',     text: 'One more of your dice counts.', weight: 2 },
 });
 export const MARQUEE_CARD_IDS = Object.freeze(Object.keys(MARQUEE_CARDS));
@@ -78,42 +91,43 @@ export function weakestDieIdx(pool = []) {
 }
 
 /**
- * Apply ONE card to a throw. Returns the pool and keep to throw, the loaded
- * faces (`fixed`: [{ idx, face }]) and the card id — or `card: null` when the
- * card would change nothing (see the header), in which case it is not spent.
+ * Apply ONE card to a throw. Returns the pool and keep to throw, the card's
+ * dice for `throwPool` (`fixed`: [{ idx, face?, pin?, bonus? }]) and the card
+ * id — or `card: null` when the card would change nothing (see the header), in
+ * which case it is not spent.
+ *
+ * 🎲 Loaded / Bigger Cab / Full Stack append ONE bonus die and ONE seat; the
+ * entry is `{ idx: <its index>, pin: true, bonus: true }`, plus `face` for a
+ * Loaded die (set, not thrown). ➕ Encore keeps one more of your own dice.
  */
 export function applyCard(pool = [], keep = pool.length, cardId = null) {
   const base = { pool: [...pool], keep: keep ?? pool.length, fixed: [], card: null };
   const def = cardDef(cardId);
   if (!def || !pool.length) return base;
-  const out = { ...base, card: def.id };
-  const lo = weakestDieIdx(out.pool);
+  const k = keep ?? pool.length, lo = weakestDieIdx(pool);
+  const bonus = (sides, face) => ({ pool: [...pool, sides], keep: k + 1,
+    fixed: [{ idx: pool.length, pin: true, bonus: true, ...(face != null ? { face } : {}) }], card: def.id });
   switch (def.kind) {
-    case 'loaded':
-      if (lo < 0) return base;
-      out.fixed = [{ idx: lo, face: Math.min(def.face, out.pool[lo]) }];
-      return out;
-    case 'bump':
-      if (lo < 0 || out.pool[lo] >= 12) return base;
-      out.pool[lo] = Math.min(12, out.pool[lo] + 2);
-      return out;
-    case 'd10':
-      if (lo < 0 || out.pool[lo] >= 10) return base;
-      out.pool[lo] = 10;
-      return out;
+    case 'loaded': return bonus(6, def.face);
+    // A size up from your smallest die (never the Eleven die, `weakestDieIdx`), capped at d12.
+    case 'bump':   return bonus(Math.min(12, (lo >= 0 ? pool[lo] : 6) + 2));
+    case 'd10':    return bonus(10);
     case 'keep':
-      if (out.keep >= out.pool.length) return base;
-      out.keep = out.keep + 1;
-      return out;
+      if (k >= pool.length) return base;
+      return { ...base, keep: k + 1, card: def.id };
     default:
       return base;
   }
 }
 
+/** The bonus die in a throw's `fixed` list ({ idx, face?, pin, bonus }), or null. */
+export const bonusDieOf = (fixed = []) => (fixed ?? []).find(f => f?.bonus && f.pin) ?? null;
+
 /**
  * The attacker's rig with their ARMED card applied — what a Swing or a Sonic
  * actually throws. `rig` is a `sonicRig` / `rigFor` result ({ pool, keep }).
- * Returns the rig plus `atkFixed` and `cardId` (null when nothing is played).
+ * Returns the rig plus `atkFixed` (the card's dice for `throwPool`) and
+ * `cardId` (null when nothing is played).
  */
 export function cardedRig(rig = {}, ns = {}) {
   const pool = rig.pool ?? [];

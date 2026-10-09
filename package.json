@@ -46,6 +46,8 @@
     "build:hammeron": "node .scratch/hammerOnBuild.mjs",
     "dev:lostchord": "vite --open /RLSW/.scratch/lost-chord-preview.html",
     "build:lostchord": "node .scratch/lostChordBuild.mjs",
+    "dev:noroicard": "vite --open /RLSW/.scratch/noroi-card-preview.html",
+    "build:noroicard": "node .scratch/noroiCardBuild.mjs",
     "test:notekeys": "node src/music/noteKeysCheck.mjs",
     "test:ronintone": "node src/audio/roninToneCheck.mjs",
     "test:voiceleak": "node src/audio/voiceTeardownCheck.mjs",

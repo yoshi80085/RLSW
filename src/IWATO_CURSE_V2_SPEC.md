@@ -1,5 +1,7 @@
 # 🎸 Cursed Shamisen v2 — "The Haunting" (design spec, 2026-10-03)
 
+> ⛔ **SUPERSEDED 2026-10-09 by `IWATO_CURSE_V3_SPEC.md` ("The Trap")** — the curse itself carries over; how it lands on a Rival changed. Kept as the record.
+>
 > **Status: DESIGN ONLY. Nothing here is built.** Written from the design conversation of 2026-10-03 plus the Iwato curse handoffs (`iwato-curse-handoff`, `iwato-port-handoff`) and `RONIN_ABILITY_DESIGN.md` §2.3.00. I did **not** read the code for this write-up, so every file/identifier below is taken from those handoffs and must be verified before building.
 >
 > **Supersedes** the *take up → tune strings → cast → exorcise with 3 different Iwato notes* flow of §2.3.00 (the 2026-10-02 port). Keep §2.3.00 as the record, as §2.3.0 (the siphon) was kept.

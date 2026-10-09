@@ -94,7 +94,7 @@ export function statusRows(ns = {}, { respawn = false } = {}) {
   const add = (id, icon, label, turns, what, tone = 'bad') => rows.push({ id, icon, label, turns, what, tone });
   if (ns.iwatoCurse && (ns.iwatoCurse.turnsLeft ?? 0) > 0)
     add('iwato', '呪', 'IWATO CURSE', ns.iwatoCurse.turnsLeft,
-      `Your palette is Iwato on ${pretty(ns.iwatoCurse.roninRoot ?? '?')} — every other note is discord. Play 3 different Iwato notes next turn to exorcise it.`);
+      `Your palette is Iwato on ${pretty(ns.iwatoCurse.root ?? ns.iwatoCurse.roninRoot ?? '?')} — every other note is discord. Play the haunted notes marked on your Scale Wheel in a melody to lift it (${(ns.iwatoCurse.lifted ?? []).length}/${(ns.iwatoCurse.targets ?? []).length || 3} lifted).`);
   if ((ns.burn?.turnsLeft ?? 0) > 0)
     add('burn', '🔥', 'BURNING', ns.burn.turnsLeft, 'A coin flip at the end of each turn: heads, −1 Vibe.');
   if (ns.stagger)
@@ -190,7 +190,7 @@ export function sheetModel(a) {
       // 呪 A CURSED Spirit's palette is not its own key — the pocket's Scale Wheel
       // already shows the infected wheel, so the key section must not print a
       // clean palette beside it as if nothing had happened.
-      curse: (ns.iwatoCurse?.turnsLeft ?? 0) > 0 ? { root: ns.iwatoCurse.roninRoot ?? null, turns: ns.iwatoCurse.turnsLeft } : null,
+      curse: (ns.iwatoCurse?.turnsLeft ?? 0) > 0 ? { root: ns.iwatoCurse.root ?? ns.iwatoCurse.roninRoot ?? null, turns: ns.iwatoCurse.turnsLeft } : null,
       intervals: [
         ['4th', ivs.fourth, KEY_COLOURS.fourth], ['5th', ivs.fifth, KEY_COLOURS.fifth],
         ['tri', ivs.tritone, KEY_COLOURS.discord], ['M3', ivs.majorThird, KEY_COLOURS.discord],

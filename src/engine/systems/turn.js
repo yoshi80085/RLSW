@@ -12,6 +12,7 @@ import { applySlimeDecayed } from "./slime.js";
 import { respawnFromAbyss } from './crumbling.js';
 import { applySpiritEntered, isWaiting, isEntranceHex } from './entrance.js';
 import { hammerRecharge } from '../../music/noteTechniques.js';
+import { lightPendingMarquees } from './marqueeSpaces.js';
 
 /** TURN_STARTED — record whether the spirit begins its turn on the Limelight hex. */
 export function applyTurnStarted(state0, { spiritId }) {
@@ -160,7 +161,10 @@ export function applyTurnEnded(state) {
   // moves them too. Keyed on the NEW round number.
   const lit = roundCompleted ? stepSpotlights(decayed, round) : decayed;
 
-  return {
+  // 🎪 ⏳ A marquee taken THIS turn lights now, as the turn closes (Alex,
+  // 2026-10-09 — `marqueeSpaces.js` `lightPendingMarquees`). No rng: the hex was
+  // drawn at the take. Last, so the spot it checks is where everyone ENDED.
+  return lightPendingMarquees({
     ...lit,
     ...(clearsSonicTally || disarms || hammer != null ? {
       noteStates: {
@@ -187,7 +191,7 @@ export function applyTurnEnded(state) {
       lastMove: null,
       lastReport: { type: "turnEnded", endedId, nextId, limelightHeld, roundCompleted, round },
     },
-  };
+  });
 }
 
 /**

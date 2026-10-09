@@ -44,7 +44,7 @@ import {
 } from "../../music/context.js";
 import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { melodyPayoutFor } from "../../music/melodyPayout.js";
-import { livePalette, exorcisedBy, exorcisePatch } from "./iwatoCurse.js";
+import { livePalette, liftOutcome } from "./iwatoCurse.js";
 import { playedNotes } from "../../music/noteTechniques.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
@@ -130,7 +130,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   // Spirit's mode is the clean palette; chord pardons are tracked separately
   // for the red/blue ending carrot and never become clean notes.
   // 🌑 THE IWATO CURSE SWAPS THIS PALETTE, and only this one line knows it:
-  // under a curse every note that is not Iwato on the Ronin's root classifies
+  // under a curse every note that is not Iwato on the curse's root classifies
   // as discord, and "discord notes are inert" does the rest (no fans).
   // `iwatoCurse.js` `livePalette`; uncursed it is exactly `playableScale`.
   const currentScale = livePalette(spiritId, ns);
@@ -296,23 +296,27 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const lowPerfStreak = 0;
 
 
-  // ── 🔥 THE EXORCISM — the Iwato curse's way out (`iwatoCurse.js`) ─────────
-  // On their FIRST cursed turn only, a line holding three different Iwato notes
-  // lifts the curse. ⭐ Scored ABOVE on the cursed palette — so the exorcising
-  // melody pays normally (Iwato IS their scale this turn): fighting free is
-  // rewarded, not merely survived. The lift is in the patch so the kernel and
-  // the client cannot disagree about whether it happened.
+  // ── 👻 THE LIFTS — the Iwato curse's way out (`iwatoCurse.js`, v3) ───────
+  // Each haunted note the line holds lifts one ghost; progress accumulates
+  // across the Rival's cursed turns and the third lift ends the curse. ⭐ Scored
+  // ABOVE on the cursed palette, so the lifting melody pays normally. The lift
+  // is in the patch so the kernel and the client cannot disagree about it.
   // 🎸 ⚠️ A HAMMERED NOTE DOES NOT LIFT A CURSE (Alex, 2026-10-08): only notes
   // played from the hand count here, though the hammered ones still PAY above.
-  const exorcised = exorcisedBy(ns, playedNotes(melodyLine, ns.melodySrcIdx));
+  const lift = liftOutcome(ns, playedNotes(melodyLine, ns.melodySrcIdx));
+  const exorcised = lift.done;
   if (exorcised) {
-    logs.push(`🔥 ${name} plays three Iwato notes straight back at the curse — the charm burns and the Scale Wheel snaps back. EXORCISED!`);
-    flashLines.push('🔥 EXORCISED!');
+    logs.push(`🔥 ${name} plays the last haunted note — the curse paper burns and the Scale Wheel snaps back. LIFTED!`);
+    flashLines.push('🔥 CURSE LIFTED!');
+  } else if (lift.newly.length) {
+    const left = (ns.iwatoCurse?.targets?.length ?? 0) - (ns.iwatoCurse?.lifted?.length ?? 0) - lift.newly.length;
+    logs.push(`👻 ${name} plays ${lift.newly.length === 1 ? 'a haunted note' : `${lift.newly.length} haunted notes`} — ${lift.newly.length === 1 ? 'a ghost lifts' : 'ghosts lift'} and fade. ${left} to go.`);
+    flashLines.push(`👻 ${lift.newly.length} GHOST${lift.newly.length === 1 ? '' : 'S'} LIFTED`);
   }
 
   // ── THE SHEET PATCH ───────────────────────────────────────────────────────
   const patch = {
-    ...(exorcised ? exorcisePatch(ns) : {}),
+    ...(lift.patch ?? {}),
     melodyLine: [], melodySrcIdx: [], melodyFreq: [],
     // Phase R1: the riff-off reads these; turn start clears them.
     // ⚠️ Mapped over `melodyLine`, not copied from `melodyFreq`: the mic roll
@@ -400,7 +404,7 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
     report: {
       melodyLine, baseTrack, voiceRoll, micBonusNote,
       cadence: null,
-      exorcised,
+      exorcised, liftedNow: lift.newly,
       unpardonedDiscord, contextPardons, allInScale, cleanNoteCount, endingClean,
       cleanPhrase, endingChoice,
       colorDrive, colorSustain, discarded,

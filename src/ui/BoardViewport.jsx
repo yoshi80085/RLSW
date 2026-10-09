@@ -13,6 +13,11 @@ import { SVG_W, SVG_H } from '../board/constants.js';
 // views, detail, zoom — reaches the runtime through `cameraRef`, which the
 // client's ☰ rows call. `quality` is the client's now, and `onQualityLabel`
 // reports what "Auto detail" resolved to so the menu can say so.
+// 🧭 …and ONE button came back onto the board, 2026-10-09: Face north (Alex:
+// *"Give a North orientation button … This helps a lot when trying to use the
+// num pad to move"*). It is pressed mid-turn, between numpad steps, so a row
+// two clicks deep in ☰ would defeat it; it sits in the corner chip, the size of
+// Follow battle, and Numpad 5 (the client) does the same thing with no click.
 // 🪦 The Hold button went with the toolbar: it was the ☰ Auto camera switch inverted,
 // and with both in one menu it would be the same switch listed twice.
 const VEIL_FADE_MS = 600;
@@ -52,11 +57,15 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
     if (!cameraRef) return undefined;
     cameraRef.current = {
       view(name) {
+        // 🧭 'north' is a TURN, not a preset: it keeps zoom and tilt, so it must
+        // not leave ⌗ Top on the way (Top already faces north — it is a no-op there).
+        if (name === 'north') { runtime.current?.north(); return; }
         if (name === 'top') { latest.current.onTopView?.(true); runtime.current?.view('tactical'); return; }
         latest.current.onTopView?.(false);
         runtime.current?.view(name === 'spirit' ? 'focus' : 'arena');
       },
       zoom(factor) { runtime.current?.zoom(factor); },
+      north() { runtime.current?.north(); },
     };
     return () => { cameraRef.current = null; };
   }, [cameraRef]);
@@ -145,8 +154,10 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
     {enabled && !veilGone && <div className="arena-veil" data-state={ready ? 'out' : 'in'} aria-hidden={ready || undefined}>
       {!failed && <><span>Loading arena</span><div className="arena-veil-bar" /></>}
     </div>}
-    {enabled && (failed || (autoCamera && cameraState?.mode === 'battle-manual')) &&
+    {enabled && (failed || ready) &&
       <div className="arena-board-status" aria-label="Arena status">
+        {ready && <button className="btn" data-face-north title="Face north — turn the camera so board north is up (keeps your zoom and tilt). Numpad 5 does this too"
+          aria-label="Face north" onClick={() => runtime.current?.north()}>🧭 N</button>}
         {autoCamera && cameraState?.mode === 'battle-manual' && <button className="btn" onClick={() => runtime.current?.followBattle()}>🎥 Follow battle</button>}
         {failed && <span role="status">{status}</span>}
         {failed && <button className="btn" onClick={() => { setStatus('Loading arena…'); setAttempt(n => n + 1); }}>Retry arena</button>}

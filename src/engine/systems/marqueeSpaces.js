@@ -127,3 +127,53 @@ export function openingMarquees(rng, seats = [], occupied = []) {
   }
   return out;
 }
+
+// ── ⏳ THE RELIGHT WAITS FOR THE TURN TO END (Alex, 2026-10-09) ──────────────
+// *"New marquee spaces shouldn't appear again on the same turn if one was
+// taken."* Before this the replacement lit THE MOMENT one was taken, so a
+// Spirit with steps left could see it appear and sometimes walk straight to it.
+//
+// ⭐ THE PICK IS STILL MADE AT THE TAKE — only the LIGHTING waits. The hex and
+// its kind are drawn exactly where they always were (`applyEventHexTriggered`,
+// three draws), so the seeded stream, every replay and the netcode's rng cursor
+// are untouched; the board just holds the pick in `board.marqueePending`
+// ([{ hexNum, kind, from }]) until `TURN_ENDED` lights it. (Not `TURN_SKIPPED`:
+// a skip runs no end-of-turn ticks, and nothing can be pending at one — the
+// take happened in a turn that ended properly.)
+// ⚠️ A pending marquee is NOT on the board: bots cannot route to it, the 3D
+// markers do not draw it and nothing can land on it — but it DOES count toward
+// "one per seat" and "one per quadrant", or the round-end top-up would light a
+// second marquee beside it and a second take the same turn could pick its quadrant.
+
+/** The marquees waiting for the turn to end. */
+export const pendingMarquees = board => (Array.isArray(board?.marqueePending) ? board.marqueePending : []);
+/** Their hexes — for anything that must not place something on them. */
+export const pendingMarqueeHexes = board => pendingMarquees(board).map(p => p.hexNum);
+/** Lit + waiting: what "one per seat" and "one per quadrant" count. */
+export const plannedMarqueeHexes = board => [...(board?.eventHexes ?? []), ...pendingMarqueeHexes(board)];
+
+/**
+ * Light every pending marquee whose hex is clear. Pure, NO rng — it runs inside
+ * the turn reducers, which take none. One whose hex is now stood on (a Spirit
+ * walked there before the turn ended) or holds a Lost Chord stays pending and is
+ * tried again at the next turn end, rather than lighting under someone's feet.
+ * Reports what lit in `board.lastEventRespawn` ({ hexNum, from, deferred: true }).
+ */
+export function lightPendingMarquees(state) {
+  const pending = pendingMarquees(state?.board);
+  if (!pending.length) return state;
+  const blocked = new Set(occupiedHexes(state));
+  const lit = pending.filter(p => !blocked.has(p.hexNum) && !(state.board.eventHexes ?? []).includes(p.hexNum));
+  const wait = pending.filter(p => !lit.includes(p));
+  if (!lit.length) return state;
+  const kinds = { ...(state.board.marqueeKinds ?? {}) };
+  for (const p of lit) kinds[p.hexNum] = p.kind === 'community' ? 'community' : 'solo';
+  const last = lit[lit.length - 1];
+  return { ...state, board: { ...state.board,
+    eventHexes: [...(state.board.eventHexes ?? []), ...lit.map(p => p.hexNum)],
+    marqueeKinds: kinds,
+    marqueePending: wait,
+    lastEventRespawn: { hexNum: last.hexNum, from: last.from ?? null, deferred: true, lit: lit.map(p => p.hexNum) },
+  } };
+}
+

@@ -1494,15 +1494,22 @@ const legacyAttack = (...args) => {
   assert.ok(!picked.board.boardTokens.find(t => t.num === tok0.num), "correct token gone");
   assert.equal(picked.rng.cursor, s0.rng.cursor, "TOKEN_PICKED_UP consumes no rng");
 
-  // 🎪 EVENT_HEX_TRIGGERED — since 2026-09-29 the hex burns out and ANOTHER
-  // LIGHTS AT ONCE, one per seat, one per quadrant (`systems/marqueeSpaces.js`).
+  // 🎪 EVENT_HEX_TRIGGERED — since 2026-09-29 the hex burns out and ANOTHER is
+  // chosen, one per seat, one per quadrant (`systems/marqueeSpaces.js`).
+  // ⏳ Since 2026-10-09 it LIGHTS AT THE TURN END, not at once (Alex: "New
+  // marquee spaces shouldn't appear again on the same turn if one was taken").
   // The full rule set is exercised in `test:cards` §10; this is the smoke test.
   const evHex = s0.board.eventHexes[0];
   const triggered = applyAction(s0, eventHexTriggered("wildaxe", evHex));
   assert.ok(!triggered.board.eventHexes.includes(evHex), "event hex consumed");
-  assert.equal(triggered.board.eventHexes.length, s0.board.eventHexes.length, "…and relit at once, one per seat");
-  assert.equal(triggered.board.lastEventRespawn?.from, evHex, "the relight is reported");
+  assert.equal(triggered.board.eventHexes.length, s0.board.eventHexes.length - 1, "…and NOT relit this turn");
+  assert.equal(triggered.board.marqueePending?.length, 1, "…the replacement waits, chosen");
+  assert.equal(triggered.board.marqueePending[0].from, evHex, "…reporting where it came from");
   assert.equal(triggered.board.eventRespawnIn, 0, "no respawn timer any more");
+  const relitAtEnd = applyAction(triggered, turnEnded());
+  assert.equal(relitAtEnd.board.eventHexes.length, s0.board.eventHexes.length, "TURN_ENDED lights it — one per seat again");
+  assert.equal(relitAtEnd.board.lastEventRespawn?.from, evHex, "the relight is reported");
+  assert.equal(relitAtEnd.board.lastEventRespawn?.deferred, true, "…as a turn-end light");
 
   // EVENT_RESPAWN_TICKED — still decrements a counter (kept for old saves)
   const ticked = applyAction({ ...s0, board: { ...s0.board, eventRespawnIn: 2 } }, eventRespawnTicked());

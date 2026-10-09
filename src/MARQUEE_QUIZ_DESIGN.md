@@ -444,16 +444,21 @@ Fans are no longer paid by the marquee at all (the old CROWD lane).
 
 | Card | Effect | Weight |
 |---|---|---|
-| 🎲 Loaded 4 | one die (the weakest) lands on 4 | 3 |
+| 🎲 Loaded 4 | ⭐ adds a die SET on 4 — it always counts | 3 |
 | 🎲 Loaded 5 | … on 5 | 2 |
 | 🎲 Loaded 6 | … on 6 | 1 |
-| 🔼 Bigger Cab | the weakest die grows a size: d6 → d8, d8 → d10 | 3 |
-| ⏫ Full Stack | the weakest die becomes a d10 | 1 |
+| 🔼 Bigger Cab | ⭐ adds a bonus die a size up from your smallest (d8 on d6s, d10 on d8s, cap d12) — always counts | 3 |
+| ⏫ Full Stack | ⭐ adds a bonus d10 — always counts | 1 |
 | ➕ Encore | one more die counts (keep + 1 — may pass the usual cap of 5) | 2 |
 
-"Weakest" = the last die of the smallest size (pools are d8s then d6s), never
-the Eleven die. A loaded die is still thrown — it spends its `rng.int` — and
-only its face is set, so a card never shifts the rng stream.
+⭐ **Since 2026-10-09 (Alex's dial-in, rule "bonus")** a die card APPENDS its die
+to the pool with one more seat, and the die is PINNED: `throwPool` keeps it
+whatever it shows. Until then it bent the weakest die, which keep-the-best
+usually dropped (§10.5). "Smallest" = the last die of the smallest size, never
+the Eleven die. A set die is still thrown — it spends its `rng.int` — and only
+its face is set; it is LAST in the pool, so your own dice draw exactly what they
+would without the card. A replay recorded before 2026-10-09 carries the old
+`{ idx, face }` entry with no pin and throws as it did.
 
 ### 10.4 Where it lives
 
@@ -511,6 +516,20 @@ The rail now only SHOWS the hand (`MarqueeHand`). The arm-before-attack path
 
 ### 10.5 Open
 
+- ⚠️ **2026-10-09 — THE CARD OFTEN DOES NOTHING, AND LOADED 4 CAN HURT** (Alex: *"sometimes the dice
+  card doesn't make any effect"*). Measured with `throwPool` + `applyCard`: every die card bends the
+  WEAKEST die, which keep-the-best usually drops — no effect 13–40% of the time (Bigger Cab worst), and
+  Loaded 4 forces a 4 where a 5 or 6 would have landed about 1 time in 3 (avg +0.0 in a big pool). "Spent
+  only if it changes the throw" checks the POOL, not the outcome. ⏳ Redesign in preview,
+  `.scratch/special-dice/` (README has the numbers and the port plan): the card gets a BONUS die of its
+  own that always counts — set face-up when its number is decided (Loaded), thrown first with a trail
+  when not (Bigger Cab, Full Stack). Never nothing, never worse; stronger than today (flagged, balance frozen).
+  ✅ **BUILT the same evening at Alex's dial-in** (rule bonus; finish "your colour, gold rim"; size 115%; no
+  card above the die; ring .31; dealt from the card), and his *"the d8 and d12 maybe can be a bit bigger"*
+  (.72 → .84, .68 → .80, my numbers). ⚠️ Found while porting: **a card played at the roll never reached
+  the 3D table** — the arena keyed the battle without the card, so it kept the dice it had laid out
+  before the re-throw. `arenaFrame.js` now puts the card in the key.
+
 1. 🎨 **Seeing the marquee on the board.** The 2D star + "EVENT" label is all
    there is; nothing marks it in the 3D arena. Alex's other half of the P1.
 2. 🧮 The weights and the Encore-past-5 rule are guesses. Nothing is benched —
@@ -551,7 +570,14 @@ quadrant)."*
   spotlights (blue top-left, purple bottom-left, yellow top-right, red
   bottom-right). A quadrant's pool is 16 hexes: not the rim, not the Limelight,
   not a home hex; the centre lines belong to nobody.
-- **Taking one relights one AT ONCE** — no respawn timer — in a quadrant that has
+- **Taking one chooses the next AT ONCE** — no respawn timer — ⏳ **but it lights
+  when that turn ENDS** (Alex, 2026-10-09: *"New marquee spaces shouldn't appear
+  again on the same turn if one was taken"*). The pick waits, invisible, in
+  `board.marqueePending`; `TURN_ENDED` lights it (`lightPendingMarquees`). The
+  draws did not move — still made at the take, same order — so seeded replays are
+  unchanged. A waiting marquee counts toward one-per-seat and one-per-quadrant;
+  if a Spirit is standing on its hex when the turn ends it waits another turn.
+  It goes in a quadrant that has
   none: the quadrant just emptied, or an unseated ("empty") quadrant, chosen
   uniformly, then a free hex in it (not under a Spirit or a Lost Chord).
   - 4 seats: only the quadrant just emptied qualifies → **persistent**.
