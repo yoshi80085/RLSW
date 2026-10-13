@@ -43,6 +43,12 @@ already built is fine — say so and move on.
 
 ## 🆕 OPEN — not yet promoted
 
+### 2026-10-13 — Db may come back with the difficulty settings
+*"Db is gone (for now - will find a place later when difficulty settings are being built out) - In beginner mode - the default for now - there is no Db."*
+
+### 2026-10-11 — Revisit Gravity Control
+Said while ruling Tune of DOOM: Gravity Control doesn't pull a floating (lifted) Rival down, and *"will need to revisit the ability a bit later"*. Its rework is its own item. (Tune of DOOM spec rule 19, project doc `claude/tune-of-doom-spec.md`.)
+
 ### ✅ PROMOTED 2026-09-25 → built: `ui/spiritPickerStage.js` + `SpiritDraft.jsx` (handoff `SEQUENCING.md` 31-picker)
 ### 2026-09-25 — The Spirit picker: 3D standees, a pop on hover, a backstory on a long hover
 Alex: hovering a character in the selection screen makes it **pop out**; hovering longer

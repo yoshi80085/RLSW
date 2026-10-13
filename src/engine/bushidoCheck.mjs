@@ -47,7 +47,7 @@ import { makeInitialState } from "./state.js";
 import { legalActions } from "./policies/legalActions.js";
 import { applyBotAction } from "./policies/transition.js";
 import { makeRng } from "./rng.js";
-import { ABILITY_CD, cooldownLeft } from "./systems/cooldowns.js";
+import { ABILITY_CD, cooldownLeft, tickCooldowns } from "./systems/cooldowns.js";
 import { SWING_DRIVE_SPEND, attackParams } from "./systems/attackParams.js";
 import {
   PSYCHO_BUSHIDO_CD, PSYCHO_BUSHIDO_AP_COST,
@@ -306,18 +306,35 @@ const nsOf = (st, id) => st.noteStates?.[id] ?? {};
   eq(SHADOW_ILLUSION_SUSTAIN_DRAIN, 1, '👤 …and eats 1 Sustain each of them');
   eq(ABILITY_CD.shadow_illusion, SHADOW_ILLUSION_CD, '🕒 the cooldown table reads the constant');
 
-  // 🚩 RED ON PURPOSE, 2026-10-04 — A DECISION FOR ALEX, NOT A STALE TEST.
-  // Flattening every cooldown to 2 when Db was cut (2026-10-02) put the CD
-  // EQUAL to the double's 2-turn life, so this invariant broke. Which number
-  // moves — the cooldown back above the duration, or the duration down — is a
-  // game rule, so it was left failing rather than edited to pass. See
-  // STATE_OF_PLAY's open decisions.
-  // ⚠️ THE COOLDOWN MUST OUTLAST THE DOUBLE, or he can stand a second one up the
-  // turn the first falls and the ability stops being a thing you SPEND. That is
-  // the whole point of the respec, and it is the relationship rather than either
-  // number that carries it.
-  ok(SHADOW_ILLUSION_CD > SHADOW_ILLUSION_TURNS,
-    '👤 there is a gap between one double falling and the next standing — it is spent, not maintained');
+  // ✅ DECIDED 2026-10-13 (Alex): *"its cool down begins after the previous
+  // 'shadow' has been exhausted. It lasts as long as everything else."* It was
+  // red on purpose from 2026-10-04 (CD 2 = the double's 2 turns, so one could be
+  // kept up). ⚠️ THE GAP IS NOW CARRIED BY THE CLOCK WAITING, not by the numbers:
+  // the assertion below is on the real turn-start tick, not on the constants.
+  {
+    const cast = { abilityCd: { shadow_illusion: SHADOW_ILLUSION_CD, psycho_bushido: 2 }, shadowIllusion: { hex: 45, turnsLeft: SHADOW_ILLUSION_TURNS } };
+    const t1 = tickCooldowns(cast);
+    eq(t1.shadow_illusion, SHADOW_ILLUSION_CD, '👤 the Shadow\'s clock holds while the double stands');
+    eq(t1.psycho_bushido, 1, '…every other ability still ticks');
+    const gone = { ...cast, abilityCd: t1, shadowIllusion: null };
+    eq(tickCooldowns(gone).shadow_illusion, SHADOW_ILLUSION_CD - 1, '👤 once the double is gone, the usual countdown');
+    // Walk his turns: cast on turn 0; when can the next double stand?
+    let ns = { abilityCd: { shadow_illusion: SHADOW_ILLUSION_CD }, shadowIllusion: { hex: 45, turnsLeft: SHADOW_ILLUSION_TURNS } };
+    let fell = null, ready = null;
+    for (let turn = 1; turn <= 10 && ready == null; turn++) {
+      const abilityCd = tickCooldowns(ns);                       // read BEFORE the double ticks, as turnFlow does
+      const left = (ns.shadowIllusion?.turnsLeft ?? 0) - 1;
+      const shadowIllusion = ns.shadowIllusion && left > 0 ? { ...ns.shadowIllusion, turnsLeft: left } : null;
+      if (ns.shadowIllusion && !shadowIllusion) fell = turn;
+      ns = { abilityCd, shadowIllusion };
+      if (fell != null && cooldownLeft(ns, 'shadow_illusion') === 0) ready = turn;
+    }
+    eq(fell, SHADOW_ILLUSION_TURNS, '👤 the double falls at the top of his turn 2');
+    eq(ready - fell, SHADOW_ILLUSION_CD, '👤 …and the next one is ready a full cooldown later — spent, not kept up');
+    ok(ready - fell > 0, '👤 there is a gap between one double falling and the next standing — it is spent, not maintained');
+    const src = readFileSync(new URL('./systems/turnFlow.js', import.meta.url), 'utf8');
+    ok(/abilityCd: tickCooldowns\(ns\)/.test(src), '👤 turnFlow ticks off the sheet as it stood BEFORE this turn\'s double tick');
+  }
 
   // 🚩 THE OPEN RIDER, PINNED SO IT CANNOT BE FORGOTTEN. §6.3 warns that if the
   // double never survives long enough to matter, duration is "the first dial to

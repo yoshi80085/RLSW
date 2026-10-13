@@ -18,8 +18,23 @@ export function firePatch(ns, skillId) {
   if (!ABILITY_CD[skillId]) return {};
   return { abilityCd: { ...(ns?.abilityCd ?? {}), [skillId]: ABILITY_CD[skillId] } };
 }
+/**
+ * 👤 THE SHADOW'S CLOCK WAITS FOR THE DOUBLE (Alex, 2026-10-13: *"for now its cool
+ * down begins after the previous 'shadow' has been exhausted. It lasts as long as
+ * everything else."*). While a double is standing at the top of his turn, the
+ * Shadow's cooldown does not tick — including the turn it falls, which counts as
+ * the moment it was "fired". Then the usual 2 rounds. ⚠️ Why: with every cooldown
+ * flattened to 2 (Db cut, 2026-10-02) a 2-turn double and a 2-round clock ended
+ * together, so he could stand a new one up the turn the last one fell — the
+ * ability became a thing he KEEPS UP rather than spends (the 2026-09-04 respec).
+ * 📌 Read off `ns.shadowIllusion` BEFORE this turn's double tick, so a double that
+ * a hit dismissed mid-round starts its clock at once; one that times out at his
+ * turn start starts it there.
+ */
+export const HELD_WHILE_LIVE = Object.freeze({ shadow_illusion: ns => !!ns?.shadowIllusion });
 export function tickCooldowns(ns) {
-  return Object.fromEntries(Object.entries(ns?.abilityCd ?? {}).map(([id, left]) => [id, Math.max(0, left - 1)]));
+  return Object.fromEntries(Object.entries(ns?.abilityCd ?? {}).map(([id, left]) =>
+    [id, HELD_WHILE_LIVE[id]?.(ns) ? left : Math.max(0, left - 1)]));
 }
 // 🪦 `tickShamisen` and `resetAllCooldowns` went with the glow-and-debt Shamisen
 // (2026-10-02): the Iwato curse speeds up and resets nothing. §2.3.00.

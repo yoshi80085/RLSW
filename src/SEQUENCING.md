@@ -59,6 +59,13 @@
 - Bot bench not re-run since the payouts moved — record, don't rebalance.
 - Nothing committed. Backups of the pre-change files: `.scratch/_backup-sonic-rework/`, `.scratch/lostChords.before-orb-port.js`.
 
+### ➕ Same evening: ⚖️ four rulings, one built (2026-10-13)
+Alex: *"1. shadow's cooldown - for now its cool down begins after the previous 'shadow' has been exhausted. It lasts as long as everything else. 2. Sunbeam and Azrael are cut. 3. Db is gone (for now - will find a place later when difficulty settings are being built out) - In beginner mode - the default for now - there is no Db. Tune of DOOM can stay as a write up for now - I'll get to that once I start making broader changes to I0."*
+- **Built:** `engine/systems/cooldowns.js` `HELD_WHILE_LIVE` — `tickCooldowns` holds `shadow_illusion` while `ns.shadowIllusion` stands. ⚠️ It reads the sheet BEFORE this turn's double tick (`turnFlow.js` passes the old `ns`), so the turn a double times out counts as its "fire": cast t0 → falls t2 → ready t4. A double dismissed mid-round (hit, attack) starts its clock at once. Card text in `data/skillTree.js`.
+- `test:bushido` §7: the deliberate red is replaced by the real tick (holds, others tick, the turn walk, a source check) → **106 green**; the revert mutant is caught. Green: `test:skilltree` 101, `legal` 706, `turnflow` 73, `engine`, `transition` 292, `harness` 1761, `loadouts`, `melody` 115, `client`, `journey`, `loadoutui`; `check:bundle` zero warnings.
+- 📌 Found: `test:abilitydemo` fails on Alex's machine only (`every lever in ABILITY_DEMO is on the preview`): his `.scratch/ability-demo-preview.jsx` (10-01) predates a lever added since. The cloud copy skips that check. Not this change.
+- Recorded: Sunbeam/Azrael cut (confirmed); Db stays gone, may return with difficulty settings (inbox); Tune of DOOM parked as a write-up (STATE §4). Gravity Control's revisit is in the inbox too.
+
 ---
 
 
