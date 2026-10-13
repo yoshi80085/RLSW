@@ -1981,7 +1981,12 @@ export function BattleMeterOverlay({
                     </div>
                     {(() => {
                       const isSonic = !!battleState?.sonicAttack;
-                      const fp = isSonic ? sonicFame(margin) : thrashFame();
+                      // 🔊 The client stamps the scene's base Fame from POINTS
+                      // through (2026-10-13); `sonicFame(margin)` only for a scene
+                      // that predates it.
+                      const fp = isSonic
+                        ? (Number.isFinite(battleState?.sonicFame) ? battleState.sonicFame : sonicFame(margin))
+                        : thrashFame();
                       const kb = isSonic
                         ? sonicKnockback(margin, defender?.vibe ?? 1, defender?.maxVibe ?? 1)
                         : thrashKnockback(margin);

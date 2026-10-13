@@ -943,7 +943,26 @@ export const THRASH_DAMAGE_CAP       = 4;   // max Vibe damage from a single Thr
 export const THRASH_WHIFF_DMG        = 1;   // losing attacker only takes this much Vibe (humiliation tap)
 export const THRASH_PUSH_THRESHOLD   = 1;   // margin needed before Thrash pushes 1 hex — any successful hit shoves the target
 // Sonic (ranged) — keep-highest pool, FP/push focused, minimal Vibe damage.
-export const SONIC_VIBE_CAP          = 2;   // max Vibe damage from a Sonic hit
+// 🔊 THE SONIC IS PAID ON POINTS THROUGH THE SHIELD, NOT DICE (Alex, 2026-10-11/13 —
+// `claude/sonic-vibe-fame-rework-spec.md`). One number, four readers: Vibe (per 4),
+// Fame (per 3), push (per 2, below) and Tune of DOOM's landing bill (per 2, unbuilt).
+// ⚠️ Why: dice-through paid a 9-point blast with 2 dice the same 1 Vibe as a
+// 1-point scrape, and the Fame the same way.
+// Vibe: "It shouldn't be as high as Thrash - but it should be a bit higher perhaps."
+// Per 4 is exactly half the Thrash's rate — melee hurts, the Sonic moves you.
+export const SONIC_VIBE_CAP          = 3;   // max Vibe damage from a staged Sonic hit (the legacy v1 volley stays at 2)
+export const SONIC_VIBE_PER_STRENGTH = 4;   // 1 Vibe per 4 points through: 1–4 → 1, 5–8 → 2, 9+ → 3
+// Fame: "It should reward more FP per win than Thrash - since its using music to
+// score victory." 1 + 1 per 3 through, so even a scrape (2) beats a Thrash win (1).
+// ⭐ The cap is on the BASE, per attack (Alex, 2026-10-13: "perhaps you mean 'per
+// attack' the base limit being '5' - maybe thats a good idea afterall"). Headliner,
+// stage effects, centre stage, the underdog and the crowd still go on top of it.
+export const SONIC_FAME_PER_STRENGTH = 3;   // 1–3 → 2, 4–6 → 3, 7–9 → 4, 10+ → 5
+export const SONIC_FAME_CAP          = 5;   // the base per attack, before riders and the crowd
+// 🛡️ A defender whose shield lets NOTHING through is paid this, times their crowd
+// (Alex, 2026-10-13: "Shield held - 1 FP + whatever fan bonus exists"). No
+// Headliner / stage / underdog riders — he named the crowd and nothing else.
+export const SHIELD_HELD_FP          = 1;
 // ⭐ Alex, 2026-10-07: "The push-back should be determined by how many 'points of
 // damage' go through, rather than number of dice … for every 2 points of damage,
 // the Spirit gets pushed back 1 space. So 1-2 = 1 space, 3-4 = 2 spaces …"

@@ -7,9 +7,10 @@ import { readFileSync } from 'node:fs';
 import * as THREE from 'three';
 import {
   LOST_CHORD_LOOK as L, LIGHT_POOL, idlePose, spawnPhase, driftPhase, pickupPhase, scatterPoint,
-  planLostChordMoments, createLostChords, createLostChordLayer, noteLabel, noteFreq,
+  planLostChordMoments, createLostChords, createLostChordLayer, noteLabel, noteFreq, LOST_CHORD_STYLE,
 } from './lostChords.js';
 import { pluckFreq, NOTE_PCS } from '../audio/lostChordSfx.js';
+import { LOST_CHORD_ORB } from './lostChordOrb.js';
 import { arenaFrame } from './arenaFrame.js';
 import { HEX_BY_NUM } from './hexMap.js';
 import { STANDEE } from './standee.js';
@@ -172,6 +173,77 @@ const src = p => readFileSync(new URL(p, import.meta.url), 'utf8');
   ok(/from '\.\.\/src\/board\/lostChords\.js'/.test(page) && /from '\.\.\/src\/audio\/lostChordSfx\.js'/.test(page), 'the dial-in page imports the GAME\'s files (one copy of the look)');
   ok(!/LOST_CHORD_LOOK = Object\.freeze/.test(page), '…and keeps no look of its own');
   ok(STANDEE.height > 2, 'the pickup rises over a standee of real height');
+}
+
+// ── §8 🔮 the energy ball (Alex's dial-in 2026-10-10; in the game 2026-10-13) ──
+{
+  ok(!('form' in L) && !Object.keys(LOST_CHORD_ORB).some(k => k in L), 'the ball\'s levers are its own: the crystal\'s dial-in is untouched');
+  const root = new THREE.Scene(), top = new THREE.Scene();
+  const lc = createLostChords(root, { pointFor, floatRoot:top });
+  const ball = lc.place(47, 'A', 'drive', 'orb');
+  ok(ball.parts.orb && ball.parts.orb.hoops.length === LOST_CHORD_ORB.hoops && !ball.parts.body && !ball.parts.crack && ball.parts.embedded.length === 0,
+    'an orb is hoops + haze + glitter, with no glass, no crack and no embedded shards');
+  ok(ball.parts.orb.glitter.points.material.depthTest && ball.parts.orb.feed.points.material.depthTest, '⚠️ its glitter is depth-tested (the Ronin in front hides it)');
+  ok(top.getObjectByName('Lost Chord energy feed') && ball.parts.orb.pool && ball.parts.claimRing, 'the feed floats with the ball; the pool and the hunt hex sit on the floor');
+  lc.update(0.5); lc.update(0.6);
+  ok(ball.parts.orb.glitter.group.visible && ball.parts.orb.feed.group.visible, 'idle: the ball\'s glitter and its feed are drawn');
+  near(ball.float.position.y, idlePose({ ...L, hoverY:LOST_CHORD_ORB.orbHover }, 0.6, 47).y, 'the ball floats at its own height', 1e-6);
+  const crystal = lc.place(28, 'D');
+  ok(crystal.parts.body && !crystal.parts.orb, 'the default style is still the crystal');
+  lc.pickup(47, { rise:1.5 }); for (let k = 1; k <= 40; k++) lc.update(0.6 + k * 0.05);
+  ok(!lc.has(47) && !top.getObjectByName('Lost Chord energy feed'), 'a picked-up ball takes its feed down with it');
+  eq([LOST_CHORD_ORB.orbSize, LOST_CHORD_ORB.hoops, LOST_CHORD_ORB.glitter, LOST_CHORD_ORB.feedWidth, LOST_CHORD_ORB.feedFlow], [0.67, 3, 690, 0.5, -0.03], 'Alex\'s 10-10 dial-in is saved (a sample of his 14)');
+  lc.place(39, 'C#', null, 'orb'); lc.update(1);
+  const risen = lc.drift(39, 84);
+  ok(risen.mode === 'spawn' && risen.t0 > 1000 && risen.data.fxAt === risen.t0, '🌫️ a ball does not stream: the new hex plays a spawn once the old one has gone');
+  const streamed = lc.drift(28, 45);
+  ok(streamed.mode === 'driftIn', '…while a crystal still streams across the floor');
+  for (let k = 1; k <= 60; k++) lc.update(1 + k * 0.05);
+  ok(lc.has(84) && lc.tokens().find(t => t.num === 84).mode === 'idle' && !lc.has(39), '…and the risen ball settles idle on its new hex');
+  lc.dispose(); eq([root.children.length, top.children.length], [0, 0], 'a board with balls disposes clean');
+  const page = src('../../.scratch/lost-chord-orb-preview.js');
+  ok(/from '\.\.\/src\/board\/lostChords\.js'/.test(page) && /from '\.\.\/src\/board\/lostChordOrb\.js'/.test(page) && !/LOST_CHORD_ORB = Object\.freeze/.test(page),
+    'the ball\'s dial-in page imports the game\'s files and keeps no look of its own');
+}
+
+// ── §9 🔮 THE GAME PLACES BALLS (Alex, 2026-10-13: port it; keep the crystal sounds) ──
+{
+  eq(LOST_CHORD_STYLE, 'orb', '§9 the board\'s style is the energy ball');
+  const root = new THREE.Scene(), top = new THREE.Scene();
+  const layer = createLostChordLayer(root, { pointFor, floatRoot:top, sound:false });
+  layer.update({ tokens:[{ num:47, note:'A', claim:'drive' }, { num:28, note:'D' }] }, []);
+  layer.tick(0);
+  ok(layer.chords.tokens().every(t => t.style === 'orb'), '§9 a placed board is all balls');
+  ok(top.getObjectByName('Lost Chord energy feed'), '§9 …each with its feed on the foreground');
+  // A token that APPEARS at the round end spawns as a ball too.
+  layer.update({ tokens:[{ num:47, note:'A', claim:'drive' }, { num:28, note:'D' }, { num:64, note:'G' }] }, []);
+  layer.tick(50);
+  eq(layer.chords.tokens().find(t => t.num === 64)?.style, 'orb', '§9 a round-end spawn is a ball');
+  // 🌫️ The engine's drift pair: the ball dissipates and rises on the new hex (no floor stream).
+  layer.update({ tokens:[{ num:47, note:'A', claim:'drive' }, { num:64, note:'G' }, { num:45, note:'D' }],
+    drifted:{ moved:[{ from:28, to:45 }] } }, []);
+  const risen = layer.chords.tokens().find(t => t.num === 45);
+  ok(risen?.style === 'orb' && risen.mode === 'spawn', '§9 a drifted ball rises again on its new hex');
+  // 💥 A Thrash scatter throws balls.
+  layer.update({ tokens:[{ num:47, note:'A', claim:'drive' }, { num:64, note:'G' }, { num:45, note:'D' }, { num:76, note:'B' }],
+    thrashed:{ added:[76] } }, [{ id:'glam', num:75 }]);
+  eq(layer.chords.tokens().find(t => t.num === 76)?.style, 'orb', '§9 a Thrash scatter lands as a ball');
+  // 🪤 What the Cursed Shamisen leans on still works on a ball.
+  ok(layer.chords.floatAt(47) instanceof THREE.Vector3, '§9 floatAt finds the ball (the noroi card sticks to it)');
+  layer.chords.setClaim(47, 'cursed');
+  eq(layer.chords.tokens().find(t => t.num === 47).claim, 'cursed', '§9 the ash tint can recolour a ball');
+  for (let t = 100; t <= 4000; t += 50) layer.tick(t);
+  layer.dispose(); eq([root.children.length, top.children.length], [0, 0], '§9 a live board of balls disposes clean');
+  // 🎧 The sounds: the crystal's own set, and a rise plays the SPAWN sound at 40% (as the page does).
+  const code = src('./lostChords.js');
+  ok(/if \(rises\) hums\.push\(\{ at:nowMs \+ L\.driftMs \* 0\.4, fn:\(\) => say\(\(\) => spawnSound\(/.test(code), '§9 a rising drift sounds the spawn at 40% of driftMs, not the whoosh');
+  ok(/import \{ hum, spawnSound, driftSound, clink, thrashBurst, pickupSound, NOTE_PCS \} from '\.\.\/audio\/lostChordSfx\.js'/.test(code),
+    '§9 the ball keeps the crystal\'s sound set (Alex, 2026-10-13: hum and shatter stay)');
+  // ⚠️ Same game-layer object, either style: flipping back to crystals is one word.
+  const back = createLostChordLayer(new THREE.Scene(), { pointFor, floatRoot:new THREE.Scene(), sound:false, style:'crystal' });
+  back.update({ tokens:[{ num:47, note:'A' }] }, []); back.tick(0);
+  eq(back.chords.tokens()[0].style, 'crystal', '§9 the crystal style still works through the layer');
+  back.dispose();
 }
 
 console.log(`✅ test:lostchords — ${n} checks`);

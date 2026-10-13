@@ -189,7 +189,7 @@ import { riffStats, RIFF_BOTH_PAID_QUALITY, RIFF_CLOSE_QUALITY_GAP } from "./eng
 import {
   marginToDamage, fameFromMargin, knockbackSpaces, underdogBonus as engineUnderdogBonus,
   smashOutcome, decideWinner, thrashDamage, thrashKnockback, thrashFame,
-  sonicDamage, sonicKnockback, sonicFame, sonicPush,
+  sonicDamage, sonicKnockback, sonicFame, sonicPush, sonicStrengthFame,
   chordFrayAmount, isRearHit, REAR_ARC, REAR_FRAY_BONUS, frayFromSustain,
 } from "./engine/systems/combat.js";
 import {
@@ -2678,7 +2678,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         { body: ['The fine print your rival hopes you skip:',
                  'Your stacks are AMMUNITION. A Thrash burns 2 notes off your Drive Stack win or lose (you need 2 to throw one) and your rival burns 1; a Sonic burns 1 win or lose. When a hit lands, the rival\'s Sustain Stack frays too — watch the notes tear off their standee and vanish. That\'s their armour leaving.',
                  `Land it in the wedge BEHIND them and they shed ${REAR_FRAY_BONUS} more. Facing decides what you can hit AND what you can brace against — it cuts both ways, so mind which way YOUR back is pointing.`,
-                 'Thrashing also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: margin-scaled FP, multiplied by your crowd.'], anchor: 'chord-stack' },
+                 'Thrashing also drops your guard: −1 Sustain until your next turn. Thrash pays a flat 1 FP — it\'s for hurting people. For FAME, go Sonic: FP from the points that get through the shield (always more than a Thrash), multiplied by your crowd.'], anchor: 'chord-stack' },
       ],
     },
     fans: {
@@ -2714,7 +2714,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       pages: [
         { body: `Remember the two ways to win? This is the second one. FAME POINTS — first to ${fameToWin} FP (set by total lives and number of Spirits) becomes LEGEND... unless somebody knocks the last life out of you first.`, anchor: 'fame-bar', emote: 'fame' },
         { body: 'This gold bar is the only bar that matters — everything else exists to feed it. If you\'re halfway there, better have a good prayer!', anchor: 'fame-bar' },
-        { body: ['The Fame menu: 🔊 Sonic wins (margin-scaled — style points are real), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify everything else.)',
+        { body: ['The Fame menu: 🔊 Sonic hits (paid on the points through the shield — and a shield that holds pays its owner too), 🎸 riff discoveries, ✨ holding centre-stage Limelight a full turn. (🎼 Cadences and 🧠 trivia pay FANS, not FP — the crowd is how you amplify everything else.)',
                  'Every payout is multiplied by your crowd (up to ×2), and if you\'re trailing badly the underdog bonus inflates it up to ×2.5. The comeback is canon.',
                  Number.isFinite(turnFameCap)
                    ? `But the arena has a volume limit: at most ${turnFameCap} FP banked per turn. Spread your legend across the set, not one blowout.`
@@ -8406,7 +8406,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       // button that fires itself after 5 s, and a remote human's press
       // arrives as a CUE with a timeout behind it.
       const scene={...verdict,sonicId,sonicAttack:true,remoteView,phase:'sonic_armed_rival',
-        viewer:battleViewer(verdict),sonicFame:verdict.hitCount,knockback:sonicPush(verdict.strengthThrough)};
+        viewer:battleViewer(verdict),sonicFame:sonicStrengthFame(verdict.strengthThrough),knockback:sonicPush(verdict.strengthThrough)};
       battleStateRef.current=scene;setBattleState(scene);setDiceDisplay(null);
       const isCurrent=()=>battleStateRef.current?.sonicId===sonicId;
       const mark=fields=>{if(!isCurrent())return;const next={...battleStateRef.current,...fields};battleStateRef.current=next;setBattleState(next);};
@@ -8418,7 +8418,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         if(!isCurrent()||battleCardRef.current?.adopted)return null;
         battleCardRef.current.adopted=true;
         verdict={...verdict,...next};plan=planOf(verdict);
-        mark({...next,sonicFame:next.hitCount,knockback:sonicPush(next.strengthThrough)});
+        mark({...next,sonicFame:sonicStrengthFame(next.strengthThrough),knockback:sonicPush(next.strengthThrough)});
         const n=verdict.diceVals.length;
         return {label:`Roll ${n}`,sub:`${n} Drive ${n===1?'die':'dice'} against a ${verdict.shieldValue} shield`};
       }};
@@ -12993,7 +12993,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       : outOfRange
                       ? "The amp is blown. Recover it before firing Sonic."
                       : canSonic
-                      ? `Sonic Attack (1 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Each penetrating ring adds one hex to the final shove. Spends 1 Drive note, hit or miss. Facing rivals with working amps trigger a RIFF-OFF.`
+                      ? `Sonic Attack (1 AP) — the forward volley. ${diceLabel}${diceWhy ? ` (${diceWhy})` : ''}; Drive wears down rolled Sustain HP; excess strength passes through. Every 4 points through deal 1 Vibe (max 3), every 2 push one hex, and Fame pays 1 + 1 per 3 (5 max before bonuses). A shield that holds pays your Rival 1 FP. Spends 1 Drive note, hit or miss. Facing rivals with working amps trigger a RIFF-OFF.`
                       : "Sonic Attack (1 AP) — build Drive and aim at a rival 2–3 hexes directly ahead (next door is too close)."}
                     onClick={() => {
                       if (action === 'sonic') { setAction(null); }

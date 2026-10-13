@@ -1,5 +1,13 @@
 # 🎸 PROJECTILE COMBAT — Design Spec
 
+> ⚠️ **SUPERSEDED IN PART, 2026-10-13 — the Sonic's PAYOUTS.** Vibe and Fame no
+> longer count delivered hits (dice through). Both read the **points through the
+> shield**: Vibe 1 per 4 (max 3), Fame 1 + 1 per 3 (base max 5 per attack, riders
+> and crowd on top), and a shield that lets nothing through pays its owner 1 FP ×
+> crowd. The tables below that say "1 per delivered hit" / "1 for 1–4, 2 for 5+" /
+> `SONIC_VIBE_CAP = 2` are history. Current truth: `STATE_OF_PLAY.md` (2026-10-13)
+> and `engine/systems/combat.js` `sonicVibe` / `sonicStrengthFame`.
+
 > **Live integration update, 2026-09-19:** The approved barrage preview is wired
 > into the game. Alex explicitly confirmed one Sustain die per effective Sustain
 > point, a fresh shield each attack, and retaining the current Vibe chip scale

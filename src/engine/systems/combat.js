@@ -13,6 +13,7 @@ import {
   UNDERDOG_MIN_DEFICIT, UNDERDOG_DEFICIT_PER_STEP, UNDERDOG_MAX_MULT,
   THRASH_DAMAGE_CAP, THRASH_WHIFF_DMG, THRASH_PUSH_THRESHOLD,
   SONIC_VIBE_CAP, SONIC_PUSH_PER_STRENGTH,
+  SONIC_VIBE_PER_STRENGTH, SONIC_FAME_PER_STRENGTH, SONIC_FAME_CAP,
 } from "../../data/gameConstants.js";
 import { CORNERS } from "../../data/corners.js";
 import { cornerFacing } from "../../board/boardHelpers.js";
@@ -63,13 +64,41 @@ export function thrashFame() {
 
 // ─── SONIC (ranged) ──────────────────────────────────────────────────────────
 /**
- * Sonic Vibe damage — the beam stings but doesn't destroy. Capped at
- * SONIC_VIBE_CAP (2). Most hits deal 1.
+ * 🪦 LEGACY Sonic Vibe — the v1 volley (one hex per die through) and the
+ * pre-volley margin roll only. ⚠️ The staged Sonic and Psycho Bushido do NOT
+ * read this since 2026-10-13: they use `sonicVibe(strengthThrough)` below. Kept
+ * at its old 1–2 so an old replay re-scores identically.
  */
 export function sonicDamage(margin) {
   if (margin <= 0) return 0;
   if (margin <= 4) return 1;
   return Math.min(SONIC_VIBE_CAP, 2);
+}
+
+/**
+ * 🔊 STAGED SONIC VIBE — 1 per `SONIC_VIBE_PER_STRENGTH` (4) points THROUGH the
+ * shield, capped at `SONIC_VIBE_CAP` (3). Alex, 2026-10-11.
+ * 0 → 0 · 1–4 → 1 · 5–8 → 2 · 9+ → 3.
+ * ⚠️ Points, not dice: two dice putting 9 through now do 3 (were 1); five dice
+ * scraping 3 through do 1 (were 2).
+ */
+export function sonicVibe(strengthThrough) {
+  const t = Math.max(0, strengthThrough ?? 0);
+  if (t <= 0) return 0;
+  return Math.min(SONIC_VIBE_CAP, Math.ceil(t / SONIC_VIBE_PER_STRENGTH));
+}
+
+/**
+ * 🔊 STAGED SONIC FAME (base, before riders and the crowd) — 1 + 1 per
+ * `SONIC_FAME_PER_STRENGTH` (3) points through, capped at `SONIC_FAME_CAP` (5)
+ * per attack. 1–3 → 2 · 4–6 → 3 · 7–9 → 4 · 10+ → 5.
+ * ⭐ The +1 is the ruling, not decoration: ANY Sonic that lands pays more than a
+ * Thrash win (`thrashFame` = 1). Take it away and a scrape-through ties a Thrash.
+ */
+export function sonicStrengthFame(strengthThrough) {
+  const t = Math.max(0, strengthThrough ?? 0);
+  if (t <= 0) return 0;
+  return Math.min(SONIC_FAME_CAP, 1 + Math.ceil(t / SONIC_FAME_PER_STRENGTH));
 }
 
 /**
@@ -453,7 +482,9 @@ function resolveVolley(diceVals, shieldValue) {
     ...ledger, diceVals, diceHits, hitCount, attackerWon: hitCount > 0,
     atkRoll: diceVals.reduce((sum, value) => sum + value, 0),
     atkTotal: diceVals.reduce((sum, value) => sum + value, 0), margin: hitCount,
-    damage: sonicDamage(hitCount),
+    // 🔊 Points through, not dice through (2026-10-13). Bushido overrides this
+    // with its own rule (`bushidoDamage`: the full strength through, uncapped).
+    damage: sonicVibe(ledger.strengthThrough),
   };
 }
 

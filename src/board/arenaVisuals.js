@@ -359,7 +359,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   const attackTiles=createAttackTiles(root,{pointFor:arenaPoint});
   // 🎪 The marquee spaces: a bulb-ringed neon hex and a floating prize card (marqueeMarkers.js).
   const marqueeMarkers=createMarqueeMarkers(root,{pointFor:arenaPoint});
-  // 💎 The Lost Chords as crystals (lostChords.js, Alex's dial-in 2026-10-08). The
+  // 🔮 The Lost Chords as energy balls (lostChords.js + lostChordOrb.js — Alex's dial-ins 2026-10-08 / 10-10, balls since 10-13). The
   // crack and the light stay on the arena canvas; the crystal floats on the
   // FOREGROUND, above the SVG click layer, with the standees (its header says why).
   const lostChords=createLostChordLayer(root,{pointFor:arenaPoint,floatRoot:foregroundScene,sound:typeof window!=='undefined',

@@ -63,6 +63,10 @@ import * as THREE from 'three';
 import { HEX_BY_NUM } from './hexMap.js';
 import { axialDist } from './hexGeometry.js';
 import { STANDEE } from './standee.js';
+// 🔮 The energy ball (Alex 2026-10-10): a third style beside 'crystal' and 'today'.
+// ✅ IN THE GAME since 2026-10-13 — `createLostChordLayer` places balls (`LOST_CHORD_STYLE`).
+// 🎧 Alex, 2026-10-13: the ball keeps the crystal's sounds (glass hum, shatter) — no new set.
+import { LOST_CHORD_ORB, createOrbKit } from './lostChordOrb.js';
 import { hum, spawnSound, driftSound, clink, thrashBurst, pickupSound, NOTE_PCS } from '../audio/lostChordSfx.js';
 // 🎼 One pitch table, in the sound module (it is the one that plays them).
 export { NOTE_PCS, noteFreq } from '../audio/lostChordSfx.js';
@@ -398,7 +402,8 @@ const disposeTree = o => o.traverse(m => { m.geometry?.dispose?.(); const ms = A
  * @param floatRoot where the floating half lives (the game's foreground scene); defaults to `root`
  */
 export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, floatRoot = root } = {}) {
-  let L = { ...look };
+  // 🔮 The ball's levers ride along under the crystal's, so a look without them (the game's) still builds a ball.
+  let L = { ...LOST_CHORD_ORB, ...look };
   const group = new THREE.Group(); group.name = 'Lost Chords'; root.add(group);
   const fx = new THREE.Group(); fx.name = 'Lost Chord moments'; group.add(fx);
   // 🧱 The floating half (see the header): its own group, in `floatRoot`.
@@ -422,6 +427,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
   const moteTex = (() => { const cv = canvas2d(32); if (!cv) { const t = blank(); t.userData.shared = true; return t; } const { c, g } = cv;
     const gr = g.createRadialGradient(16, 16, 0, 16, 16, 16); gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,.7)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
     g.fillStyle = gr; g.fillRect(0, 0, 32, 32); const t = new THREE.CanvasTexture(c); t.userData.shared = true; return t; })();
+  const orbKit = createOrbKit({ moteTex });
   let bodyGeo = null, edgeGeo = null, coreGeo = null, smallGeo = null;
   const hexRing = new THREE.RingGeometry(0.86, 0.95, 6).rotateX(-Math.PI / 2);
   const hexFill = new THREE.CircleGeometry(0.95, 6).rotateX(-Math.PI / 2);
@@ -439,9 +445,14 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     edgeGeo = new THREE.EdgesGeometry(bodyGeo, 1);
     coreGeo = crystalGeometry(L.shape, L.stretch * 0.9).scale(0.42, 0.62, 0.42);
     smallGeo = crystalGeometry('shard', 2.4);
+    orbKit.build(L);
   }
   buildGeos();
 
+  /** Where the note sits on the float: in the crystal's heart / the ball's centre, or above either. */
+  const letterY = (orb = false) => orb
+    ? (L.letter === 'above' ? L.orbSize * 0.5 + L.letterSize * 0.55 : 0)
+    : (L.letter === 'above' ? L.size * L.stretch * 0.62 + L.letterSize * 0.55 : L.size * L.stretch * 0.05);
   const colorOf = claim => claim === 'drive' ? L.drive : claim === 'sustain' ? L.sustain : claim === 'cursed' ? (L.cursed ?? '#8f4dff') : L.neutral;
 
   /** One crystal and its floor, built at a hex. `style` 'crystal' | 'today' (the shipped flat chip, for the honest comparison). */
@@ -461,7 +472,8 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
 
   function dropToken(t) { stripToken(t); group.remove(t.group); tops.remove(t.top); }
   function stripToken(t) {
-    const shared = new Set([bodyGeo, edgeGeo, coreGeo, smallGeo, hexRing, hexFill, waveGeo, chipGeo, chipRim, shardGeo]);
+    orbKit.strip(t.parts);   // 🔮 the ball's two glitter helices take themselves down
+    const shared = new Set([bodyGeo, edgeGeo, coreGeo, smallGeo, hexRing, hexFill, waveGeo, chipGeo, chipRim, shardGeo, ...orbKit.shared()]);
     for (const g of [t.floor, t.spin, t.float]) {
       for (const ch of [...g.children]) {
         if (ch === t.spin) continue; g.remove(ch);
@@ -499,11 +511,15 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
       }
       return;
     }
+    const orb = t.style === 'orb';
     // ── floor: the crack, the hunt hex, the embedded shards ──
+    // 🔮 A ball keeps the crack only if asked (`orbFloor:'crack'`); its own floor is the kit's pool.
+    if (!orb || L.orbFloor === 'crack') {
     P.crack = new THREE.Mesh(new THREE.PlaneGeometry(1.9, 1.9).rotateX(-Math.PI / 2), new THREE.MeshBasicMaterial({
       map:crackTex[t.crackVariant], color:col.clone().multiplyScalar(L.crackGlow), transparent:true, depthWrite:false,
       blending:THREE.AdditiveBlending, toneMapped:false, polygonOffset:true, polygonOffsetFactor:-2 }));
     P.crack.rotation.y = t.crackYaw; P.crack.position.y = L.floorY + 0.006; P.crack.renderOrder = 58; t.floor.add(P.crack);
+    }
     if (t.claim && L.claimHex > 0) {
       P.claimFill = new THREE.Mesh(hexFill, additive(col.clone().multiplyScalar(0.5 * L.claimHex), 1));
       P.claimRing = new THREE.Mesh(hexRing, additive(col.clone().multiplyScalar(2 * L.claimHex), 1));
@@ -511,7 +527,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     }
     P.embedded = [];
     const r = rng(t.num * 97 + 5);
-    for (let i = 0; i < L.embedded; i++) {
+    for (let i = 0; i < (orb ? 0 : L.embedded); i++) {
       const m = new THREE.Mesh(smallGeo, new THREE.MeshStandardMaterial({ color:col.clone().multiplyScalar(0.25), emissive:col, emissiveIntensity:L.bodyGlow * 1.4,
         transparent:true, opacity:Math.min(1, L.bodyOpacity + 0.3), roughness:0.18, metalness:0.1, flatShading:true, depthWrite:false }));
       const a = (i / Math.max(1, L.embedded)) * Math.PI * 2 + r() * 0.8, d = 0.18 + r() * 0.2, k = L.size * (0.28 + r() * 0.18);
@@ -519,7 +535,9 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
       m.scale.setScalar(k); m.rotation.set(Math.sin(a) * (0.35 + r() * 0.3), r() * 3, -Math.cos(a) * (0.35 + r() * 0.3));
       m.userData.k = k; t.floor.add(m); P.embedded.push(m);
     }
-    // ── the crystal ──
+    // ── the crystal (or the ball) ──
+    if (orb) { orbKit.dress(t, P, col, L); t.spin.rotation.z = 0; }
+    else {
     P.body = new THREE.Mesh(bodyGeo, new THREE.MeshStandardMaterial({ color:col.clone().multiplyScalar(0.3), emissive:col,
       emissiveIntensity:L.bodyGlow, transparent:true, opacity:L.bodyOpacity, roughness:0.12, metalness:0.15,
       flatShading:true, depthWrite:false, side:THREE.DoubleSide }));
@@ -529,6 +547,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     P.body.renderOrder = 61; P.core.renderOrder = 62; P.edges.renderOrder = 63;
     t.spin.add(P.core, P.body, P.edges);
     t.spin.rotation.z = L.tilt;
+    }
     if (L.letter !== 'off') {
       P.letter = new THREE.Sprite(new THREE.SpriteMaterial({ map:letterTexture(t.note, L.letterOutline, false, L.letterBack), color:new THREE.Color('#ffffff').lerp(col, 0.25).multiplyScalar(L.letterGlow),
         transparent:true, depthWrite:false, toneMapped:false }));
@@ -536,7 +555,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
       // through it, but a standee in front still hides it.
       P.letter.material.map.userData.shared = true;
       P.letter.renderOrder = 70;
-      P.letter.position.y = L.letter === 'above' ? L.size * L.stretch * 0.62 + L.letterSize * 0.55 : L.size * L.stretch * 0.05;
+      P.letter.position.y = letterY(orb);
       t.float.add(P.letter);
     }
     // ── the light on the stone, and the motes ──
@@ -553,7 +572,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
 
   // ── transient effects ──
   function addEffect(e) { effects.add(e); if (e.obj) fx.add(e.obj); return e; }
-  function endEffect(e) { effects.delete(e); if (e.obj) { fx.remove(e.obj); disposeTree(e.obj); } if (e.flash && ![...effects].some(x => x.flash)) e.flash.intensity = 0; }
+  function endEffect(e) { effects.delete(e); if (e.obj) { fx.remove(e.obj); if (e.sharedGeo) e.obj.material.dispose(); else disposeTree(e.obj); } if (e.flash && ![...effects].some(x => x.flash)) e.flash.intensity = 0; }
 
   function boltColors(col) {
     return L.boltColor === 'riven' ? RIVEN_BOLTS : L.boltColor === 'white' ? [0xddeeff] : [new THREE.Color(col).getHex()];
@@ -586,9 +605,9 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     get look() { return L; },
     /** Lever moved → rebuild what depends on it. */
     setLook(next) {
-      const geoKeys = ['shape', 'stretch'];
+      const geoKeys = ['shape', 'stretch', 'hoopWidth'];
       const rebuild = geoKeys.some(k => next[k] !== L[k]);
-      L = { ...next };
+      L = { ...LOST_CHORD_ORB, ...next };
       if (rebuild) buildGeos();
       for (const t of tokens.values()) dressToken(t);
     },
@@ -624,6 +643,16 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
       const old = tokens.get(fromNum); if (!old || !old.alive || tokens.has(toNum)) return null;
       const { note, claim, style } = old;
       if (style === 'today') { api.remove(fromNum); return api.place(toNum, note, claim, style); }
+      // 🌫️ A BALL DISSIPATES AND RISES AGAIN (Alex 2026-10-10, `driftStyle:'rise'`): the old
+      // one fades up off its hex, then the new hex plays the round-end spawn — lightning, the
+      // feed climbing, the hoops winding up. No stream across the floor.
+      if (style === 'orb' && L.driftStyle === 'rise') {
+        old.mode = 'driftOut'; old.t0 = nowMs; old.ms = L.driftMs * 0.6; old.alive = false; old.rise = true;
+        tokens.delete(fromNum); tokens.set(`ghost-${fromNum}-${nowMs}`, old);
+        const t = makeToken(toNum, note, claim, style); t.mode = 'spawn'; t.t0 = nowMs + L.driftMs * 0.4; t.ms = L.spawnMs;
+        t.data = { fxAt:t.t0 };   // the lightning waits for the new ball's own start
+        return t;
+      }
       // The old crystal stays to dissolve; the new one waits to re-form.
       old.mode = 'driftOut'; old.t0 = nowMs; old.ms = L.driftMs; old.alive = false;
       tokens.delete(fromNum); const ghostKey = `ghost-${fromNum}-${nowMs}`; tokens.set(ghostKey, old);
@@ -661,9 +690,11 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
       // the shards
       const r = rng(num * 7 + 3), col = new THREE.Color(colorOf(t.claim));
       const shards = new THREE.Group();
-      for (let i = 0; i < L.shards; i++) {
-        const m = new THREE.Mesh(shardGeo, additive(col.clone().multiplyScalar(1.7), 1));
-        const a = (i / L.shards) * Math.PI * 2 + r() * 0.6;
+      // 🔮 A ball bursts into sparks (more of them, smaller) rather than glass shards.
+      const orb = t.style === 'orb', nShards = orb ? L.orbSparks : L.shards;
+      for (let i = 0; i < nShards; i++) {
+        const m = new THREE.Mesh(orb ? orbKit.sparkGeo : shardGeo, additive(col.clone().multiplyScalar(orb ? 2.2 : 1.7), 1));
+        const a = (i / nShards) * Math.PI * 2 + r() * 0.6;
         m.userData.v = new THREE.Vector3(Math.cos(a) * (1.6 + r() * 1.8), 0.8 + r() * 2.4, Math.sin(a) * (1.6 + r() * 1.8));
         m.userData.w = new THREE.Vector3(r() * 9, r() * 9, r() * 9);
         m.visible = false; shards.add(m);
@@ -681,7 +712,7 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
         t.float.getWorldPosition(c);
         if (t.style === 'today') c.y = L.floorY;
         const d = raycaster.ray.distanceSqToPoint(c);
-        const R = t.style === 'today' ? 0.35 : Math.max(0.45, L.size * L.stretch * 0.5);
+        const R = t.style === 'today' ? 0.35 : t.style === 'orb' ? Math.max(0.45, L.orbSize * 0.6) : Math.max(0.45, L.size * L.stretch * 0.5);
         if (d < R * R) { const along = raycaster.ray.origin.distanceTo(c); if (along < bestD) { bestD = along; best = t.num; } }
       }
       return best;
@@ -696,13 +727,16 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     },
     dispose() {
       api.clear(); for (const g of [bodyGeo, edgeGeo, coreGeo, smallGeo, hexRing, hexFill, waveGeo, chipGeo, chipRim, shardGeo]) g?.dispose();
-      crackTex.forEach(t => t.dispose()); moteTex.dispose(); root.remove(group); floatRoot.remove(tops);
+      crackTex.forEach(t => t.dispose()); moteTex.dispose(); orbKit.dispose(); root.remove(group); floatRoot.remove(tops);
     },
   };
 
   function frameToken(key, t, tSec, reduced) {
     const P = t.parts; if (!P) return;
-    const pose = idlePose(L, tSec, t.num, reduced);
+    const orb = t.style === 'orb';
+    // 🔮 The ball floats at its own height; everything else about the float is shared.
+    const LS = orb ? { ...L, hoverY:L.orbHover } : L;
+    const pose = idlePose(LS, tSec, t.num, reduced);
     const isHover = hovered === t.num && t.alive;
     t.hum = Math.max(0, t.hum - 0.016 / 0.9);
     if (t.style === 'today') {
@@ -714,26 +748,29 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     }
     const bump = t.claim ? L.claimBump : 1;
     let scale = bump * (isHover ? 1.08 : 1) * (1 + t.hum * 0.12), y = pose.y, crack = 1, glow = pose.pulse * (1 + t.hum * 0.8 + (isHover ? 0.25 : 0)), letterA = 1, vis = true;
-    let embedded = 1;
+    let embedded = 1, feed = 1, spawnU = 1;
     const u = t.ms ? clamp01((nowMs - t.t0) / t.ms) : 1;
     if (t.mode === 'spawn') {
+      if (t.data?.fxAt != null && nowMs >= t.data.fxAt) { t.data.fxAt = null; spawnFx(t); }
       const s = spawnPhase(u, L.spawnStyle);
       scale *= Math.max(0.0001, s.grow); crack = s.crack * (s.crackFlicker && !reduced ? 0.6 + 0.4 * Math.sin(nowMs * 0.09) ** 2 : 1);
       y = L.spawnStyle === 'below' ? -0.2 + (pose.y + 0.2) * s.rise : pose.y; letterA = s.letter; glow *= 1 + s.flash * 2; embedded = s.crack;
+      spawnU = u; feed = s.crack;   // 🔮 the feed climbs out of the stone as the floor lights, BEFORE the ball forms
       if (u >= 1) t.mode = 'idle';
     } else if (t.mode === 'driftOut') {
-      const d = driftPhase(u); scale *= Math.max(0.0001, d.out); crack = d.crackOld; letterA = d.out; glow *= 1 + (1 - d.out) * 1.5; embedded = d.crackOld;
+      const d = driftPhase(u); scale *= Math.max(0.0001, d.out); crack = d.crackOld; letterA = d.out; glow *= 1 + (1 - d.out) * 1.5; embedded = d.crackOld; feed = d.crackOld;
+      if (t.rise) { const k = smooth(u); y += k * 1.1; scale = Math.max(0.0001, scale / Math.max(0.0001, d.out) * (1 + k * 0.5) * (1 - k)); crack = 1 - smooth(span(u, 0, 0.6)); feed = 1 - smooth(span(u, 0, 0.35)); letterA = 1 - smooth(span(u, 0, 0.5)); }   // 🌫️ swells, thins and floats up as it goes
       if (u >= 1) { dropToken(t); tokens.delete(key); return; }
     } else if (t.mode === 'driftIn') {
-      const d = driftPhase(u); scale *= Math.max(0.0001, d.in); crack = d.crackNew; letterA = smooth(span(u, 0.85, 1)); embedded = d.crackNew;
+      const d = driftPhase(u); scale *= Math.max(0.0001, d.in); crack = d.crackNew; feed = d.crackNew; letterA = smooth(span(u, 0.85, 1)); embedded = d.crackNew;
       if (u >= 1) t.mode = 'idle';
     } else if (t.mode === 'scatter') {
       if (nowMs < t.t0) { vis = false; crack = 0; embedded = 0; }
       else {
-        const p = scatterPoint(t.data.from, t.data.to, u, L);
+        const p = scatterPoint(t.data.from, t.data.to, u, LS);
         t.float.position.set(p.x - t.group.position.x, p.y, p.z - t.group.position.z);
         t.spin.rotation.x = p.landed ? t.spin.rotation.x * 0.85 : u * 14;
-        crack = p.landed ? smooth(p.k * 1.6) : 0; embedded = crack; scale *= p.landed ? 1 : 0.75; letterA = p.landed ? smooth(p.k) : 0;
+        crack = p.landed ? smooth(p.k * 1.6) : 0; embedded = crack; feed = crack; scale *= p.landed ? 1 : 0.75; letterA = p.landed ? smooth(p.k) : 0;
         glow *= p.landed ? 1 + (1 - p.k) * 1.6 : 1.3;
         if (p.landed && !t.data.landedFx) { t.data.landedFx = true; landWave(t); }
         if (u >= 1) { t.mode = 'idle'; t.spin.rotation.x = 0; }
@@ -743,6 +780,15 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
       y = pose.y + ph.lift * D.rise + ph.noteRise * 0.45;
       if (!ph.shattered) { scale *= 1 + ph.ring * 0.4; glow *= 1 + ph.ring * 2.5; }
       else scale = 0.0001;
+      feed = ph.crack * (1 - ph.lift);   // 🔮 the ball tears off its feed as it lifts
+      // 🔮 a ball goes with a flash of its own colour where it broke, over his head
+      if (orb && ph.shattered && !D.burst) {
+        // ⚠️ From THIS frame's height, not `getWorldPosition`: the matrices are last frame's,
+        // and on a long frame that put the flash down at the hex, behind him (headless 10-10).
+        D.burst = true; const w = new THREE.Vector3(t.top.position.x + t.float.position.x, y, t.top.position.z + t.float.position.z);
+        const b = new THREE.Mesh(orbKit.burstGeo, orbKit.burstMaterial(new THREE.Color(colorOf(t.claim))));
+        b.position.copy(w); addEffect({ kind:'burst', t0:nowMs, ms:420, obj:b, sharedGeo:true });
+      }
       crack = ph.crack; embedded = ph.crack;
       D.shards.children.forEach(m => {
         m.visible = ph.shattered && ph.shards < 1;
@@ -761,28 +807,33 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
     t.float.visible = vis;
     if (t.mode !== 'scatter') t.float.position.set(0, y, 0);
     t.spin.rotation.y = pose.yaw;
-    t.spin.scale.setScalar(L.size * scale);
+    t.spin.scale.setScalar((orb ? L.orbSize : L.size) * scale);
     // the core and the edges carry the breath; the body stays glass
-    P.core.material.opacity = Math.min(1, 0.85 * glow);
-    P.edges.material.opacity = Math.min(1, 0.7 + 0.3 * glow);
-    P.body.material.emissiveIntensity = L.bodyGlow * glow;
-    P.crack.material.opacity = Math.min(1, crack * (0.75 + 0.25 * glow));
-    P.crack.scale.setScalar(L.crack * Math.max(0.0001, 0.35 + 0.65 * crack));
+    if (P.core) {
+      P.core.material.opacity = Math.min(1, 0.85 * glow);
+      P.edges.material.opacity = Math.min(1, 0.7 + 0.3 * glow);
+      P.body.material.emissiveIntensity = L.bodyGlow * glow;
+    }
+    if (P.crack) {
+      P.crack.material.opacity = Math.min(1, crack * (0.75 + 0.25 * glow));
+      P.crack.scale.setScalar(L.crack * Math.max(0.0001, 0.35 + 0.65 * crack));
+    }
+    if (P.orb) orbKit.frame(t, P, L, { tSec, glow, scale, crack, feed, vis, reduced, spawnU, y:t.float.position.y, hum:t.hum });
     for (const m of P.embedded) { m.scale.setScalar(m.userData.k * Math.max(0.0001, embedded)); m.material.emissiveIntensity = L.bodyGlow * 1.4 * glow; }
     if (P.claimRing) { const k = reduced ? 1 : 0.55 + 0.45 * Math.sin(tSec * Math.PI * 2 / 1.6); P.claimRing.material.opacity = k * crack; P.claimFill.material.opacity = 0.5 * crack; }
     if (P.letter) {
       P.letter.material.opacity = letterA;
       const ls = L.letterSize * (isHover ? 1.12 : 1) * (t.claim ? Math.sqrt(L.claimBump) : 1) * (1 + t.hum * 0.1);
       P.letter.scale.set(ls, ls, 1);
-      if (t.mode === 'scatter') P.letter.position.set(0, L.letter === 'above' ? L.size * L.stretch * 0.62 + L.letterSize * 0.55 : L.size * L.stretch * 0.05, 0);
+      if (t.mode === 'scatter') P.letter.position.set(0, letterY(orb), 0);
     }
     if (t.light && t.mode !== 'pickup') { t.light.intensity = L.light * Math.min(2.5, glow) * Math.max(scale > 0.01 ? 1 : 0, crack * 0.5); t.light.position.set(t.group.position.x + t.float.position.x, Math.max(0.15, y * 0.7 + 0.15), t.group.position.z + t.float.position.z); }
     if (t.motesPts) {
       const pos = t.motesPts.geometry.attributes.position, seeds = t.motesPts.userData.seed;
       seeds.forEach(([a0, rad, h, sp], i) => {
         const a = a0 + (reduced ? 0 : tSec * sp);
-        const R = rad * (L.size / 0.5) * (0.7 + 0.3 * scale);
-        pos.setXYZ(i, Math.cos(a) * R + t.float.position.x, y + (h - 0.5) * L.size * L.stretch * 0.8 + (reduced ? 0 : Math.sin(tSec * 1.3 + i) * 0.06), Math.sin(a) * R + t.float.position.z);
+        const R = rad * ((orb ? L.orbSize * 0.8 : L.size) / 0.5) * (0.7 + 0.3 * scale);
+        pos.setXYZ(i, Math.cos(a) * R + t.float.position.x, y + (h - 0.5) * (orb ? L.orbSize : L.size * L.stretch) * 0.8 + (reduced ? 0 : Math.sin(tSec * 1.3 + i) * 0.06), Math.sin(a) * R + t.float.position.z);
       });
       pos.needsUpdate = true; t.motesPts.material.opacity = 0.9 * Math.min(1, scale) * (vis ? 1 : 0);
     }
@@ -819,7 +870,9 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
       });
       pos.needsUpdate = true;
     } else if (e.kind === 'burst') {
-      e.obj.material.opacity = (1 - u) * 0.8; e.obj.scale.setScalar(0.4 + u * 1.8);
+      const a = (1 - u) * 0.8;   // 🔮 the ball's shell burst is a shader: its strength is `alpha`
+      if (e.obj.material.uniforms?.alpha) e.obj.material.uniforms.alpha.value = a * 1.2; else e.obj.material.opacity = a;
+      e.obj.scale.setScalar(0.4 + u * 1.8);
     } else if (e.kind === 'wave') {
       e.obj.material.opacity = (1 - u) * 0.9; e.obj.scale.setScalar(0.4 + u * 1.4);
     }
@@ -832,6 +885,13 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
 // ─────────────────────────────────────────────────────────────────────────────
 // THE GAME'S WIRING
 // ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * 🔮 WHAT THE GAME PUTS ON THE BOARD — 'orb' since 2026-10-13 (Alex's 10-10 dial-in,
+ * `LOST_CHORD_ORB`). 'crystal' is still a working style: flip this to go back, and
+ * the crystal's own dial-in (`LOST_CHORD_LOOK`) is untouched.
+ */
+export const LOST_CHORD_STYLE = 'orb';
 
 /**
  * 🎮 The Lost Chords in a live match (arenaVisuals.js).
@@ -850,8 +910,12 @@ export function createLostChords(root, { pointFor, L: look = LOST_CHORD_LOOK, fl
  * settings (`tones`, from the client's tone panel); the client skips its own
  * pickup pluck while the 3D arena is up, so the note sounds once.
  */
-export function createLostChordLayer(root, { pointFor, floatRoot = root, L = LOST_CHORD_LOOK, sound = true, onShatter = null } = {}) {
+export function createLostChordLayer(root, { pointFor, floatRoot = root, L = LOST_CHORD_LOOK, sound = true, onShatter = null, style = LOST_CHORD_STYLE } = {}) {
   const chords = createLostChords(root, { pointFor, L, floatRoot });
+  // 🌫️ Under the ball's 'rise' drift there is no stream across the floor to score:
+  // the new hex plays the round-end spawn at 40% of driftMs, so it gets the SPAWN
+  // sound then (as the dial-in page does), not the drift whoosh now.
+  const rises = style === 'orb' && ({ ...LOST_CHORD_ORB, ...L }).driftStyle === 'rise';
   let prev = null, pending = [], hums = [], lastHover = null, reachKey = null, tones = {}, nowMs = 0;
   const say = fn => { if (!sound) return; try { fn(); } catch { /* audio unavailable — silent */ } };
   const rise = () => Math.max(1.2, STANDEE.height + 0.45 - L.hoverY);
@@ -874,16 +938,20 @@ export function createLostChordLayer(root, { pointFor, floatRoot = root, L = LOS
       chords.clock(nowMs / 1000);
       const scatters = new Map();
       for (const o of ops) {
-        if (o.op === 'place') chords.place(o.num, o.note, o.claim);
+        if (o.op === 'place') chords.place(o.num, o.note, o.claim, style);
         else if (o.op === 'claim') chords.setClaim(o.num, o.claim);
-        else if (o.op === 'spawn') { chords.spawn(o.num, o.note, o.claim); say(() => spawnSound(o.note, { volume:L.sfxVolume, octave:L.humOctave, voice:L.humVoice, style:L.spawnStyle })); }
-        else if (o.op === 'drift') { chords.drift(o.from, o.to); say(() => driftSound(o.note, { volume:L.sfxVolume, octave:L.humOctave, voice:L.humVoice, ms:L.driftMs })); }
+        else if (o.op === 'spawn') { chords.spawn(o.num, o.note, o.claim, style); say(() => spawnSound(o.note, { volume:L.sfxVolume, octave:L.humOctave, voice:L.humVoice, style:L.spawnStyle })); }
+        else if (o.op === 'drift') {
+          chords.drift(o.from, o.to);
+          if (rises) hums.push({ at:nowMs + L.driftMs * 0.4, fn:() => say(() => spawnSound(o.note, { volume:L.sfxVolume, octave:L.humOctave, voice:L.humVoice, style:L.spawnStyle })) });
+          else say(() => driftSound(o.note, { volume:L.sfxVolume, octave:L.humOctave, voice:L.humVoice, ms:L.driftMs }));
+        }
         else if (o.op === 'scatter') { if (!scatters.has(o.fromHex)) scatters.set(o.fromHex, []); scatters.get(o.fromHex).push(o); }
         else if (o.op === 'pickup') pending.push({ num:o.num, note:o.note, spiritId:o.spiritId, t0:nowMs });
         else if (o.op === 'shatter') pending.push({ num:o.num, note:o.note, spiritId:null, t0:nowMs - 1e6 });
       }
       for (const [fromHex, list] of scatters) {
-        chords.scatter(pointFor(fromHex, 1.7), list.map(o => ({ num:o.num, note:o.note, claim:o.claim })));
+        chords.scatter(pointFor(fromHex, 1.7), list.map(o => ({ num:o.num, note:o.note, claim:o.claim, style })));
         say(() => thrashBurst({ volume:L.sfxVolume }));
         list.forEach((o, i) => hums.push({ at:nowMs + i * 70 + L.scatterMs * 0.78, fn:() => say(() => clink(o.note, { volume:L.sfxVolume, octave:L.humOctave })) }));
       }

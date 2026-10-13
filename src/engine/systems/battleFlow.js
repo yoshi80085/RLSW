@@ -53,7 +53,7 @@ import {
 import { isPosing, poseRounds, posePayout } from "./limelight.js";
 import {
   thrashKnockback, sonicKnockback, chordFrayAmount, underdogBonus,
-  thrashFame, sonicFame, sonicVolleyFame, isRearHit, sonicPush,
+  thrashFame, sonicFame, sonicVolleyFame, sonicStrengthFame, isRearHit, sonicPush,
 } from "./combat.js";
 import { HEX_BY_NUM } from "../../board/hexMap.js";
 import { PYRO_VERSION } from "../../data/stageEffects.js";
@@ -62,7 +62,7 @@ import { hexRingFromCenter, crowdMultiplier } from "../../board/boardHelpers.js"
 import {
   FAME_PER_TURN_CAP, FAME_PER_TURN_CAP_ROUNDS, famePerTurnCapFor, ROUND_LIMIT_DEFAULT,
   RIFF_FP_TURN_CAP, FAN_DIEHARD_START, LIMELIGHT_HEX,
-  SONIC_LIMELIGHT_FP, POSE_SUSTAIN_COST, fpPerLife,
+  SONIC_LIMELIGHT_FP, SHIELD_HELD_FP, POSE_SUSTAIN_COST, fpPerLife,
 } from "../../data/gameConstants.js";
 import { RIFF_BOTH_PAID_QUALITY } from "./riffOff.js";
 import { isEntranceHex } from "./entrance.js";
@@ -702,18 +702,28 @@ export function* poseConsequences({ state, spiritId, fameThisTurn = {} }) {
   return { ...res, rounds, shed };
 }
 
-/** A projectile volley pays for hits; old callers may still pass a margin. */
-export function* awardSonicFame({ state, spiritId, loserId, margin, hitCount = null, centerBonus = 0, fameThisTurn }) {
+/**
+ * 🔊 Sonic win Fame. The staged Sonic and Psycho Bushido pass `strengthThrough`
+ * and are paid on POINTS through (`sonicStrengthFame`, base capped at 5 per
+ * attack — 2026-10-13); the legacy v1 volley passes `hitCount` (dice through)
+ * and the oldest callers a `margin`. Riders and the underdog stack on the base.
+ * ⚠️ Precedence matters: a staged battle ALSO carries `hitCount`, so testing
+ * `hitCount` first would quietly put every live Sonic back on dice.
+ */
+export function* awardSonicFame({ state, spiritId, loserId, margin, hitCount = null, strengthThrough = null, centerBonus = 0, fameThisTurn }) {
   const rider   = headlinerRider(state, spiritId);
   const fxBonus = anyStageEffectActive(state) ? 1 : 0;
-  const base    = (hitCount == null ? sonicFame(margin) : sonicVolleyFame(hitCount)) + rider + fxBonus + centerBonus;
+  const onPoints = Number.isFinite(strengthThrough);
+  const core    = onPoints ? sonicStrengthFame(strengthThrough)
+    : hitCount == null ? sonicFame(margin) : sonicVolleyFame(hitCount);
+  const base    = core + rider + fxBonus + centerBonus;
 
   const { fp, deficit, mult } = underdogBonus(
     nsOf(state, spiritId).fame ?? 0,
     nsOf(state, loserId).fame ?? 0,
     base,
   );
-  const score = hitCount == null ? `margin ${margin}` : `${hitCount} through`;
+  const score = onPoints ? `${strengthThrough} through` : hitCount == null ? `margin ${margin}` : `${hitCount} dice through`;
   const tag = `sonic win (${score})${rider ? ' +👑' : ''}${fxBonus ? ' +🎇' : ''}${centerBonus ? ' +🎤' : ''}`;
 
   let amount = base;
@@ -723,6 +733,23 @@ export function* awardSonicFame({ state, spiritId, loserId, margin, hitCount = n
     amount = fp;
   }
   return yield* grantFame({ state, spiritId, fp: amount, reason: tag, fameThisTurn });
+}
+
+/**
+ * 🛡️ THE HELD SHIELD — the defender is paid for a Sonic (or Psycho Bushido) that
+ * put NOTHING through. Alex, 2026-10-11: *"winning after being attacked should
+ * win some FP … The fans are cheering in the background"*; 2026-10-13: *"1 FP +
+ * whatever fan bonus exists"*.
+ * 📌 Through `grantFame` with `amplify` on, so the crowd multiplier applies like
+ * every other Fame gain. ⚠️ Deliberately NO Headliner / stage / underdog riders —
+ * he named the crowd only. Add them here, not at the call site, if he asks.
+ * ⚠️ A shield that absorbs some and breaks pays nothing: points got through.
+ * One that breaks on EXACTLY its last point (0 through) does pay — nothing
+ * reached the Spirit.
+ */
+export function* awardShieldHeldFame({ state, spiritId, fameThisTurn }) {
+  yield log(`🛡️ ${nameOf(state, spiritId)} holds the line — the crowd roars!`);
+  return yield* grantFame({ state, spiritId, fp: SHIELD_HELD_FP, reason: '🛡️ shield held', fameThisTurn });
 }
 
 /**
@@ -993,6 +1020,12 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
         ? `⚡ The draw breaks ${nameOf(state, defenderId)}'s shield — with nothing left to get through.`
         : `🛡️ ${nameOf(state, defenderId)}'s shield holds against the draw. Nothing gets through.`)
       : `🛡️ ${nameOf(state, defenderId)} absorbs the entire Sonic volley. No strength reaches the Rival.`);
+    // 🛡️ The staged ledger only (Sonic v2 + Bushido): the legacy v1 volley never
+    // had a shield to hold. 2026-10-13.
+    if (battle.sonicVersion === 2) {
+      const held = yield* awardShieldHeldFame({ state, spiritId: defenderId, fameThisTurn });
+      fameThisTurn = held.fameThisTurn ?? fameThisTurn;
+    }
     yield* clearBattleBuffs({ attackerId, defenderId });
     return { fameThisTurn };
   }
@@ -1065,7 +1098,9 @@ export function* battleConsequences({ state, battle, chordOf, amps = [], fameThi
   if (sonicAttack) {
     const ring = hexRingFromCenter(spiritOf(state, attackerId)?.num ?? -1);
     const centerBonus = (ring === 'main' || ring === 'pit') ? SONIC_LIMELIGHT_FP : 0;
-    const r = yield* awardSonicFame({ state, spiritId: attackerId, loserId: defenderId, margin, hitCount, centerBonus, fameThisTurn });
+    // 🔊 Points through on the staged ledger (2026-10-13); dice through on v1.
+    const strengthThrough = battle.sonicVersion === 2 ? (battle.strengthThrough ?? 0) : null;
+    const r = yield* awardSonicFame({ state, spiritId: attackerId, loserId: defenderId, margin, hitCount, strengthThrough, centerBonus, fameThisTurn });
     fameThisTurn = r.fameThisTurn;
   } else {
     const r = yield* awardThrashFame({ state, spiritId: attackerId, loserId: defenderId, fameThisTurn });
