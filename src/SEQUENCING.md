@@ -26,48 +26,90 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 69-sonicpoints. 🔊 The Sonic pays on points through the shield + 🛡️ a held shield pays + 🔮 the Lost Chords become energy balls — 2026-10-13
+## 70-controller. 🎮 Controller support — the foundation — 2026-10-14
 
-**Alex** (2026-10-11, the Tune of DOOM design talk): *"Something wrong with the Vibe damage for Sonic attacks. It shouldn't be as high as Thrash - but it should be a bit higher perhaps"*; *"this should move to points as well. It should reward more FP per win than Thrash"*; *"winning after* being *attacked should win some FP"*. Spec: project doc `claude/sonic-vibe-fame-rework-spec.md`. Then 2026-10-13: *"Sonic Fame - no more 'max' FP gain. Shield held - 1 FP + whatever fan bonus exists. (fan bonus should basically exist in all facets of FP gain. keep crystal hum and shatter - Ok"* — and a minute later, *"perhaps you mean 'per attack' the base limit being '5' - maybe thats a good idea afterall"*. Built with the cap on the BASE.
+**Alex:** *"lets talk about controller support - how big of a job would this be?"* → *"When I think of scalability and how modern games are played, I think x box controller … the first thing I usually do is search for a way to play it with my controller"* → *"Lets build the foundation now then"*, with a sketch for the Riff-Off (1 LT · 2 LB · 3 D-pad right · 4 X · 5 RB · 6 RT), then *"I'd like to hear what you think is the best way … first do what you think is most ergonomic and we can discuss finer points like that later"*.
 
-### What shipped — the Sonic
-- `data/gameConstants.js`: `SONIC_VIBE_CAP` 2 → 3; new `SONIC_VIBE_PER_STRENGTH` 4, `SONIC_FAME_PER_STRENGTH` 3, `SONIC_FAME_CAP` 5, `SHIELD_HELD_FP` 1.
-- `engine/systems/combat.js`: `sonicVibe(through)` = ceil(through/4) ≤ 3; `sonicStrengthFame(through)` = 1 + ceil(through/3) ≤ 5. `resolveVolley` (first throw, Code Injection reroll, marquee-card re-throw — every staged path) sets `damage: sonicVibe(strengthThrough)`. Bushido's `bushidoDamage` override still wins. The legacy `sonicDamage` / `sonicVolleyFame` / `sonicFame` are untouched, so a v1 replay re-scores the same.
-- `engine/systems/battleFlow.js`: `awardSonicFame` takes `strengthThrough` and prefers it — ⚠️ a staged battle ALSO carries `hitCount`, so the order is load-bearing (a mutant that flips it is caught). `battleConsequences` passes it on `sonicVersion === 2`. New `awardShieldHeldFame`: in the `hitCount <= 0` branch, staged only, 1 FP through `grantFame` (so × crowd), no other riders.
-- Client: the scene's `sonicFame` is `sonicStrengthFame(strengthThrough)` (`initiateSonicAttack` and the card re-throw); `ui/BattleMeterOverlay.jsx` shows it; the tutorial's two Fame lines and the Sonic tooltip state the new numbers (the tooltip also lost a stale "one hex per ring" line).
-- 🎤 **"Fan bonus in all facets of FP gain" was already true**: every positive grant, engine and client, goes through `grantFame` with `amplify` on; the only opt-out is the 🧪 dev test grant. `test:sonic` §R9 now reads the source and fails if a payout skips the crowd.
+### The idea that carries it
+⭐ **A pad press IS a key press (or a click).** The game never learns a controller exists: each button sends the keyboard event or the mouse click that already does that job, so it goes through the same handler and the same gates (`keyboardNoteCommit`, `numpadMove`, `enterEndTurn`, all three Riff-Off listeners). There's no second code path to drift.
 
-### What shipped — the energy balls
-- `board/lostChords.js`: `LOST_CHORD_STYLE = 'orb'`; `createLostChordLayer({ style })` passes it to place / spawn / scatter. Under `driftStyle:'rise'` the layer queues the SPAWN sound at 40% of `driftMs` instead of the drift whoosh (as the dial-in page does). Every sound is the crystal's (Alex). Back to crystals = one word.
-- Docs: `ARCHITECTURE.md` rows, `arenaVisuals.js` comment, `STATE_OF_PLAY.md`, project doc `claude/lost-chord-energy-balls-preview-handoff.md`. `PROJECTILE_COMBAT_DESIGN.md` gained a "superseded in part" banner over its dice-through payout tables.
-
-### Calls I made (on the Systems Map board)
-- A shield that breaks on EXACTLY its last point (0 through) pays the defender: nothing reached them.
-- Held-shield pay is the crowd only — no Headliner / stage / underdog (Alex named the crowd).
-- A Bushido draw a shield holds pays the same.
+### What shipped
+- **`src/input/`** (new directory, 4 modules, rows in `ARCHITECTURE.md`):
+  - `padMap.js`: the whole map and every feel number (`PAD_TUNING`, `RIFF_LAYOUT`, `TURN_LAYOUT`).
+  - `gamepad.js`: the 4 ms poll, the two layers and `mountGamepad`.
+  - `padFocus.js`: the on-screen highlight and `PAD_RING`.
+  - `padNav.js`: which box the D-pad goes to next.
+- 🎸 **Riff layer** (my ergonomic pick, open for Alex):
+  - Six strings on six fingers: 1 LT · 2 LB · 3 **any** D-pad direction · 4 **any** face button · 5 RB · 6 RT. That's Alex's own shape, except each thumb gets its whole cluster.
+  - Bends are a flick of **either stick**, up or down. Menu = Enter (start). View = Escape (back), because B is a string here.
+- 🎲 **Turn layer:**
+  - D-pad moves the highlight; A presses it. The first A only shows the highlight, so a press is never blind.
+  - **Y = Enter**, which advances the turn (Continue → ✓ Commit → End).
+  - X = Backspace · LB = W (🎡 the Scale Wheel) · RB = Tab (Drive ⇄ Sustain) · B = Escape · R3 = Numpad5 (🧭 face north) · Menu = ☰.
+  - The **left stick walks toward screen-up**: `stickBoardAngle` turns the stick by the lens heading into a board direction, then `walkCodeFor` sends that direction's numpad key.
+  - The **right stick** turns and tilts the lens (a stick held over counts as a mouse drag: `grab` → `takeOver`/`letGo`). LT / RT zoom.
+- **The highlight** (`padFocus`):
+  - Targets are what a mouse could click: buttons, ARIA roles, `[data-stock-idx]` chips, `[data-pad-hex]`, `[data-pad]`, and inline `cursor: pointer`.
+  - ⭐ A target only counts if `elementFromPoint` lands on it, so a modal scopes the highlight with no registration.
+  - A press is the full pointer/mouse/click sequence. Hover comes free, because mouseover/out is what React's onMouseEnter is built from.
+  - On a slider, ←/→ nudges it. A real mouse move hides the ring.
+  - Every event carries `rlswPad`.
+- **Wiring:**
+  - `App.jsx` mounts it once.
+  - The monolith: `providePadCamera`; `claimPadLayer('riff')` inside the Riff-Off key effect; `data-pad-hex` on hexes **only while an action is armed** (otherwise ~40 hexes would sit between the HUD and the rail).
+  - `RiffArenaBattle` claims the riff layer only while its clock runs (so A can press "Start Riff Off"). `arrowHighwayEngine` claims it while mounted.
+  - `arenaRenderer`: `heading` / `grab` / `orbit`, and it hears `PAD_ACTIVITY_EVENT`. Without that event, a player using only the sticks would lose the lens to the 10 s idle camera.
+  - `BoardViewport` passes those through. `GlobalCursor` ignores pad events, so the arrow doesn't jump.
+- 🧪 **Controller Lab** (`.scratch/pad-lab.html` + `.js`, `npm run dev:padlab`, double-click copy `npm run build:padlab` → `pad-lab.standalone.html`):
+  - It runs the game's own runtime, map and ring: live pad state, the six lanes, a mock HUD with a modal, and a lens-heading slider for the stick walk.
+  - Feel and ring levers, localStorage, and a 📋 dial-in box that marks changed vs default.
 
 ### Evidence
-- `test:sonic` **174** (was 129): §R1 Vibe table, §R2 Fame table + always > Thrash, §R3 legacy tables unchanged, §R4 2-dice-9-through vs 5-dice-3-through, §R5 the crowd rides past the cap (base 5 × a 5-diehard crowd = 15), §R6 held shield (crowd only, no 👑, exact break pays, broken shield doesn't, v1 never), §R7 Bushido held / landed, §R8 reroll recompute, §R9 the crowd guard. Three old assertions moved with the rule (10 through → 3 Vibe; 15 → the cap of 3; the defender is now paid for a block). **8/8 mutants caught** (both divisors, both caps, the +1 base, the held-shield branch, points-first precedence, the Vibe call).
-- `test:lostchords` **115** (was 103; §9 new).
-- **Full sweep, cloud, every `test:all` suite one by one, before (this tree minus the Sonic change) and after: 97 suites, 91 green on BOTH, the same 6 red with the same first failure.** Four of the six only lack `.scratch` files the cloud copy doesn't carry — `test:lostchords` 115, `test:pyroshove` 116,482, `test:standeemove` 318 and `test:dice` all pass on Alex's machine. The two real reds predate this: `test:bushido` (the 👤 Shadow cooldown call, deliberate since 2026-10-04) and `test:swing` (`swingClashCheck.mjs:58` still expects a knocked-down Spirit to stay `fallen`, which the 2026-10-07 knockdown ruling removed — stale, not fixed here).
-- `check:bundle` zero warnings; `test:arch`, `test:client`, `test:sonicjourney`, `test:cursedshamisen`, `test:shamisen` green.
-- 🧰 Same as before: the device's `node_modules` holds the Windows esbuild, so bundling suites ran in the cloud copy (`npm install`, not `npm ci`: the lock file has react 19.2.5 against package.json's 19.3.0).
+- `test:gamepad` **184**:
+  - The map: six strings, six fingers, no button doing two jobs.
+  - Trigger hysteresis by value.
+  - Screen-up walking checked against a **real three.js camera** across 864 heading × push cases.
+  - Both layers; the highlight in jsdom; the wiring.
+  - **3/3 mutants caught:** trigger hysteresis, the walk's sign, and the layer-switch guard (that last one needed a new check: an A landing on the poll a duel ends clicks nothing).
+- `test:padjourney` **10**: the real `Game`, a turn from a fake pad. Y Continue / Commit / End turn, a **held** Y fires once, the stick walks one hex per push, and a part-way nudge walks nowhere.
+- Both are in `test:all`.
+- Green:
+  - `check:bundle` 0 warnings
+  - `test:arch`
+  - `test:cameradirector` 97 (its activity-list regex now includes the pad event)
+  - `test:topview` 81
+  - `test:numpadjourney` 24
+  - `test:notekeysjourney` 29
+  - `test:riffarena` 34
+  - `test:riffarenajourney`
+  - `test:client`
+  - `test:journey`
+  - `test:render` 13
+- Changed files lint clean. The one warning, `BoardViewport.jsx:105`, was already there.
+- 🐛 **Found in the Lab** (headless Chromium driving a fake pad): from a wide button, Right dropped to a chip in the row below, because nav was measured centre to centre. `padNav` now measures **edge to edge**, and a box must reach further that way. Regression is in §7.
+- 🐛 **Found when Alex first plugged in his pad (same afternoon):**
+  - The Lab's top line only listened for `gamepadconnected`, so it said "no controller" while the log showed his presses. It now polls `getGamepads` and says **why** (blocked in a preview pane, tab not focused, press a button, `joy.cpl`).
+  - `mountGamepad` also probes once a second, and its `getGamepads` reads can no longer throw.
+  - A **self-ticking "Try this" checklist** now shows what each button should do.
+  - Nav: Right from a button hopped UP to a note chip that overlapped it sideways. `pickNeighbor` now prefers boxes **in line** (`inLine`) and only cuts across when nothing is in line. Regressions are in §7.
+- 🧰 This session ran on the device: `ESBUILD_BINARY_PATH=node_modules/@esbuild/.linux-x64-TXItLeJJ/bin/esbuild` (a Linux esbuild 0.28.1 already sits there, hidden) makes every bundling suite run on the VM.
+
+### Not done / not verified
+- ✅ **Alex's pad, in the Lab (14 Oct, 13:58):** the checklist ran through, and the dial-in came back **0 of 18 levers moved**. `PAD_TUNING` and `PAD_RING` are his call now; their comments say so. ⏳ Not yet played in a real match.
+- **Picking a note on a pad** is highlight + A on the chips for now. The Scale-Wheel-on-a-stick design is the next real decision.
+- No button prompts: the hint copy still says keys.
+- No pad-per-seat for hot-seat (every pad drives the acting seat).
+- The riff mapping is open for discussion (Alex asked to talk it through).
+- `_to_delete/_dbgCheck.mjs` is mine (a debug copy; deletion is off in this folder).
 
 ### Next
-- ⏳ Alex: fire a big and a small Sonic, hold a shield, look at the balls on High.
-- Then **Tune of DOOM** (project doc `claude/tune-of-doom-spec.md`): every rule ruled; next is its preview.
-- Bot bench not re-run since the payouts moved — record, don't rebalance.
-- Nothing committed. Backups of the pre-change files: `.scratch/_backup-sonic-rework/`, `.scratch/lostChords.before-orb-port.js`.
+1. Alex tries the Lab with his pad → dial-in → the riff layout talk.
+2. The note-picking design (Scale Wheel + stick).
+3. Button prompts that follow the last device used.
+4. The "pad-ready" rule (CLAUDE.md) applies to every new screen from now on.
 
-### ➕ Same evening: ⚖️ four rulings, one built (2026-10-13)
-Alex: *"1. shadow's cooldown - for now its cool down begins after the previous 'shadow' has been exhausted. It lasts as long as everything else. 2. Sunbeam and Azrael are cut. 3. Db is gone (for now - will find a place later when difficulty settings are being built out) - In beginner mode - the default for now - there is no Db. Tune of DOOM can stay as a write up for now - I'll get to that once I start making broader changes to I0."*
-- **Built:** `engine/systems/cooldowns.js` `HELD_WHILE_LIVE` — `tickCooldowns` holds `shadow_illusion` while `ns.shadowIllusion` stands. ⚠️ It reads the sheet BEFORE this turn's double tick (`turnFlow.js` passes the old `ns`), so the turn a double times out counts as its "fire": cast t0 → falls t2 → ready t4. A double dismissed mid-round (hit, attack) starts its clock at once. Card text in `data/skillTree.js`.
-- `test:bushido` §7: the deliberate red is replaced by the real tick (holds, others tick, the turn walk, a source check) → **106 green**; the revert mutant is caught. Green: `test:skilltree` 101, `legal` 706, `turnflow` 73, `engine`, `transition` 292, `harness` 1761, `loadouts`, `melody` 115, `client`, `journey`, `loadoutui`; `check:bundle` zero warnings.
-- 📌 Found: `test:abilitydemo` fails on Alex's machine only (`every lever in ABILITY_DEMO is on the preview`): his `.scratch/ability-demo-preview.jsx` (10-01) predates a lever added since. The cloud copy skips that check. Not this change.
-- Recorded: Sunbeam/Azrael cut (confirmed); Db stays gone, may return with difficulty settings (inbox); Tune of DOOM parked as a write-up (STATE §4). Gravity Control's revisit is in the inbox too.
 
 ---
-
 
 # B. 🎓 THE FINDINGS — what this project has learned the expensive way
 
@@ -213,7 +255,8 @@ Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `69-sonicpoints` | 2026-10-13 | The Sonic pays on points through the shield (`sonicVibe` 1 per 4 ≤ 3, `sonicStrengthFame` 1 + 1 per 3 ≤ 5 base per attack, riders and crowd on top); a held shield pays its owner 1 FP × crowd (`awardShieldHeldFame`); the crowd-on-every-Fame guard (`test:sonic` §R9). The Lost Chords are energy balls (`LOST_CHORD_STYLE` 'orb', crystal sounds kept). `test:sonic` 174, `test:lostchords` 115; sweep 91/97 before and after, same 6 red. Live §A. |
+| `70-controller` | 2026-10-14 | 🎮 Controller foundation: `src/input/` (a pad press IS a key press or a click). Riff: six strings on six fingers, sticks bend; turn: highlight (D-pad + A), Y = Enter, the left stick walks toward screen-up, the right stick turns the lens. Controller Lab page. `test:gamepad` 184, `test:padjourney` 10. Live §A. |
+| `69-sonicpoints` | 2026-10-13 | The Sonic pays on points through the shield (`sonicVibe` 1 per 4 ≤ 3, `sonicStrengthFame` 1 + 1 per 3 ≤ 5 base per attack, riders and crowd on top); a held shield pays its owner 1 FP × crowd (`awardShieldHeldFame`); the crowd-on-every-Fame guard (`test:sonic` §R9). The Lost Chords are energy balls (`LOST_CHORD_STYLE` 'orb', crystal sounds kept). `test:sonic` 174, `test:lostchords` 115; sweep 91/97 before and after, same 6 red. `docs/archive/SEQUENCING-2026-10-14-before-controller.md` (with its 10-13 rulings and 10-14 nebula addenda). |
 | `68-marqueeturn` | 2026-10-09 | Archived in `../docs/archive/SEQUENCING-2026-10-13-before-sonic-points.md`. A taken marquee's replacement is chosen at the take but lights at the turn end (`board.marqueePending`, `lightPendingMarquees`); the special-dice diagnosis (a die card bent the weakest die, often dropped) → a card die is a BONUS die with its own seat, always kept (`applyCard` / `keepBest` pins), dealt gold onto the table; the card at the roll finally reaches the 3D floor (battle key fix). |
 | `67-facenorth` | 2026-10-09 | Archived in `../docs/archive/SEQUENCING-2026-10-13-before-sonic-points.md`. 🧭 Face north: a 450 ms swing that puts the lens due south of its target (`topDownView.js` `northLens`, `arenaRenderer.north()`), Numpad 5 does it; no preview (Alex asked straight). |
 | `66-iwatotrap` | 2026-10-09 | Archived in `../docs/archive/SEQUENCING-2026-10-13-before-sonic-points.md`. The Cursed Shamisen v3, "the trap": the Action Token curses a hidden Lost Chord (his screen only, pinned until his next turn); a Rival who takes it gets Iwato on that note with three creepy haunted notes to lift (accumulating, 3 turns = two cursed melodies, no refresh, the draw seeps in ⅓ → ⅔). `iwatoCurse.js` rewritten; spring in the client pickup and `collectPickups`; arena springs on the hex. `IWATO_CURSE_V3_SPEC.md`. `test:shamisen` 113, `test:shamisenjourney` 27. |

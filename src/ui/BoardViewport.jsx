@@ -66,6 +66,10 @@ export function BoardViewport({ enabled = true, immersive = false, sceneFrame, a
       },
       zoom(factor) { runtime.current?.zoom(factor); },
       north() { runtime.current?.north(); },
+      // 🎮 the pad's lens (input/gamepad.js): stick-relative walking, and the right stick
+      heading() { return runtime.current?.heading?.() ?? 0; },
+      grab(on) { runtime.current?.grab?.(on); },
+      orbit(dTheta, dPhi) { runtime.current?.orbit?.(dTheta, dPhi); },
     };
     return () => { cameraRef.current = null; };
   }, [cameraRef]);

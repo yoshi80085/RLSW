@@ -24,8 +24,12 @@ import { characterId } from "../data/spiritIdentity.js";
 //     🪧 AMENDED 2026-10-06 for the Ronin: "Can you create the 'back side' of
 //     the Ronin as... blank. It should be obvious which side is the 'front' and
 //     which is the 'back'." A Spirit in `STANDEE_BACK.blank` prints on the FRONT
-//     only, and its back is the same silhouette in plain unprinted card. The
-//     other three still show the print through the sheet until he says so.
+//     only, and its back is the same silhouette in plain unprinted card.
+//     🌌 AMENDED AGAIN 2026-10-14: "make the back of the standees shimmer/sparkle
+//     - like it is its own 'nebula' instead of being plain". The back is still
+//     unprinted (the front stays obvious), but it is a little galaxy in the
+//     player's colour (`standeeNebula.js`), and EVERY Spirit has one now
+//     (`STANDEE_NEBULA.who` 'all'), so no print shows through from behind.
 //  1b. POSES (Alex, 2026-10-06): a Spirit may carry extra prints — the Ronin's
 //     two Thrash phases and his 'hit' — passed in as `spirit.poses` ({ name:
 //     url }, `data/standeePoses.js`) with their own traced cuts under
@@ -49,6 +53,7 @@ import { characterId } from "../data/spiritIdentity.js";
 // outline gets a plain rectangular cut of its art rather than nothing.
 import * as THREE from 'three';
 import { STANDEE_OUTLINES } from './standeeOutlines.js';
+import { STANDEE_NEBULA, createNebulaBackMaterial, tickNebulaBack } from './standeeNebula.js';
 
 export const STANDEE = Object.freeze({
   cut:'body', panelLook:'glass',
@@ -60,16 +65,17 @@ export const STANDEE = Object.freeze({
 });
 
 /**
- * 🪧 THE BLANK BACK (Alex, 2026-10-06 — the Ronin). Who has one, and what the
- * unprinted side looks like: a plain pale card in the figure's own silhouette,
- * lit a touch so it does not read as a hole in a dark arena. Separate from
- * `STANDEE` on purpose — that object is Alex's dial-in and the preview page's
- * levers, and the page has no back to dial.
+ * 🪧 THE BLANK BACK (Alex, 2026-10-06 — the Ronin): the print on the front only,
+ * the back the same silhouette, unprinted. `blank` is who had one first; since
+ * 2026-10-14 `STANDEE_NEBULA.who` is 'all', so EVERY Spirit has one, and the
+ * back is the nebula (`standeeNebula.js`, Alex's dial-in) instead of the plain
+ * pale card (`#c4cbd6`, glow .16, roughness .92 — set `who:'blank'` and the
+ * nebula is the Ronin's alone; the plain card itself is retired).
+ * ⚠️ `hasBlankBack` also tells the battle director a print is one-sided (it
+ * films the front), so with 'all' every lens frames the printed side.
  */
-export const STANDEE_BACK = Object.freeze({
-  blank:Object.freeze(['cosmic_ronin']), color:'#c4cbd6', glow:0.16, roughness:0.92,
-});
-export const hasBlankBack = id => STANDEE_BACK.blank.includes(characterId(id));
+export const STANDEE_BACK = Object.freeze({ blank:Object.freeze(['cosmic_ronin']) });
+export const hasBlankBack = id => STANDEE_NEBULA.who === 'all' || STANDEE_BACK.blank.includes(characterId(id));
 
 /** The board height a standee stands at — its stand's underside, on the deck. */
 export const STANDEE_Y = 0.2;
@@ -286,7 +292,8 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
   // 📌 One texture, DoubleSide: the back is the front seen from behind, through
   // the sheet. Alex, 2026-09-18: "lets do away with 'mirror'".
   // 🪧 …unless the Spirit has a BLANK BACK (2026-10-06): then the print is
-  // FrontSide only and a second mesh, the same cut, BackSide, is the plain card.
+  // FrontSide only and a second mesh, the same cut, BackSide, is the back —
+  // 🌌 since 2026-10-14 a nebula in the player's colour (`standeeNebula.js`).
   const blank = hasBlankBack(spirit.id);
   const texture = spirit.imageSrc ? loader(spirit.imageSrc) : null;
   const artGeo = planarUV(new THREE.ShapeGeometry(shapesFrom(o.art, o.w, o.h, T.height, 1)), o.w, o.h, T.height, 1);
@@ -302,8 +309,9 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
   // still finds exactly one.
   let back = null;
   if (blank) {
-    back = new THREE.Mesh(artGeo, blankBackMaterial(texture));
-    back.name = 'Blank back'; back.renderOrder = 10;
+    // 📌 Seeded by the SEAT id, so two Spirits never wear the same sky.
+    back = new THREE.Mesh(artGeo, createNebulaBackMaterial(texture, { color:`#${color.getHexString()}`, seed:seedOf(spirit.id) }));
+    back.name = 'Nebula back'; back.renderOrder = 10;
     art.add(back);
   }
 
@@ -389,6 +397,8 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
       ring.material.opacity = reduced ? 0.7 : 0.55 + 0.25 * Math.sin(time * 2.2);
       if (baseMesh) baseMesh.visible = !knockedOut;
       if (halo) halo.visible = !knockedOut;
+      // 🌌 The nebula's clock (drift, twinkle, flares, sweep). Reduced motion holds it still.
+      if (back) tickNebulaBack(back, time, { reduced });
     },
     /** The poses this standee can strike (`spirit.poses` that have a traced cut). */
     poses:[...looks.keys()],
@@ -425,25 +435,11 @@ export function createStandee(spirit, { T = STANDEE, loader = defaultLoader } = 
   return api;
 }
 
-/**
- * 🪧 The unprinted side. The print's own texture is bound, but only its ALPHA
- * is read — so the card has exactly the print's silhouette and holes (the gap
- * between his arms), and none of its colour. ⚠️ Not `alphaMap`: three reads an
- * alphaMap's GREEN channel, which on a painted print is paint, not cut.
- */
-function blankBackMaterial(texture) {
-  const m = new THREE.MeshStandardMaterial({
-    color:STANDEE_BACK.color, emissive:STANDEE_BACK.color, emissiveIntensity:STANDEE_BACK.glow,
-    map:texture, transparent:true, alphaTest:ALPHA_TEST, roughness:STANDEE_BACK.roughness, metalness:0,
-    side:THREE.BackSide, depthWrite:true,
-  });
-  m.onBeforeCompile = s => {
-    s.fragmentShader = s.fragmentShader.replace('#include <map_fragment>',
-      '#ifdef USE_MAP\n\tdiffuseColor.a *= texture2D( map, vMapUv ).a;\n#endif');
-  };
-  m.customProgramCacheKey = () => 'standee-blank-back';
-  m.userData.blankBack = true;
-  return m;
+/** A small stable number from a seat id: which patch of sky a standee's back shows. */
+function seedOf(id) {
+  let h = 0;
+  for (const ch of String(id ?? '')) h = (h * 31 + ch.charCodeAt(0)) % 9973;
+  return h % 97;
 }
 
 // ⚠️ ONE TEXTURE PER STANDEE, NOT A SHARED CACHE. `releaseArenaObject` disposes

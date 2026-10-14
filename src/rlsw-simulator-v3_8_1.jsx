@@ -302,6 +302,7 @@ import { HAMMER_LOOK, HAMMER_CSS, hammerHue, hammerArriveStyle, hammerVoice, pre
  *  Ronin, a bot, not the Melody step, already committed). */
 const NO_HAMMER = Object.freeze({ ok: false, reason: 'no-charge', candidates: [] });
 import { NUMPAD_DIRS, isNumpadMove, numpadTarget } from "./ui/numpadMove.js";
+import { claimPadLayer, providePadCamera } from "./input/gamepad.js";
 import { chordContext, contextClaim, classifyTrack } from "./music/context.js";
 import { readStack } from "./music/vocabularies.js";
 
@@ -1469,6 +1470,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // see BoardViewport). `arenaCameraRef` is filled by BoardViewport with
   // view(name) / zoom(factor); detail is the client's so the menu can show it.
   const arenaCameraRef = useRef(null);
+  // 🎮 The controller's right stick and stick-relative walk read the same handle
+  // (input/gamepad.js). A getter, so a remounted arena is picked up by itself.
+  useEffect(() => providePadCamera(() => arenaCameraRef.current), []);
   const [arenaQuality, setArenaQuality] = useState('auto');
   const [arenaQualityLabel, setArenaQualityLabel] = useState('');
   const [topView, setTopView] = useState(() => {
@@ -1660,8 +1664,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // sustains the note it struck; ↑/↓ bend a note that is currently ringing.
   // All judging lives in riffPressKey (RIFF-OFF ENGINE banner), which is also
   // fed by taps on the highway's string buttons (mobile / mouse play).
+  // 🎮 The pad plays strings for exactly as long as these keys are bound
+  // (input/gamepad.js `claimPadLayer`): six fingers, six strings, sticks bend.
   useEffect(() => {
     if (!battleState?.riffOff || battleState.phase !== 'riff_play') return;
+    const releasePad = claimPadLayer('riff');
     const onKey = (e) => {
       if (e.repeat) return;
       if (e.key >= '1' && e.key <= '6') { riffPressKey(Number(e.key)); e.preventDefault(); return; }
@@ -1674,6 +1681,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     window.addEventListener('keydown', onKey);
     window.addEventListener('keyup', onKeyUp);
     return () => {
+      releasePad();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('keyup', onKeyUp);
     };
@@ -15369,6 +15377,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
                 return (
                   <g key={hex.num} className="hex-g" data-hex-num={hex.num}
+                    // 🎮 Hexes join the pad's highlight only while an action is
+                    // ARMED (a walk, a Thrash, a Sonic, a curse…) — then any hex
+                    // is a target. Otherwise ~40 hexes would sit between the HUD
+                    // and the rail on every D-pad press; the stick walks instead.
+                    data-pad-hex={action ? '' : undefined}
                     onClick={() => onHexClick(hex.num)}
                     onMouseEnter={() => setHovered(hex.num)}
                     onMouseLeave={() => setHovered(null)}>

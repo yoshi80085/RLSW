@@ -164,6 +164,19 @@ prevents — not just what the code does. `⚠️` marks a trap someone could
 reasonably fall into; `📌` marks a note for later. This is deliberate and worth
 matching; the surrounding code is written this way throughout.
 
+## 🎮 Every screen is pad-ready (Alex, 2026-10-14)
+
+A controller is a first-class input now (`src/input/`; *"when I think of games I want to play, the first thing I usually do is search for a way to play it with my controller"*). The pad's highlight finds clickable things **by itself**: it doesn't need a registry, but it does need you not to hide them. So any **new or reworked** screen must follow these rules:
+
+- **Make clickable things real buttons** (or give them `role="button"`, `[data-pad]` or an inline `cursor: pointer`). A bare `<div onClick>` with its cursor set in a stylesheet is invisible to the pad.
+- **Nothing that only appears on hover.** A tip or preview behind `onMouseEnter` is fine (the highlight sends mouseover), but one behind CSS `:hover` alone or the native `title=` never shows on a pad.
+- **B / Escape always backs out** of an overlay or modal you add.
+- **A new key binding gets its pad button in the same pass**, in `input/padMap.js` `TURN_LAYOUT`. Never on a second code path: the pad sends the key.
+- **A new full-screen input mode** (like the Riff-Off) claims its own layer with `claimPadLayer(name)` for exactly as long as its keys are bound.
+- ⚠️ Decoration that must not be a target gets `[data-pad="skip"]` or `pointer-events: none`.
+
+📌 Older screens get converted as they are touched; `SEQUENCING.md` §A `70-controller` lists what is still mouse-first.
+
 ## Visual changes get a preview first
 
 ⚠️ **DO NOT EDIT THE HUD, THE BOARD OR ANY VISUAL ELEMENT STRAIGHT INTO THE

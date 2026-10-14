@@ -7,9 +7,10 @@
 // because those are the parts a refactor would quietly undo.
 import { readFileSync, existsSync } from 'node:fs';
 import * as THREE from 'three';
-import { STANDEE as T, STANDEE_Y, STANDEE_BACK, hasBlankBack, cutFor, poseHeight, outlinePoint, halfWidth,
+import { STANDEE as T, STANDEE_Y, hasBlankBack, cutFor, poseHeight, outlinePoint, halfWidth,
   standeeYaw, steepPitch, ribbons, planarUV, createStandee } from './standee.js';
 import { STANDEE_OUTLINES } from './standeeOutlines.js';
+import { STANDEE_NEBULA, NEBULA_PALETTES, paletteFor } from './standeeNebula.js';
 
 let pass = 0, fail = 0;
 const ok = (name, cond, extra = '') => { if (cond) pass++; else fail++; if (!cond || process.env.VERBOSE) console.log(`  ${cond ? '✓' : '✗'} ${name}${extra !== '' ? ' — ' + extra : ''}`); };
@@ -182,6 +183,22 @@ console.log('§2 the pure half');
   ok('steepLean 0 leaves them honest and thin from overhead', steepPitch(Math.PI / 2, { ...T, steepLean:0 }) === 0);
 }
 
+{
+  // 🌌 Alex's dial-in off `.scratch/standee-nebula-preview.html`, 2026-10-14
+  // (16 of 23 levers moved, from the "In the Spirit's colour" preset). The page
+  // IMPORTS this object as its defaults, so there is no second copy to drift.
+  ok('STANDEE_NEBULA is frozen and is the dial-in', Object.isFrozen(STANDEE_NEBULA) && JSON.stringify(STANDEE_NEBULA) === JSON.stringify({
+    who:'all', palette:'spirit', glow:0.2, gloss:0.35,
+    gas:1.75, gasScale:0.45, wisps:0.25, drift:0.5, depth:0.5,
+    stars:0.24, starSize:1, starGlow:1.4, twinkle:0.33, twinkleSpeed:3.9,
+    sparkle:0.65, sparkleSize:0.6, sparkleGlow:2.5,
+    sweep:0.45, sweepPeriod:6, sweepWidth:0.52, holo:0.25, rim:1.1, rimWidth:0.06 }));
+  ok('…and its palette is a real one', STANDEE_NEBULA.palette in NEBULA_PALETTES);
+  const page = new URL('../../.scratch/standee-nebula-preview.js', import.meta.url);
+  if (existsSync(page)) ok('the nebula page reads its defaults from STANDEE_NEBULA (one copy)',
+    /l\.def = STANDEE_NEBULA\[l\.key\]/.test(readFileSync(page, 'utf8')));
+}
+
 console.log('§3 the three.js half');
 const spirit = { id:'cosmic_ronin', color:'#4488ff', imageSrc:'x.png' };
 // ⚠️ No DOM here, so the loader is stubbed. Everything else is the real build.
@@ -206,23 +223,41 @@ const build = (over = {}) => createStandee(spirit, { T:{ ...T, ...over }, loader
   ok('one print — no mirrored twin', s.parts.filter(m => m.material.map).length === 1);
   // 🪧 AMENDED 2026-10-06 for the Ronin: "create the 'back side' of the Ronin as...
   // blank. It should be obvious which side is the 'front' and which is the 'back'."
+  // 🌌 …and 2026-10-14, for EVERY Spirit: "make the back of the standees
+  // shimmer/sparkle - like it is its own 'nebula' instead of being plain".
   {
     const back = art.children.find(m => m.material?.userData?.blankBack);
-    ok('the Ronin has a blank back', hasBlankBack('cosmic_ronin') && hasBlankBack('cosmic_ronin::red') && !!back);
+    ok('the Ronin has an unprinted back', hasBlankBack('cosmic_ronin') && hasBlankBack('cosmic_ronin::red') && !!back);
     ok('…his print is on the FRONT only, and the back is the other face of the same cut',
       art.material.side === THREE.FrontSide && back.material.side === THREE.BackSide && back.geometry === art.geometry);
-    ok('…plain card in the print\'s silhouette: its alpha cut, none of its colour',
-      back.material.map === art.material.map && !back.material.emissiveMap && back.material.alphaTest === art.material.alphaTest
-      && back.material.color.getHexString() === STANDEE_BACK.color.slice(1));
-    ok('…and the shader reads only the alpha of that texture', (() => {
-      const sh = { fragmentShader:'a\n#include <map_fragment>\nb' }; back.material.onBeforeCompile(sh);
-      return !sh.fragmentShader.includes('<map_fragment>') && /diffuseColor\.a \*= texture2D\( map, vMapUv \)\.a/.test(sh.fragmentShader); })());
+    ok('…it is the NEBULA, not the old plain card', back.name === 'Nebula back' && !!back.material.userData.nebula
+      && back.material.customProgramCacheKey() === 'standee-nebula-back');
+    ok('…in the print\'s silhouette: its alpha cut, none of its colour',
+      back.material.map === art.material.map && !back.material.emissiveMap && back.material.alphaTest === art.material.alphaTest);
+    const u = back.material.userData.nebula.uniforms;
+    ok('…in the player\'s colour (the "spirit" palette puts it in the second gas)',
+      u.nGasB.value.getHexString() === new THREE.Color(spirit.color).getHexString() && paletteFor(STANDEE_NEBULA, '#123456').b === '#123456');
+    ok('…and the shader reads only the alpha of the print, and adds the nebula to the glow', (() => {
+      const sh = { uniforms:{}, vertexShader:'void main() {\n#include <begin_vertex>\n}',
+        fragmentShader:'void main() {\n#include <map_fragment>\n#include <emissivemap_fragment>\n}' };
+      back.material.onBeforeCompile(sh);
+      return !sh.fragmentShader.includes('<map_fragment>') && /diffuseColor\.a \*= texture2D\( map, vMapUv \)\.a/.test(sh.fragmentShader)
+        && /totalEmissiveRadiance \+= nebulaColor\(\)/.test(sh.fragmentShader) && /vNebCam = /.test(sh.vertexShader) && sh.uniforms.nTime === u.nTime; })());
     ok('…a child of the print, so it leans, falls and swaps pose with it — not a second "print" part',
       back.parent === art && !s.parts.includes(back));
-    const zero = createStandee({ id:'intergalactic_0', color:'#fff', imageSrc:'x.png' }, { loader:stubTexture });
-    const zArt = zero.parts.find(m => m.material.map);
-    ok('the other Spirits still show their print through the sheet, both sides', !hasBlankBack('intergalactic_0')
-      && zArt.material.side === THREE.DoubleSide && zArt.children.length === 0);
+    const t0 = u.nTime.value;
+    s.frame(3.25, {});
+    ok('frame() runs the nebula\'s clock', u.nTime.value === 3.25 && t0 !== 3.25);
+    s.frame(9, { reduced:true });
+    ok('…and reduced motion holds it still', u.nTime.value === 3.25);
+    ok('…and it learns the sheet\'s height and UV scale for the sweep and the edge glow',
+      Math.abs(u.nTop.value - T.height) < 0.3 && u.nUvPerM.value.x > 0.1 && u.nUvPerM.value.y > 0.1);
+    const zero = createStandee({ id:'intergalactic_0', color:'#ffcc33', imageSrc:'x.png' }, { loader:stubTexture });
+    const zArt = zero.parts.find(m => m.material.map), zBack = zArt.children[0];
+    ok('EVERY Spirit has a nebula back now — no print shows through from behind', hasBlankBack('intergalactic_0')
+      && IDS.every(hasBlankBack) && zArt.material.side === THREE.FrontSide && zBack?.name === 'Nebula back');
+    ok('…each in its own colour, on its own patch of sky', zBack.material.userData.nebula.uniforms.nGasB.value.getHexString() === 'ffcc33'
+      && zBack.material.userData.nebula.uniforms.nSeed.value !== u.nSeed.value);
     zero.dispose();
   }
   ok('the print is the Spirit\'s own art', art.material.map === art.material.emissiveMap && !!art.material.map);
@@ -311,7 +346,7 @@ console.log('§3b the poses (Alex, 2026-10-06: Thrash1, Thrash2, hit)');
   ok('setPose swaps the print, its glow, the sheet and the neon edge', s.setPose('thrash1') && s.pose === 'thrash1'
     && art.material.map.name === 't1.png' && art.material.emissiveMap === art.material.map
     && art.geometry !== baseGeo && panel.geometry !== basePanel && edge.geometry.attributes.position.count > 100);
-  ok('…the blank back follows it, cut for cut', back.geometry === art.geometry && back.material.map === art.material.map);
+  ok('…the nebula back follows it, cut for cut', back.geometry === art.geometry && back.material.map === art.material.map);
   const top = g => { let m = -Infinity; const p = g.attributes.position; for (let i = 0; i < p.count; i++) m = Math.max(m, p.getY(i)); return m; };
   s.setPose('thrash2');
   ok('…and each pose stands at its own drawn height (the crouched clash is shorter)', top(art.geometry) < poseHeight('cosmic_ronin', 'thrash2') + 1e-9
@@ -412,6 +447,7 @@ ok('STANDEE_Y is the board deck the move tiles sit on', STANDEE_Y === 0.2);
   const a = read('../ARCHITECTURE.md');
   ok('ARCHITECTURE.md carries a standee.js row', /\| `standee\.js` \|/.test(a));
   ok('…and a standeeOutlines.js row', /\| `standeeOutlines\.js` \|/.test(a));
+  ok('…and a standeeNebula.js row', /\| `standeeNebula\.js` \|/.test(a));
   const pkg = JSON.parse(read('../../package.json'));
   ok('test:standee is a real script', !!pkg.scripts['test:standee']);
   ok('…and test:all runs it', /test:standee/.test(pkg.scripts['test:all']));

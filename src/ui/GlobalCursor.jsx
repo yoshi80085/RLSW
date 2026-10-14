@@ -32,7 +32,10 @@ export default function GlobalCursor() {
 
   useEffect(() => {
     const overText = event => !!(event.target?.closest?.(TEXT_FIELD));
+    // 🎮 The pad's own hover and clicks (input/padFocus.js) are tagged `rlswPad`:
+    // they are not the mouse, so the arrow stays where the mouse left it.
     const update = event => {
+      if (event.rlswPad) return;
       latest.current = { ...latest.current, x: event.clientX, y: event.clientY, onText: overText(event) };
       if (frame.current == null) frame.current = requestAnimationFrame(() => {
         frame.current = null;
@@ -40,6 +43,7 @@ export default function GlobalCursor() {
       });
     };
     const press = event => {
+      if (event.rlswPad) return;
       latest.current = { ...latest.current, x: event.clientX, y: event.clientY, pressed: true, click: latest.current.click + 1, onText: overText(event) };
       setPoint(latest.current);
     };

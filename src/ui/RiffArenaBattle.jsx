@@ -2,6 +2,7 @@ import {useEffect,useLayoutEffect,useRef,useState} from 'react';
 import {RiffHighway} from './RiffHighway.jsx';
 import {arenaInputRole,judgeArenaNote,arenaBotResults,arenaSeatControl} from '../riff/arenaDuel.js';
 import {riffStats} from '../engine/systems/riffOff.js';
+import {claimPadLayer} from '../input/gamepad.js';
 const css = `.riff-arena-battle{position:absolute;inset:0;z-index:12;pointer-events:none;color:#e9f5ff;font-family:system-ui,sans-serif;overflow:hidden;background:linear-gradient(#0306118c,transparent 27%,transparent 78%,#03061166)}
 .riff-arena-title{position:absolute;top:12px;left:50%;transform:translateX(-50%);text-align:center;width:48%;text-shadow:0 2px 12px #000}
 .riff-arena-title small{font-size:9px;letter-spacing:2px}.riff-arena-title strong{display:block;font-size:16px;margin:6px 0;text-transform:uppercase}.riff-arena-title span{font-size:10px;color:#b8cee3}
@@ -110,6 +111,11 @@ export function RiffArenaBattle({battle,spirits,net,projectionRef,onStart,onSubm
     window.addEventListener('keydown',key);window.addEventListener('keyup',up);
     return()=>{window.removeEventListener('keydown',key);window.removeEventListener('keyup',up);};
   },[]);
+  // 🎮 The pad plays strings only while the clock runs (input/gamepad.js). Before
+  // the start and after the verdict it is back on the highlight, so A can press
+  // "Start Riff Off" / "Resume" like any other button.
+  const clockLive=battle.arenaStartedAt!=null&&!battle.verdict&&!resume;
+  useEffect(()=>clockLive?claimPadLayer('riff'):undefined,[clockLive]);
   useEffect(()=>net?.client?.on('CUE',frame=>{
     if(frame.kind==='riff-resume'){
       const b=latest.current.battle,seat=net.seats?.find(s=>s.seatId===frame.seatId);

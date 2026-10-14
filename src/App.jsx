@@ -5,6 +5,10 @@
 // deploy break, found by `node src/engine/importcheck.mjs`.
 import RLSWSimulator from "./rlsw-simulator-v3_8_1";
 import GlobalCursor from "./ui/GlobalCursor.jsx";
+import { useEffect } from "react";
+import { mountGamepad } from "./input/gamepad.js";
 export default function App() {
+  // 🎮 The controller, for the whole app (title, lobby, match): input/gamepad.js.
+  useEffect(() => mountGamepad(), []);
   return <><GlobalCursor /><RLSWSimulator /></>;
 }

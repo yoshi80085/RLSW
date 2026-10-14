@@ -326,7 +326,7 @@ console.log('§4 the switch and the badge');
   ok('a drag drops the close-up it lands on; one cut short eases out onto the Spirit',
     /if\(lastIntro\?\.key\)lensDropped=lastIntro\.key;/.test(r) && /introShot\.key===lensDropped\)introShot=null;/.test(r)
     && /if\(lastIntro\?\.key&&!lastIntro\.settled&&lastIntro\.key!==lensDropped\)startRefocus\(now\);/.test(r));
-  ok('ANY input is activity: keys, clicks, wheel and mouse movement, document-wide', /\['pointerdown','pointerup','click','auxclick','keydown','wheel','pointermove'\]/.test(r)
+  ok('ANY input is activity: keys, clicks, wheel, mouse movement and the controller (PAD_ACTIVITY_EVENT), document-wide', /\['pointerdown','pointerup','click','auxclick','keydown','wheel','pointermove',PAD_ACTIVITY_EVENT\]/.test(r)
     && /document\.addEventListener\(type,noteActivity,\{capture:true,passive:true\}\)/.test(r));
   ok('☰ menu has the Auto camera toggle (menuSwitch lever: yes)', /kind:'toggle', icon:'🎥', label:'Auto camera'/.test(c) && /onClick:\(\) => setAutoCamera\(v => !v\)/.test(c));
   ok('the switch persists locally, default ON', /localStorage\.getItem\('rlsw\.autoCamera'\) !== '0'/.test(c));

@@ -22,6 +22,7 @@
 //   h.destroy();                             // cancels rAF, releases audio
 // =============================================================================
 
+import { claimPadLayer } from '../input/gamepad.js';
 import {
   generateArchetypeRiff, analyseArrows, GENRES, SCALES, STYLE_BIAS,
 } from './riffArchetypes.js';
@@ -1199,6 +1200,9 @@ export function mountArrowHighway(canvasEl) {
 
   window.addEventListener('keydown', KEYDOWN);
   window.addEventListener('keyup', KEYUP);
+  // 🎮 A pad plays this highway for as long as it is mounted (input/gamepad.js):
+  // Menu = Enter (start), View = Escape. Released in the teardown below.
+  const releasePad = claimPadLayer('riff');
 
   /* ══════════════════════════════════════════════════════════════════════════
      9. HOST INTERFACE
@@ -1358,6 +1362,7 @@ export function mountArrowHighway(canvasEl) {
       RAF = 0;
       ro?.disconnect();
       window.removeEventListener('resize', resize);
+      releasePad();
       window.removeEventListener('keydown', KEYDOWN);
       window.removeEventListener('keyup', KEYUP);
       try { actx?.close(); } catch { /* already gone */ }

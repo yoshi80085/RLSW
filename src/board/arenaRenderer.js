@@ -17,6 +17,7 @@ import { createBeamLayer } from './beamLayer.js';
 import { TOP_OFFSET, onTopAxis, lensHeading, facesNorth, turnLens } from './topDownView.js';
 import { SCALE, SVG_W, SVG_H } from './constants.js';
 import { preserveTacticalLayer, keepGameplayClicks } from './arenaDom.js';
+import { PAD_ACTIVITY_EVENT } from '../input/padMap.js';
 import { createArenaEnvironment, polishArenaModel } from './arenaEnvironment.js';
 import { createRivenWorld, RIVEN_WORLD } from './rivenWorld/index.js';
 import { arenaPoint, pointXY, createArenaVisuals, releaseArenaObject } from './arenaVisuals.js';
@@ -199,7 +200,9 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       const broke=autoCamera&&!topView&&!sonicCamera.active&&!!cameraShot?.driving&&!refocus;
       director.userNudge(now);idleFlow.activity(now);
       if(broke)startRefocus(now);};
-    for(const type of ['pointerdown','pointerup','click','auxclick','keydown','wheel','pointermove']) {
+    // 🎮 PAD_ACTIVITY_EVENT: a controller's sticks send no DOM input at all, so
+    // without it the 10 s idle camera would take the lens from a player mid-turn.
+    for(const type of ['pointerdown','pointerup','click','auxclick','keydown','wheel','pointermove',PAD_ACTIVITY_EVENT]) {
       document.addEventListener(type,noteActivity,{capture:true,passive:true});
       cleanups.push(()=>document.removeEventListener(type,noteActivity,{capture:true}));
     }
@@ -464,6 +467,19 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         if(frame.actingId!==seenActing){if(seenActing!==undefined&&frame.actingId!=null)turnFocus=true;seenActing=frame.actingId;}
 applyQuality();visuals.update(frame);crowd.update(frame.crowds);dirty=true;},
       quality(value){if(value===quality)return;quality=value;autoLite=false;applyQuality();dirty=true;},
+      // 🎮 THE RIGHT STICK (input/gamepad.js). `grab` is a mouse drag's start/end
+      // (the same takeOver / letGo OrbitControls fires), so the auto camera and a
+      // battle shot yield to a stick exactly as they yield to a drag; `orbit`
+      // turns (theta) and tilts (phi) inside the controls' own polar limits;
+      // `heading` lets the left stick walk toward screen-up whatever the lens does.
+      heading(){return disposed||failed?0:lensHeading(camera.position,controls.target);},
+      grab(on){if(disposed||failed)return;
+        if(on){controls._sphericalDelta?.set(0,0,0);controls._panOffset?.set(0,0,0);if('_scale' in controls)controls._scale=1;takeOver();}
+        else if(dragging)letGo();},
+      orbit(dTheta,dPhi){if(disposed||failed)return;
+        const off=camera.position.clone().sub(controls.target),s=new THREE.Spherical().setFromVector3(off);
+        s.theta+=dTheta;s.phi=Math.min(controls.maxPolarAngle,Math.max(controls.minPolarAngle,s.phi+dPhi));s.makeSafe();
+        off.setFromSpherical(s);camera.position.copy(controls.target).add(off);controls.update();dirty=true;},
       zoom(factor){refocus=null;northSwing=null;sonicCamera.userNudge();camera.position.sub(controls.target).multiplyScalar(factor).add(controls.target);controls.update();director.userNudge(performance.now());dirty=true;},
       // ☰ Auto camera switch. Turning it back ON starts a fresh director so it
       // picks up from wherever the camera is now, not from a pose it held before.
