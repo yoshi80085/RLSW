@@ -84,6 +84,10 @@ export default function GlobalCursor() {
       /* The ONE exception — see TEXT_FIELD above. */
       input:not([type=button]):not([type=submit]):not([type=checkbox]):not([type=radio]):not([type=range]),
       textarea, [contenteditable="true"] { cursor:text !important; }
+      /* 🎮 PAD MODE: the controller is in use, so the arrow goes away and the
+         pad's ring is the only thing lit (input/padFocus.js sets the attribute;
+         real mouse travel takes it off again). Alex, 2026-10-14. */
+      html[data-rlsw-input="pad"] [data-rlsw-cursor] { display:none !important; }
       /* One dip down the arrow's own axis, one small rebound, then still.
          ⚠️ Scale pivots on the TIP, so the hotspot never leaves the pixel the
          browser thinks it is on — only the body of the mark moves. */

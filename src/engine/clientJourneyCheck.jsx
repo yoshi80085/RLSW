@@ -43,10 +43,12 @@ try {
   console.log('Mounted match');
   await click(button('Continue to Melody'));
   assert.ok(document.querySelector('[data-tip-anchor="commit-track"]'));
-  const notes = [...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')]
-    .map(svg => svg.parentElement).filter(el => el.style.cursor === 'pointer');
-  assert.ok(notes.length >= 3, 'dealt a playable hand');
-  for (const note of notes.slice(0, 3)) await click(note);
+  // 🎡 THE NOTE POOL IS THE WHEEL (2026-10-14), centred on the arena, wearing the
+  // `note-stock` anchor while it is the hand. A held slot plays its first copy.
+  const heldSlot = () => document.querySelector('[data-tip-anchor="note-stock"][data-pool-wheel] [data-wheel-pc].is-held');
+  assert.ok(document.querySelectorAll('[data-pool-wheel] [data-wheel-pc].is-held').length >= 3, 'dealt a playable hand, on the wheel');
+  assert.equal(document.querySelector('[data-stock-idx]'), null, 'the honeycomb is gone — the wheel is the pool');
+  for (let i = 0; i < 3; i++) await click(heldSlot());
   assert.ok(button('Commit (3 notes'), 'three notes entered the melody');
   // Layout changes must preserve real in-progress controls, not only engine state.
   const stock = document.querySelector('[data-tip-anchor="note-stock"]');
@@ -144,8 +146,7 @@ try {
     'the arena stack panels are drawn, not merely mounted');
   assert.ok(button('Continue to Melody'), 'next player gets the chord step');
   await click(button('Continue to Melody'));
-  const nextNote = [...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')]
-    .map(svg => svg.parentElement).find(el => el.style.cursor === 'pointer');
+  const nextNote = document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held');
   await click(nextNote);
   assert.ok(button('Commit (1 notes'), 'next player can build a melody');
   await click(button('Commit (1 notes'));

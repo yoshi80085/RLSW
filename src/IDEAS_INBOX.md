@@ -43,6 +43,9 @@ already built is fine — say so and move on.
 
 ## 🆕 OPEN — not yet promoted
 
+### 2026-10-15 — The Rock God approves or disapproves
+Alex, on who announces the stage effects: *"The King at a Joust … starts the ceremony and approves or disapproves."* The fan MC now does the announcing; the Rock God's own later role (approving or disapproving, e.g. at the end) is not designed.
+
 ### 2026-10-13 — Db may come back with the difficulty settings
 *"Db is gone (for now - will find a place later when difficulty settings are being built out) - In beginner mode - the default for now - there is no Db."*
 

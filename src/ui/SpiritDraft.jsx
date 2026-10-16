@@ -62,10 +62,14 @@ function SpiritRoster({ corner, color, chosen, unlocked, onChooseSpirit }) {
   return <div style={{'--spirit-color':color}} className={`draft-portraits${threeD && SPIRIT_PICKER.halo === 'off' ? ' no-halo' : ''}`}>{ROSTER_ORDER.map(id=>{
     const sp = SPIRIT_DEFS[id], locked = IN_DEVELOPMENT.has(id) || !unlocked.has(id);
     const s = () => stage.current;
+    // 🎮 the pad's ring starts on the first Spirit you can pick (input/padFocus.js); once
+    // one is chosen the loadout takes over the default, so there is only ever one.
+    const padFirst = !chosen && id === ROSTER_ORDER.find(r => !IN_DEVELOPMENT.has(r) && unlocked.has(r));
     return <div key={id} className="draft-slot" ref={keep(id, 'slot')}
       onPointerEnter={()=>s()?.hover(id)} onPointerLeave={()=>s()?.leave(id)}>
       <button ref={keep(id, 'el')} className={`draft-portrait ${threeD?'is-3d':''} ${chosen===id?'is-selected':''}`} disabled={locked}
         aria-pressed={chosen===id} aria-describedby={threeD ? 'spirit-story' : undefined}
+        data-pad-default={padFirst ? `draft:pick:${corner}` : undefined}
         onClick={()=>{ s()?.picked(id); onChooseSpirit(corner,id); }}
         onFocus={()=>s()?.hover(id)} onBlur={()=>s()?.leave(id)}
         onKeyDown={e=>{ if (e.key === 'Escape') s()?.dismiss(id); }}
@@ -145,17 +149,21 @@ export function SpiritDraft({ corners, assignments, loadouts, choosingCorner, on
         <h2>{spirit ? spirit.name : 'Find your sound'}</h2>
         <p className="draft-subtitle">{spirit ? 'Choose two abilities to take into the arena.' : 'Select a Spirit to reveal their abilities.'}</p>
         <div className="draft-price">Ready from turn one <span>•</span> 2-round cooldown</div>
-        <div className="draft-skills">{abilitiesFor(chosen).map(skill=>{
+        <div className="draft-skills">{abilitiesFor(chosen).map((skill, si, all)=>{
           const on = selected.includes(skill.id), demoable = !!getDemo && hasDemo(skill.id);
+          // 🎮 the ring: the first ability not yet taken, until the loadout is whole (then LOCK IN)
+          const padSkill = !!chosen && !validLoadout(chosen,selected) && skill === all.find(k => !selected.includes(k.id));
           return <div key={skill.id} className={`draft-skill ${on?'is-selected':''}${demoable?' has-demo':''}`} {...(demoable ? pop.bind(skill) : {})}>
             <button className="draft-skill-pick" aria-pressed={on} disabled={!on&&selected.length===2}
+              data-pad-default={padSkill ? `draft:skills:${corner}:${chosen}` : undefined}
               onClick={()=>onLoadout(corner,on?selected.filter(id=>id!==skill.id):[...selected,skill.id])}>
               <span className="draft-skill-icon">{skill.icon}</span><strong>{skill.label}</strong><span className="draft-check">{on?'✓':'+'}</span>
             </button>
             <button className="draft-info-button" aria-label={`About ${skill.label}`} onClick={()=>{ pop.close(); setInfo(skill); }}>i</button>
           </div>;
         })}</div>
-        <button className="draft-confirm" disabled={!validLoadout(chosen,selected)} onClick={onConfirm}>LOCK IN PLAYER {corners.indexOf(corner)+1} <span>→</span></button>
+        <button className="draft-confirm" disabled={!validLoadout(chosen,selected)} onClick={onConfirm}
+          data-pad-default={validLoadout(chosen,selected) ? `draft:lock:${corner}` : undefined}>LOCK IN PLAYER {corners.indexOf(corner)+1} <span>→</span></button>
         <p className="draft-note">Abilities start ready. Each one recharges after you use it — and most ask a sacrifice of their own.</p>
       </div>
     </div> : <div className="draft-ready"><span>✦</span><h2>Your lineup is ready.</h2><p>Adjust the match below, then enter the arena.</p><button onClick={()=>onChooseCorner(corners[0])}>EDIT LOADOUTS</button></div>}

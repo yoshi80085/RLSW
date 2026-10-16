@@ -50,7 +50,7 @@ async function mount(config){
   await act(async()=>root.render(<Game gameState={config} onReturnToLobby={()=>{}} onEngineState={s=>{state=s;}}/>));
   const get=()=>state;
   await click(button('Continue to Melody'));
-  for(let i=0;i<3;i++)await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
+  for(let i=0;i<3;i++)await click(document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held'));
   await click(button('Commit (3 notes'));
   return {root,get};
 }

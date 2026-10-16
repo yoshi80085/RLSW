@@ -70,7 +70,7 @@ const acting = () => observed.acting;
 const RONIN = config.spirits[roninAt].id, RIVAL = config.spirits[rivalAt].id;
 const usedHas = (used, i) => Array.isArray(used) ? used.includes(i) : !!used?.has?.(i);
 const freeIdx = id => sheetOf(id).noteStock.map((_, i) => i).filter(i => !usedHas(sheetOf(id).usedStockIdx, i));
-const pickable = () => [...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(svg => svg.parentElement).find(el => el.style.cursor === 'pointer');
+const pickable = () => document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held');
 
 /** Play a whole plain turn for whoever is acting: melody of up to n notes, commit, end. */
 async function plainTurn(n = 2) {
@@ -87,7 +87,8 @@ async function toTurnOf(id, guard = 8) {
 }
 async function melodyOf(idxs) {
   if (button('Continue to Melody')) await click(button('Continue to Melody'));
-  for (const i of idxs) await click(document.querySelector(`[data-stock-idx="${i}"]`));
+  // 🎡 the pool is the wheel: a hand index plays through its pitch's slot
+  for (const i of idxs) await click(document.querySelector(`[data-pool-wheel] [data-wheel-pc="${pitchIndex(sheetOf(acting()).noteStock[i])}"]`));
   const commit = buttons().find(b => /Commit \(\d/.test(b.textContent));
   if (commit && !commit.disabled) await click(commit);
 }

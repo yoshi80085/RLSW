@@ -300,7 +300,9 @@ export function StageFXBanner({ banner, smokeFx, laserFx, pyroFx, animatronics, 
   if (!meta && !pills.length) return null;
 
   return (
-    <div style={{ position: 'absolute', top: 40, left: '50%', transform: 'translateX(-50%)',
+    // 🎤 `data-stagefx-pills`: steps aside while the fan MC has the stage (FanMcOverlay.jsx) —
+    // the pill appeared on top of him at his call, the moment he is most on show.
+    <div data-stagefx-pills style={{ position: 'absolute', top: 40, left: '50%', transform: 'translateX(-50%)',
       zIndex: 60, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 5,
       pointerEvents: 'none', width: 'max-content', maxWidth: '92%' }}>
       <style>{`

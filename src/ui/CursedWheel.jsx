@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { ScaleWheel } from './ScaleWheel.jsx';
 import { POCKET_WHEEL } from './scaleWheelModel.js';
 import { WHEEL_GEO, cursedWheelModel, cracksFor } from './cursedWheelModel.js';
+import { pitchIndex } from '../music/notes.js';
 import { CURSED_SHAMISEN, CURSE_TURNS, HAUNTED_NOTES } from '../board/cursedShamisen.js';
 
 /**
@@ -21,17 +22,24 @@ import { CURSED_SHAMISEN, CURSE_TURNS, HAUNTED_NOTES } from '../board/cursedSham
  * @param since  a key that changes when the phase starts (restarts the CSS)
  * @param roninRoot the curse's root (the name is v1's)
  * @param haunted [{ pc, lifted }] — the haunted notes (`iwatoCurse.js` hauntedNotes)
+ * @param pool   🎡 the wheel IS the note pool (Alex, 2026-10-14). Off = exactly as before.
+ *   On: the overlay is sized to `opts.chip`; a note you HOLD outside Iwato is only veiled
+ *   (still readable, still playable — it moves you, it just pays no fans), not blacked
+ *   out; and every held note gets its count badge on top of the curse, Iwato ones in
+ *   the curse's violet. Without it, a cursed hand could not see what it holds.
  * @param wheel  everything else the plain wheel takes in the match (`available`,
  *   `line`, `onPick`, `next`, `onHoverNote`) — passed straight through, so a
  *   cursed hand still composes from the wheel exactly as an uncursed one does
  */
 export function CursedWheel({ spiritId, root, roninRoot, hand = [], haunted = [], phase = 'none', turnsLeft = CURSE_TURNS, since = 0,
-  look = CURSED_SHAMISEN, opts = POCKET_WHEEL, roninColor = '#4488ff', ...wheel }) {
+  look = CURSED_SHAMISEN, opts = POCKET_WHEEL, roninColor = '#4488ff', pool = false, ...wheel }) {
   const hauntKey = haunted.map(h => `${h.pc}${h.lifted ? 'x' : ''}`).join(',');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const m = useMemo(() => cursedWheelModel({ spiritId, root, roninRoot, hand, haunted }), [spiritId, root, roninRoot, hand, hauntKey]);
   const cracks = useMemo(() => cracksFor(m.ownPoly), [m]);
-  const { VB, C, R, CHIP } = WHEEL_GEO;
+  const { VB, C, R } = WHEEL_GEO;
+  const CHIP = pool ? (opts.chip ?? WHEEL_GEO.CHIP) : WHEEL_GEO.CHIP, bo = CHIP * 0.37;
+  const heldOf = s => (pool ? hand.filter((n, i) => (wheel.available ? wheel.available(i) : true) && pitchIndex(n) === s.pc).length : 0);
   const on = phase !== 'none';
   const style = { '--ink-ms':`${look.wheelInkMs}ms`, '--end-ms':`${phase === 'exorcised' ? look.ofudaBurnMs : look.expireMs}ms`,
     '--curse':look.edgeColor, '--glow':look.wheelIwatoGlow, '--ronin':roninColor, width:opts.size, height:opts.size };
@@ -52,11 +60,12 @@ export function CursedWheel({ spiritId, root, roninRoot, hand = [], haunted = []
         <circle className="cw-ink" cx={C} cy={C} r={R + 40} fill="url(#cw-ink)" filter="url(#cw-ink-edge)"/>
         <circle className="cw-inkring" cx={C} cy={C} r={R + 30} fill="none" stroke="#0a0314" filter="url(#cw-ink-edge)"/>
         {/* their own scale: shrouded, then cracked */}
-        <circle className="cw-dead" cx={C} cy={C} r={WHEEL_GEO.R_IN + 8} fill="#06030d" style={{ animationDelay:'150ms' }}/>
+        <circle className="cw-dead" cx={C} cy={C} r={WHEEL_GEO.R_IN + 8} fill="#06030d" fillOpacity={pool ? .45 : 1} style={{ animationDelay:'150ms' }}/>
         {look.wheelCracks === 'on' && cracks.map((pts, i) => <polyline key={i} className="cw-crack" points={pts} fill="none"
           stroke={look.edgeColor} strokeWidth="1.4" style={{ animationDelay:`${300 + i * 90}ms` }}/>)}
         {/* every slot that is not Iwato goes dead */}
         {m.slots.filter(s => !s.iwato).map(s => <circle key={s.pc} className="cw-dead" cx={s.xy[0]} cy={s.xy[1]} r={CHIP * 0.56}
+          fillOpacity={heldOf(s) ? .5 : 1}
           fill="#06030d" style={{ animationDelay:`${200 + s.k * 40}ms` }}/>)}
         {/* the five Iwato notes, ghost-violet */}
         <polygon className="cw-poly" points={m.iwatoPoly} fill={look.edgeColor} fillOpacity=".14" stroke={look.edgeColor} strokeWidth="1.8"/>
@@ -70,6 +79,13 @@ export function CursedWheel({ spiritId, root, roninRoot, hand = [], haunted = []
           {s.lifted && <text x={s.xy[0] + CHIP * 0.5} y={s.xy[1] + CHIP * 0.62} textAnchor="middle" fontSize="13" fill="#9dffcf" fontFamily="Saira, sans-serif">✓</text>}
           <text x={s.xy[0]} y={s.xy[1] - CHIP * 0.78} textAnchor="middle" fontSize="11" fill="#e6d4ff" fontFamily="Share Tech Mono, monospace">{s.degree}</text>
         </g>)}
+        {/* 🎡 pool: what you hold, on top of the curse */}
+        {pool && m.slots.map(s => { const n = heldOf(s); return n > 0 && <g key={`h${s.pc}`} className="cw-held">
+          {/* a held note outside Iwato: its name in discord grey, over the ink — playable, pays no fans */}
+          {!s.iwato && <text x={s.xy[0]} y={s.xy[1] + 5} textAnchor="middle" fontSize="15" fontWeight="700" fill="#a4a4bc" fontFamily="Saira, sans-serif">{s.name}</text>}
+          <circle cx={s.xy[0] + bo} cy={s.xy[1] - bo} r="7" fill={s.iwato ? look.edgeColor : '#8a8aa0'} stroke="#0b0f1c" strokeWidth="1.5"/>
+          <text x={s.xy[0] + bo} y={s.xy[1] - bo + 3.2} textAnchor="middle" fontSize="9" fontWeight="700" fill="#0b0f1c" fontFamily="Share Tech Mono, monospace">{n}</text>
+        </g>; })}
         {/* the hub: the curse's mark */}
         {look.wheelGlyph === 'on' && <g className="cw-hub">
           <circle cx={C} cy={C} r="34" fill="#0a0414" stroke={look.edgeColor} strokeWidth="1.5"/>

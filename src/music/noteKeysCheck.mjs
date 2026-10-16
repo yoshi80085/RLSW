@@ -92,7 +92,10 @@ ok(/clickNoteStock\(idx, chipFor\(idx\), dest\)/.test(body), 'stack commits go t
 ok(/clickNoteStock\(idx, chipFor\(idx\)\)/.test(body), 'melody commits go through clickNoteStock');
 ok(/removeMelodyNote\(melodyLine\.length - 1\)/.test(body), 'Backspace uses removeMelodyNote');
 ok(/INPUT\|TEXTAREA\|SELECT/.test(body), 'typing in a text field is left alone');
-ok((mono.match(/data-stock-idx=\{idx\}/g) ?? []).length === 2, 'both hand grids carry data-stock-idx (flight source)');
+// 🎡 2026-10-14: the note pool is the wheel — a typed note flies from its WHEEL SLOT (by
+// pitch class); the one grid left (the Spirit sheet's step-3 drawer) is the fallback.
+ok(/\[data-pool-wheel\] \[data-wheel-pc="\$\{pc\}"\]/.test(mono), 'a typed note flies from its wheel slot (flight source)');
+ok((mono.match(/data-stock-idx=\{idx\}/g) ?? []).length === 1, 'one hand grid left (the step-3 drawer) carries data-stock-idx');
 ok(!/bttp|back_to_past/i.test(mono), 'Back to the Past is gone');
 
 console.log(`\n${failures.length ? '❌' : '✅'} ${pass} passed, ${failures.length} failed (${pools} spelled pools checked)`);

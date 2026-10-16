@@ -74,10 +74,30 @@ function Motif({ kind, accent }) {
   </g>;
 }
 
-export function ScaleWheel({ spiritId, root, hand = [], available, line = [], opts = WHEEL_DEFAULTS, onPick, onHoverNote, next = false }) {
+// 🎡 THE WHEEL AS THE NOTE POOL (Alex, 2026-10-14: *"this can totally replace the current
+// 'note pool' … This totally brings sense and order to the note pool"*). Two optional
+// props carry what the honeycomb chips used to say; unset, the wheel is exactly as before.
+//   · `marks` — `{ [pc]: { support, coach, staggered, mixer, fresh } }`:
+//       support 'drive'|'sustain'|'both' → the chip's own red/blue chevron (NoteHex
+//       `stackSupport`) · coach 'fans'|'drive'|'sustain' → the crowd's pulsing ring ·
+//       (dashed, so it never reads as the wheel's own solid fan-phrase ring) ·
+//       staggered n → an orange ⚡ badge (those copies can't be played) · mixer → a used
+//       note stays pickable, with a cyan ⟳ · fresh → the held badge pops in.
+//   · `hub` — `{ dest: 'drive'|'sustain', left, total }` in the Chord Stack step: the hub
+//       wears the destination's colour and the budget pips sit under it.
+const COACH_HUE = { drive: '#ff6644', sustain: '#44aaff' };
+const DEST_HUE = { drive: '#ff6644', sustain: '#44aaff' };
+
+export function ScaleWheel({ spiritId, root, hand = [], available, line = [], opts = WHEEL_DEFAULTS, onPick, onHoverNote, next = false,
+  marks = null, hub = null, onHub = null }) {
   // 🔠 Small wheels keep readable labels: below 300px the label type grows so a
   // 214px pocket wheel still prints ~8px degrees instead of ~6px.
   const ts = Math.min(1.5, Math.max(1, 300 / (opts.size || 300)));
+  // 🎮 `opts.chip` — the note hexes' size in wheel units. Unset = the dialled 38, so the
+  // nav wheel is untouched; the pad picker passes its own (PAD_TURN.wheelChip, Alex
+  // 2026-10-14: *"the note letter hexes can be a bit bigger"*). The held badge and the
+  // degree labels move out with it so a bigger chip never covers them.
+  const chip = opts.chip ?? CHIP, bo = chip * 0.37;
   const [hover, setHover] = useState(null);
   const m = useMemo(() => wheelModel({ spiritId, root, hand, available, line, opts }),
     [spiritId, root, hand, available, line, opts]);
@@ -117,10 +137,22 @@ export function ScaleWheel({ spiritId, root, hand = [], available, line = [], op
         <polygon points={shapePts(m.palPcs)} fill={accent} fillOpacity=".13" stroke={accent} strokeWidth="1.6"
           strokeLinejoin="round" style={{ filter: `drop-shadow(0 0 6px ${accent}88)` }} />
         {/* the hub — UNDER the melody path, so a line through the middle stays readable */}
-        <circle cx={C} cy={C} r="33" fill="#070c18" fillOpacity=".88" stroke={accent} strokeOpacity=".35" />
+        {/* 🎡 `onHub` (the pool's Chord Stack): a click on the hub switches Drive ⇄ Sustain —
+            the destination is drawn there, so that is where a mouse reaches for it. */}
+        <circle cx={C} cy={C} r="33" fill="#070c18" fillOpacity=".88" stroke={hub?.dest ? DEST_HUE[hub.dest] : accent}
+          strokeOpacity={hub?.dest ? 1 : .35} strokeWidth={hub?.dest ? 2.4 : 1} data-wheel-hub={onHub ? '' : undefined}
+          onClick={onHub ?? undefined}
+          style={{ ...(hub?.dest ? { filter: `drop-shadow(0 0 6px ${DEST_HUE[hub.dest]})` } : null), ...(onHub ? { cursor: 'pointer' } : null) }} />
+        {hub?.dest && <g>
+          <text x={C} y={C + 50} textAnchor="middle" fontSize={8.5 * ts} letterSpacing="1.5" fill={DEST_HUE[hub.dest]}
+            fontFamily="Share Tech Mono, monospace">{hub.dest === 'drive' ? 'DRIVE' : 'SUSTAIN'}</text>
+          {Array.from({ length: hub.total ?? 0 }, (_, i) => <rect key={i} x={C - (hub.total * 12 - 4) / 2 + i * 12} y={C + 55}
+            width="8" height="3" rx="1" fill={i < (hub.left ?? 0) ? '#80e8ff' : '#ffffff22'} />)}
+        </g>}
         <text x={C} y={C + 5} textAnchor="middle" fontSize="30" fontWeight="700" fill="#fff" fontFamily="Saira, sans-serif"
-          style={{ filter: `drop-shadow(0 0 8px ${accent})` }}>{pretty(root)}</text>
-        <text x={C} y={C + 20} textAnchor="middle" fontSize="7.5" letterSpacing="2" fill={accent} fontFamily="Share Tech Mono, monospace">
+          style={{ filter: `drop-shadow(0 0 8px ${accent})`, pointerEvents: 'none' }}>{pretty(root)}</text>
+        <text x={C} y={C + 20} textAnchor="middle" fontSize="7.5" letterSpacing="2" fill={accent} fontFamily="Share Tech Mono, monospace"
+          style={{ pointerEvents: 'none' }}>
           {(MODE_NAME[mode] ?? mode).toUpperCase()}</text>
         {/* 🩷 NEXT — the retired pocket RootBadge's rule: melodyCommit writes the
             track's last note into rootNote, so after a commit this is next round's key. */}
@@ -147,23 +179,34 @@ export function ScaleWheel({ spiritId, root, hand = [], available, line = [], op
           const [x, y] = at(s.k, R);
           const hue = s.inPal ? accent : '#4a4a5c';
           const dull = !s.inPal || (opts.fadeUnheld && !s.held.length);
-          const [lx, ly] = at(s.k, R + 29);
+          const [lx, ly] = at(s.k, R + 29 + (chip - CHIP) / 2);
           const hot = hover === s.pc;
+          const mk = marks?.[s.pc] ?? null;
+          const canPick = s.held.length > 0 || !!mk?.mixer;
           return (
             <g key={s.pc} className={`sw-slot${s.held.length ? ' is-held' : ''}`} data-wheel-pc={s.pc}
               onMouseEnter={() => enter(s)} onMouseLeave={leave}
-              onClick={() => s.held.length && onPick?.(s.pc)} style={{ cursor: s.held.length && onPick ? 'pointer' : 'default' }}>
+              onClick={() => canPick && onPick?.(s.pc)} style={{ cursor: canPick && onPick ? 'pointer' : 'default' }}>
               {opts.titles && <title>{describeSlot(s)}</title>}
-              <circle cx={x} cy={y} r={CHIP * 0.62} fill="transparent" />
-              {s.phrase > 0 && <circle cx={x} cy={y} r={CHIP * 0.66} fill="none" stroke={accent}
+              <circle cx={x} cy={y} r={chip * 0.62} fill="transparent" />
+              {s.phrase > 0 && <circle cx={x} cy={y} r={chip * 0.66} fill="none" stroke={accent}
                 strokeWidth={s.phrase === 2 ? 2.4 : 1.4} className="sw-phrase" />}
-              {hot && <circle cx={x} cy={y} r={CHIP * 0.7} fill={`${hue}22`} stroke="#fff" strokeOpacity=".5" />}
-              <g transform={`translate(${x - CHIP / 2} ${y - CHIP / 2})`} style={{ opacity: s.inPal ? 1 : 0.55 }}>
-                <NoteHex size={CHIP} hue={hue} letter={s.name} dull={dull} gold={s.ending === 'fifth' && hot} />
+              {hot && <circle cx={x} cy={y} r={chip * 0.7} fill={`${hue}22`} stroke="#fff" strokeOpacity=".5" />}
+              {mk?.coach && <circle cx={x} cy={y} r={chip * 0.84} fill="none" stroke={COACH_HUE[mk.coach] ?? accent} strokeWidth="2.6"
+                strokeDasharray="5 3.5" strokeLinecap="round" className="sw-coach" style={{ filter: `drop-shadow(0 0 6px ${COACH_HUE[mk.coach] ?? accent})` }} />}
+              <g transform={`translate(${x - chip / 2} ${y - chip / 2})`} style={{ opacity: s.inPal ? 1 : 0.55 }}>
+                <NoteHex size={chip} hue={hue} letter={s.name} dull={dull && !mk?.mixer} gold={s.ending === 'fifth' && hot}
+                  stackSupport={s.held.length ? mk?.support ?? null : null} />
               </g>
-              {s.held.length > 0 && <g>
-                <circle cx={x + 14} cy={y - 14} r={7 * Math.min(ts, 1.3)} fill={s.inPal ? accent : '#8a8aa0'} stroke="#0b0f1c" strokeWidth="1.5" />
-                <text x={x + 14} y={y - 14 + 3.2 * Math.min(ts, 1.3)} textAnchor="middle" fontSize={9 * Math.min(ts, 1.3)} fontWeight="700" fill="#0b0f1c"
+              {mk?.staggered > 0 && <g>
+                <circle cx={x - bo} cy={y - bo} r={7 * Math.min(ts, 1.3)} fill="#ff8800" stroke="#0b0f1c" strokeWidth="1.5" />
+                <text x={x - bo} y={y - bo + 3.4 * Math.min(ts, 1.3)} textAnchor="middle" fontSize={9 * Math.min(ts, 1.3)} fill="#0b0f1c">⚡</text></g>}
+              {mk?.mixer && !s.held.length && <g>
+                <circle cx={x + bo} cy={y - bo} r={7 * Math.min(ts, 1.3)} fill="#44ddff" stroke="#0b0f1c" strokeWidth="1.5" />
+                <text x={x + bo} y={y - bo + 3.4 * Math.min(ts, 1.3)} textAnchor="middle" fontSize={9 * Math.min(ts, 1.3)} fontWeight="700" fill="#0b0f1c">⟳</text></g>}
+              {s.held.length > 0 && <g className={mk?.fresh ? 'sw-fresh' : undefined}>
+                <circle cx={x + bo} cy={y - bo} r={7 * Math.min(ts, 1.3)} fill={s.inPal ? accent : '#8a8aa0'} stroke="#0b0f1c" strokeWidth="1.5" />
+                <text x={x + bo} y={y - bo + 3.2 * Math.min(ts, 1.3)} textAnchor="middle" fontSize={9 * Math.min(ts, 1.3)} fontWeight="700" fill="#0b0f1c"
                   fontFamily="Share Tech Mono, monospace">{s.held.length}</text></g>}
               {opts.degrees && <text x={lx} y={ly + 3.5 * ts} textAnchor="middle" fontSize={10.5 * ts}
                 fill={s.inPal ? accent : '#5c5c70'} fontFamily="Share Tech Mono, monospace" fontWeight={s.inPal ? 700 : 400}>

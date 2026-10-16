@@ -426,7 +426,8 @@ export function Lobby({ onStart, onBackToMenu }) {
                 ? <>{roundLimit} rounds, then the buzzer — <b style={{color:"#ff8a2a"}}>most Fame wins</b> · nobody is knocked out · ties go to diehards, then damage 🤘</>
                 : <>{startingLives===1?`Sudden death — ${fpPerLife(playerCount ?? 2)} FP to win`:`${startingLives} Knock Downs = KO — ${startingLives*fpPerLife(playerCount ?? 2)} FP to win`}{startingLives>=3?" 🤘":""}</>}
             </span>
-            <button onClick={online?handleStartOnline:handleStart} disabled={!canGo} style={{fontFamily:"'Saira Stencil One',sans-serif",cursor:canGo?"pointer":"not-allowed",borderRadius:6,padding:"10px 28px",fontSize:13,fontWeight:700,letterSpacing:3,transition:"all .2s",border:"2px solid",background:canGo?"#1a3020":"#0a1020",borderColor:canGo?"#44cc66":"#1e3a5f",color:canGo?"#44ff88":"#2a3a4a",boxShadow:canGo?"0 0 20px #44cc6633":"none",opacity:canGo?1:0.5}}>{online?"START ONLINE":"ENTER ARENA"}</button>
+            <button onClick={online?handleStartOnline:handleStart} disabled={!canGo}
+              data-pad-default={canGo ? 'lobby:go' : undefined /* 🎮 the pad's ring waits here once the lineup is set */} style={{fontFamily:"'Saira Stencil One',sans-serif",cursor:canGo?"pointer":"not-allowed",borderRadius:6,padding:"10px 28px",fontSize:13,fontWeight:700,letterSpacing:3,transition:"all .2s",border:"2px solid",background:canGo?"#1a3020":"#0a1020",borderColor:canGo?"#44cc66":"#1e3a5f",color:canGo?"#44ff88":"#2a3a4a",boxShadow:canGo?"0 0 20px #44cc6633":"none",opacity:canGo?1:0.5}}>{online?"START ONLINE":"ENTER ARENA"}</button>
           </div>}
         </>}
       </div>

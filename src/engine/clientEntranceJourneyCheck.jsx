@@ -91,9 +91,8 @@ try {
 
   // ── Seat one's turn: walk up to the reserved hex ──────────────────────────
   await click(button('Continue to Melody'));
-  const notes = [...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')]
-    .map(svg => svg.parentElement).filter(el => el.style.cursor === 'pointer');
-  for (const note of notes.slice(0, 3)) await click(note);
+  // 🎡 the note pool is the wheel (2026-10-14): a slot you hold plays its first copy
+  for (let i = 0; i < 3; i++) await click(document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held'));
   await click(button('Commit ('));
   ok(document.querySelector('[data-tip-anchor="end-turn"]'), 'seat one reaches Move & Act');
   const lit = [...document.querySelectorAll('[data-move-tile]')].map(el => Number(el.closest('[data-hex-num]')?.dataset.hexNum));

@@ -13,7 +13,7 @@
 > |---|---|
 > | **A** | 🧭 **the current handoff** — what just happened and what is next |
 > | **B** | 🎓 **the findings** — lessons that cost real money to learn, kept because each one is now a live defence in the test suite |
-> | **C** | 📇 **the index** — every handoff (104 rows), dated, one line each, pointing into the archive |
+> | **C** | 📇 **the index** — every handoff (108 rows), dated, one line each, pointing into the archive |
 >
 > ⚠️ **NOTHING WAS DELETED.** If a line below is too short to act on, the full
 > text is in the archive under the same section id.
@@ -26,88 +26,39 @@
 
 # A. 🧭 THE CURRENT HANDOFF
 
-## 70-controller. 🎮 Controller support — the foundation — 2026-10-14
+## 74-fanmc2. 🎤 The MC: replay at his last show of ANY match, never behind anything, summoned in Testing Grounds, and a wardrobe — 2026-10-16
 
-**Alex:** *"lets talk about controller support - how big of a job would this be?"* → *"When I think of scalability and how modern games are played, I think x box controller … the first thing I usually do is search for a way to play it with my controller"* → *"Lets build the foundation now then"*, with a sketch for the Riff-Off (1 LT · 2 LB · 3 D-pad right · 4 X · 5 RB · 6 RT), then *"I'd like to hear what you think is the best way … first do what you think is most ergonomic and we can discuss finer points like that later"*.
-
-### The idea that carries it
-⭐ **A pad press IS a key press (or a click).** The game never learns a controller exists: each button sends the keyboard event or the mouse click that already does that job, so it goes through the same handler and the same gates (`keyboardNoteCommit`, `numpadMove`, `enterEndTurn`, all three Riff-Off listeners). There's no second code path to drift.
+**Alex:** *"Lets make that last appearance of the MC showcase the best riff off replay (even in 15 rounds or 10 rounds only matches - in case of the 10 rounds - its the only appearance so have him showcase here too)"* · *"on the screenshot that I saw of the MC in the chat - it looked like he was appearing 'behind' other assets? I haven't seen him in the game - can you make sure he can be summoned in the testing grounds? Lets make sure that he doesn't get obscured by anything when he comes out."* · *"Lastly, lets make a fashion preview for the MC - he should get a special 'look'"*. The 10-15 handoff is `docs/archive/SEQUENCING-2026-10-16-before-fan-mc-r2.md`.
 
 ### What shipped
-- **`src/input/`** (new directory, 4 modules, rows in `ARCHITECTURE.md`):
-  - `padMap.js`: the whole map and every feel number (`PAD_TUNING`, `RIFF_LAYOUT`, `TURN_LAYOUT`).
-  - `gamepad.js`: the 4 ms poll, the two layers and `mountGamepad`.
-  - `padFocus.js`: the on-screen highlight and `PAD_RING`.
-  - `padNav.js`: which box the D-pad goes to next.
-- 🎸 **Riff layer** (my ergonomic pick, open for Alex):
-  - Six strings on six fingers: 1 LT · 2 LB · 3 **any** D-pad direction · 4 **any** face button · 5 RB · 6 RT. That's Alex's own shape, except each thumb gets its whole cluster.
-  - Bends are a flick of **either stick**, up or down. Menu = Enter (start). View = Escape (back), because B is a string here.
-- 🎲 **Turn layer:**
-  - D-pad moves the highlight; A presses it. The first A only shows the highlight, so a press is never blind.
-  - **Y = Enter**, which advances the turn (Continue → ✓ Commit → End).
-  - X = Backspace · LB = W (🎡 the Scale Wheel) · RB = Tab (Drive ⇄ Sustain) · B = Escape · R3 = Numpad5 (🧭 face north) · Menu = ☰.
-  - The **left stick walks toward screen-up**: `stickBoardAngle` turns the stick by the lens heading into a board direction, then `walkCodeFor` sends that direction's numpad key.
-  - The **right stick** turns and tilts the lens (a stick held over counts as a mouse drag: `grab` → `takeOver`/`letGo`). LT / RT zoom.
-- **The highlight** (`padFocus`):
-  - Targets are what a mouse could click: buttons, ARIA roles, `[data-stock-idx]` chips, `[data-pad-hex]`, `[data-pad]`, and inline `cursor: pointer`.
-  - ⭐ A target only counts if `elementFromPoint` lands on it, so a modal scopes the highlight with no registration.
-  - A press is the full pointer/mouse/click sequence. Hover comes free, because mouseover/out is what React's onMouseEnter is built from.
-  - On a slider, ←/→ nudges it. A real mouse move hides the ring.
-  - Every event carries `rlswPad`.
-- **Wiring:**
-  - `App.jsx` mounts it once.
-  - The monolith: `providePadCamera`; `claimPadLayer('riff')` inside the Riff-Off key effect; `data-pad-hex` on hexes **only while an action is armed** (otherwise ~40 hexes would sit between the HUD and the rail).
-  - `RiffArenaBattle` claims the riff layer only while its clock runs (so A can press "Start Riff Off"). `arrowHighwayEngine` claims it while mounted.
-  - `arenaRenderer`: `heading` / `grab` / `orbit`, and it hears `PAD_ACTIVITY_EVENT`. Without that event, a player using only the sticks would lose the lens to the 10 s idle camera.
-  - `BoardViewport` passes those through. `GlobalCursor` ignores pad events, so the arrow doesn't jump.
-- 🧪 **Controller Lab** (`.scratch/pad-lab.html` + `.js`, `npm run dev:padlab`, double-click copy `npm run build:padlab` → `pad-lab.standalone.html`):
-  - It runs the game's own runtime, map and ring: live pad state, the six lanes, a mock HUD with a modal, and a lens-heading slider for the stick walk.
-  - Feel and ring levers, localStorage, and a 📋 dial-in box that marks changed vs default.
+- 📺 **The replay is at his LAST show, whatever the match length** — 7 of 10 (his only show), 12 of 15, 17 of 20. `data/fanMc.js` `replayShow(roundLimit, round)` is now "the last round of `stageFxSchedule(roundLimit)`"; `FAN_MC_REPLAY_ROUNDS` is gone. 📌 My call: a Legend Run's schedule is fixed (7, 12, 17), so its show at 17 replays too — and if the crown is taken first there is no replay.
+- 🔝 **He is never behind anything.** Cause (the 10-15 screenshot): he lived in the ARENA scene, the bottom of three stacked layers (WebGL arena z0 → the board's SVG on CSS3D z1 → the foreground canvas z2 with the amps, fans, dice, standees, smoke, lasers and Sonic rings), so all of those — and the hex tints — painted over him however near he was. Now `arenaRenderer.js` builds his own scene (`mcScene`, its own hemisphere + key light, like the standees' layer) and draws it LAST on the foreground canvas after a `clearDepth()`, after the beams and the smoke's self-pass. `fanMcStage.js` takes `floatRoot`: he, his spotlight and the TV go there; only the board wash stays on the board. ⚠️ The TV's render target is now filled by the FOREGROUND renderer (`fanMcPrerender(foreground)`: a target is per WebGL context), with its clear colour saved and restored (the foreground runs `autoClear=false`). DOM: the stage-effect status pills (`StageFXBanner`, now `data-stagefx-pills`) and the crowd's speech bubble (`data-arena-crowd-speaker`) step aside under `body[data-fanmc-live]` — in Chromium the 💨 SMOKE pill landed on his head at the call.
+- 🧪 **Summon him in Testing Grounds.** 🧪 TEST → 🎤 THE FAN MC: pick the effect (or 🔁 each in turn), then **🎤 Summon** (standings + the call), **🎤📺 + Replay** (his last-show version with the TV; the match's own best riff-off, or a demo duel `demoRiff` between the first two Spirits — a picture only, never written to the engine) or **🎤 No-duel line**. It is the real show: the monolith's `devSummonFanMc` activates the effect in the rules at once with its words deferred (`activateStageFx(…, fanMcDeferredRef.current)`), and `fanMcTest` feeds the same derived hold (`fanMcTestLive`, gated on `testMode`), veil (keyed by `fanMcKey`) and show-builder. The 🧪 layer hides while he is on. No `Math.random` (test:determinism counts call sites).
+- 🎩 **The wardrobe preview** — `.scratch/fan-mc-fashion-preview.html` (`npm run dev:fanmcfashion`; double-click copy `npm run build:fanmcfashion`; claude.ai Artifact **Fan MC Wardrobe** https://claude.ai/artifact/Ay3peZPtABXagUqZJPgVs3). The game's own MC (stage, mic, moods, clock) on his own layer like the arena; the clothes are `.scratch/fan-mc-fashion/outfit.js` (`MC_OUTFIT`, `dressMc`, `outfitFanStyle` — written to move to `src/board/fanMcOutfit.js` as-is). Slots: head (Ronin band = today, top hat, crown, backwards cap, headphones, halo, mohawk), eyes (aviators, star shades, LED visor, monocle), neck (bow tie, MC chain, scarf, backstage pass), body (tux front, sequins, cape, sash — laid on the body's own surface), aura (sparkle, notes, confetti on a cheer), mic (chrome, gold, rhinestone, neon); garment / accent / metal colours; six size-and-shine sliders. Eight rack looks (In the game now, Ringmaster, Black Tie, Showman, Rock Royalty, Hype MC, Cosmic Host, Mosh Pit). Moods loop the show's real moments; an inset shows **his in-game lens** (close while he talks, the wide at the call); Space flips to today's look; paste a match screenshot as the backdrop; 📋 dial-in marks changed-vs-the-game. Defaults = what he wears today, so nothing changes in the game until Alex picks.
+- The **Fan MC Intermission** preview now labels 7 of 10 and 12 of 15 as replay shows (it already read `replayShow`); republished (version 5).
 
 ### Evidence
-- `test:gamepad` **184**:
-  - The map: six strings, six fingers, no button doing two jobs.
-  - Trigger hysteresis by value.
-  - Screen-up walking checked against a **real three.js camera** across 864 heading × push cases.
-  - Both layers; the highlight in jsdom; the wiring.
-  - **3/3 mutants caught:** trigger hysteresis, the walk's sign, and the layer-switch guard (that last one needed a new check: an A landing on the poll a duel ends clicks nothing).
-- `test:padjourney` **10**: the real `Game`, a turn from a fake pad. Y Continue / Commit / End turn, a **held** Y fires once, the stick walks one hex per push, and a part-way nudge walks nowhere.
-- Both are in `test:all`.
-- Green:
-  - `check:bundle` 0 warnings
-  - `test:arch`
-  - `test:cameradirector` 97 (its activity-list regex now includes the pad event)
-  - `test:topview` 81
-  - `test:numpadjourney` 24
-  - `test:notekeysjourney` 29
-  - `test:riffarena` 34
-  - `test:riffarenajourney`
-  - `test:client`
-  - `test:journey`
-  - `test:render` 13
-- Changed files lint clean. The one warning, `BoardViewport.jsx:105`, was already there.
-- 🐛 **Found in the Lab** (headless Chromium driving a fake pad): from a wide button, Right dropped to a chip in the row below, because nav was measured centre to centre. `padNav` now measures **edge to edge**, and a box must reach further that way. Regression is in §7.
-- 🐛 **Found when Alex first plugged in his pad (same afternoon):**
-  - The Lab's top line only listened for `gamepadconnected`, so it said "no controller" while the log showed his presses. It now polls `getGamepads` and says **why** (blocked in a preview pane, tab not focused, press a button, `joy.cpl`).
-  - `mountGamepad` also probes once a second, and its `getGamepads` reads can no longer throw.
-  - A **self-ticking "Try this" checklist** now shows what each button should do.
-  - Nav: Right from a button hopped UP to a note chip that overlapped it sideways. `pickNeighbor` now prefers boxes **in line** (`inLine`) and only cuts across when nothing is in line. Regressions are in §7.
-- 🧰 This session ran on the device: `ESBUILD_BINARY_PATH=node_modules/@esbuild/.linux-x64-TXItLeJJ/bin/esbuild` (a Linux esbuild 0.28.1 already sits there, hidden) makes every bundling suite run on the VM.
+- `test:fanmc` **129** (was 101): the replay rule for 10 / 15 / 20 / Legend Run × every show; his layer (`floatRoot`, the spot comes with him, the wash stays, dispose cleans both); the renderer draws him after the standees / smoke / rings, after a depth clear, and prerenders the TV with the foreground renderer; the summon (`demoRiff` shape and bar, the wiring, the demo never dispatched, the 🧪 panel hides). Mutation: the 20-only rule → red.
+- `test:fanmcsummon` **21** (new, ~40 s, in `test:all`): the real Game on the Testing Grounds config by clicks — 🧪 → 💨 → 🎤📺 → smoke live in the rules, veiled on the board, 🧪 gone, the riff beat on a demo duel with `bestRiff` still null, Escape → SMOKE MACHINE called and on the board, he leaves, 🧪 back; a plain summon has no riff beat. Mutation: veil keyed to the draw only → red.
+- `test:fanmcjourney` 26 · `test:stagefx` 99 · `test:determinism` 20 · `test:sandbox` 35 · `test:client` 6 · `test:render` 13 · `test:journey` · `test:padjourney` · `test:gamepad` · `test:arch` 8 · `check:bundle` 0 warnings (Linux copy, and `check:bundle` / `test:fanmc` / `test:arch` / `test:determinism` on Alex's machine with a Linux esbuild).
+- 👁️ **Chromium (software GPU) on the real Testing Grounds:** summon + replay → he lands in front of the board and the Ronin's standee, the bar chart, the TV replaying the demo duel, the dim, SMOKE MACHINE called with him drawn OVER the smoke cloud and the pill gone. A DOM audit at his projected head through every beat found nothing painted over him. The wardrobe page rendered all eight looks in Chromium (Vite and the double-click file).
 
 ### Not done / not verified
-- ✅ **Alex's pad, in the Lab (14 Oct, 13:58):** the checklist ran through, and the dial-in came back **0 of 18 levers moved**. `PAD_TUNING` and `PAD_RING` are his call now; their comments say so. ⏳ Not yet played in a real match.
-- **Picking a note on a pad** is highlight + A on the chips for now. The Scale-Wheel-on-a-stick design is the next real decision.
-- No button prompts: the hint copy still says keys.
-- No pad-per-seat for hot-seat (every pad drives the acting seat).
-- The riff mapping is open for discussion (Alex asked to talk it through).
-- `_to_delete/_dbgCheck.mjs` is mine (a debug copy; deletion is off in this folder).
+- ⏳ Not on Alex's GPU; not in a real 10- or 15-round match (the rule is one function the client already reads; the 20-round journey still passes).
+- 📌 His layer has **no bloom** (the foreground canvas has none; the Sonic's rings carry their own). His rim, mic band and gems are `toneMapped:false`, so they stay bright, but softer than in the arena's bloom. If Alex wants the old glow back, the beam layer's bloom pass is the model.
+- 📌 He no longer dims with the arena on the tease (the dim is the arena's exposure) — he reads as spotlit in the dark. Flag if unwanted.
+- 🎩 The wardrobe is a preview only — nothing ported. ⁉️ My calls: defaults are today's look; the confetti fires on every cheer (his call, his sign-off); the rack looks are first proposals.
+- 🗑️ Alex can delete `_to_delete/rlsw-src-for-cloud-2026-10-16.tgz` (the source copy sent to the cloud for the Chromium check).
+
+### Addendum (same evening) — 🎩 his look, ported at Alex's dial-in
+- **Alex pasted the Wardrobe dial-in** (7 of 16): head `mohawk`, eyes `visor`, aura `notes`, mic `neon`, main `#0f2e2a`, accent `#ff4fd8`, metal `silver`; everything else default.
+- **Ported:** `.scratch/fan-mc-fashion/outfit.js` moved to **`src/board/fanMcOutfit.js`** as written (the old file is in `_to_delete/fan-mc-outfit.superseded-by-src-board-fanMcOutfit.js`, so there is one copy, §B1). `MC_OUTFIT` = his dial-in; `MC_OUTFIT_BEFORE` = the Ronin-band look. `fanMcStage.js`: `outfit` option, `dressMc` after every `buildMc` (after the mic, which the neon finish re-skins), `dress.tick` at the end of `poseMc` with the mood it computes, `setOutfit` / `outfit` for the page, the fan style from `outfitFanStyle(O, L.style)` (any headwear but the band needs the plain head). The Wardrobe page now drives the stage (`setOutfit`) instead of dressing him itself; its defaults are the game's look and its rack gains *Ronin Band*.
+- **Evidence:** `test:fanmc` **141** (§10: his seven pinned, the band gone, seven spikes, the visor, the aura, the neon mic in his accent, `setOutfit` re-dresses, the page imports the game's module; mutation: no `dressMc` → red) · `test:fanmcsummon` 21 · `test:stagefx` 99 · `test:determinism` 20 · `test:arch` 8 · `check:bundle` 0 warnings. 👁️ Chromium on the real Testing Grounds: the pink mohawk, the neon mic, the notes, over the board and the standee; nothing on the page over his head through the show.
+- ⚠️ **The claude.ai Wardrobe artifact could not be updated:** the publisher refused it three times as an "artifact-pr-review" page ("too large for a review page") — a misclassification; nothing in the page is a review. The live artifact is still r1 (its defaults are the old look; a dial-in from it still marks changes correctly against the band look). The repo copies are current: `fan-mc-fashion-preview.standalone.html` (double-click) and `npm run dev:fanmcfashion`. The *Fan MC Intermission* artifact republished fine (v6, wearing the new look).
 
 ### Next
-1. Alex tries the Lab with his pad → dial-in → the riff layout talk.
-2. The note-picking design (Scale Wheel + stick).
-3. Button prompts that follow the last device used.
-4. The "pad-ready" rule (CLAUDE.md) applies to every new screen from now on.
-
+1. Alex: in Testing Grounds, 🧪 TEST → 🎤 THE FAN MC → 🎤📺 + Replay — watch him land, the TV, the call.
+2. Alex: dial a look on **Fan MC Wardrobe**, copy the dial-in → port: `outfit.js` → `src/board/fanMcOutfit.js`, `MC_OUTFIT` = his numbers, `fanMcStage.buildMc` dresses him (fan style from `outfitFanStyle`), `poseMc` ticks it with its mood.
 
 ---
 
@@ -249,13 +200,17 @@ kernel, because the split lived in the half no headless run reaches (§B2).
 
 ---
 
-# C. 📇 THE INDEX — 104 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
+# C. 📇 THE INDEX — 107 rows; each names its archive (`docs/archive/SEQUENCING-*.md`)
 
 Newest first. **Search the archive by the section id in column 1.**
 
 | id | date | what it did |
 |---|---|---|
-| `70-controller` | 2026-10-14 | 🎮 Controller foundation: `src/input/` (a pad press IS a key press or a click). Riff: six strings on six fingers, sticks bend; turn: highlight (D-pad + A), Y = Enter, the left stick walks toward screen-up, the right stick turns the lens. Controller Lab page. `test:gamepad` 184, `test:padjourney` 10. Live §A. |
+| `74-fanmc2` | 2026-10-16 | 🎤 The replay at the MC's LAST show of any match (7 of 10, 12 of 15, 17 of 20); he is drawn on his own layer LAST on the foreground canvas (was under the board, the standees, the smoke); summoned in Testing Grounds (`devSummonFanMc`, `demoRiff`); the **Fan MC Wardrobe** preview and, same evening, his look at Alex's dial-in (`board/fanMcOutfit.js`: mohawk, LED visor, notes, neon mic, pink on teal). `test:fanmc` 141, `test:fanmcsummon` 21. Live §A. |
+| `73-fanmc` | 2026-10-15 | 🎤 The fan MC announces the stage effects (7 of 10; 7, 12 of 15; 7, 12, 17 of 20): the wallpaper fan on his own hex with a mic, the Fame bar chart, the call that brings the effect onto the board; the TV replay of the remembered best riff-off ONLY at the last show of a 20-round match (widened to every length by `74-fanmc2`). Archived in `../docs/archive/SEQUENCING-2026-10-16-before-fan-mc-r2.md`. Engine `state.bestRiff` (strictly better replaces); `data/fanMc.js`, `board/fanMcStage.js`, `ui/FanMcOverlay.jsx`, `audio/fanMcSfx.js`; the rules never wait, the picture does. `test:fanmc` 101, `test:fanmcjourney` 26. |
+| `72-padport` | 2026-10-14 | Archived in `../docs/archive/SEQUENCING-2026-10-15-before-fan-mc.md`. 🎮🎡 The pad turn in the game, and the note pool IS the wheel for everyone (`ui/PoolWheel.jsx`, centre of the arena; honeycomb + step-1 grid gone); the pad's turn modes (`providePadTurn`: wheel picker + hammer flick, ability cross, legal-only aiming, HUD on View); the button bar; Escape backs out of an aim. `test:gamepad` 334, `test:padjourney` 37, `test:scalewheel` 319. + the wheel's own window (scrim + frosted disc) and the emulation guard. Live §A. |
+| `71-padturn` | 2026-10-14 | Archived in `../docs/archive/SEQUENCING-2026-10-14-before-pad-port.md`. 🎮 Pad mode vs mouse mode (the last device wins: arrow hidden, a shield so nothing stray hovers, the ring lit at once); `data-pad-default` keyed per step so each turn opens on Drive and follows the steps (and the title / draft / lobby); the pad-turn PREVIEW (`input/padTurn.js` + `.scratch/pad-turn-preview.html`: wheel stick-picker, hammer flick, ability cross, button bar), dialled 0 of 30. `test:gamepad` 272, `test:padjourney` 17. |
+| `70-controller` | 2026-10-14 | Archived in `../docs/archive/SEQUENCING-2026-10-14-before-pad-turn.md`. 🎮 Controller foundation: `src/input/` (a pad press IS a key press or a click). Riff: six strings on six fingers, sticks bend; turn: highlight (D-pad + A), Y = Enter, the left stick walks toward screen-up, the right stick turns the lens. Controller Lab page. `test:gamepad` 184, `test:padjourney` 10. |
 | `69-sonicpoints` | 2026-10-13 | The Sonic pays on points through the shield (`sonicVibe` 1 per 4 ≤ 3, `sonicStrengthFame` 1 + 1 per 3 ≤ 5 base per attack, riders and crowd on top); a held shield pays its owner 1 FP × crowd (`awardShieldHeldFame`); the crowd-on-every-Fame guard (`test:sonic` §R9). The Lost Chords are energy balls (`LOST_CHORD_STYLE` 'orb', crystal sounds kept). `test:sonic` 174, `test:lostchords` 115; sweep 91/97 before and after, same 6 red. `docs/archive/SEQUENCING-2026-10-14-before-controller.md` (with its 10-13 rulings and 10-14 nebula addenda). |
 | `68-marqueeturn` | 2026-10-09 | Archived in `../docs/archive/SEQUENCING-2026-10-13-before-sonic-points.md`. A taken marquee's replacement is chosen at the take but lights at the turn end (`board.marqueePending`, `lightPendingMarquees`); the special-dice diagnosis (a die card bent the weakest die, often dropped) → a card die is a BONUS die with its own seat, always kept (`applyCard` / `keepBest` pins), dealt gold onto the table; the card at the roll finally reaches the 3D floor (battle key fix). |
 | `67-facenorth` | 2026-10-09 | Archived in `../docs/archive/SEQUENCING-2026-10-13-before-sonic-points.md`. 🧭 Face north: a 450 ms swing that puts the lens due south of its target (`topDownView.js` `northLens`, `arenaRenderer.north()`), Numpad 5 does it; no preview (Alex asked straight). |

@@ -32,7 +32,7 @@ const button=text=>[...document.querySelectorAll('button')].find(b=>b.textConten
 async function click(el){assert.ok(el,'click target exists');assert.ok(!el.disabled,el.title);await act(async()=>el.dispatchEvent(new dom.window.MouseEvent('click',{bubbles:true})));}
 const mount=async c=>act(async()=>root.render(<Game gameState={c} onReturnToLobby={()=>{}} onEngineState={(s,action)=>{state=s;actions.push(action);}}/>));
 await mount(config);await click(button('Continue to Melody'));
-for(let i=0;i<3;i++)await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(s=>s.parentElement).find(e=>e.style.cursor==='pointer'));
+for(let i=0;i<3;i++)await click(document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held'));
 await click(button('Commit (3 notes'));
 const budget=state.turn.moveStepsLeft;
 await click(button('🔊 Sonic'));await click(document.querySelector(`[data-hex-num="${there.num}"]`));

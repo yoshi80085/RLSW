@@ -4,6 +4,9 @@ import { playUnlockHit } from "./audio/unlockSfx.js";
 import { playSpiritFx, playSpiritSting, stopSpiritSting } from "./audio/spiritSting.js";
 import { SeatUnlockBurst } from "./ui/SeatUnlockBurst.jsx";
 import { OpeningActOverlay } from "./ui/OpeningActOverlay.jsx";
+import { FanMcOverlay } from "./ui/FanMcOverlay.jsx";
+import { FAN_MC, mcIntermission, compileIntermission, replayShow, skipTarget, fanMcSoundTimes, fanMcColor, rankPlayers, demoRiff } from "./data/fanMc.js";
+import { playFanMcSound } from "./audio/fanMcSfx.js";
 import { openingSchedule, entranceAt, openingDoneAt, RING_OUT_BEAM_MS } from "./board/openingAct.js";
 import { playOpeningBoom } from "./audio/openingActSfx.js";
 import { SonicBarrageRecord } from './ui/SonicBarrageRecord.jsx';
@@ -278,7 +281,7 @@ import { PC_PLAY_NAMES } from "./music/pitchNames.js";
 // the reason why, and it is a reason worth reading before touching the chip.
 import NoteHex, { NOTE_HEX, NOTE_BURST } from "./ui/NoteHex.jsx";
 import { ScaleWheel, ScaleWheelCard } from "./ui/ScaleWheel.jsx";
-import { WHEEL_DEFAULTS, POCKET_WHEEL } from "./ui/scaleWheelModel.js";
+import { WHEEL_DEFAULTS, POCKET_WHEEL, wheelModel } from "./ui/scaleWheelModel.js";
 import { CrowdBubble, useCrowdCoach, crowdCss } from "./ui/CrowdBubble.jsx";
 import { crowdAsks, chordGlow, crowdStockMarks, CROWD_BUBBLE, CROWD_HAMMER } from "./ui/crowdCoach.js";
 import Bracket from "./ui/Bracket.jsx";
@@ -302,7 +305,14 @@ import { HAMMER_LOOK, HAMMER_CSS, hammerHue, hammerArriveStyle, hammerVoice, pre
  *  Ronin, a bot, not the Melody step, already committed). */
 const NO_HAMMER = Object.freeze({ ok: false, reason: 'no-charge', candidates: [] });
 import { NUMPAD_DIRS, isNumpadMove, numpadTarget } from "./ui/numpadMove.js";
-import { claimPadLayer, providePadCamera } from "./input/gamepad.js";
+import { claimPadLayer, providePadCamera, providePadTurn, padSticks } from "./input/gamepad.js";
+// 🎮🎡 THE PAD-TURN PORT (2026-10-14): the wheel is the note pool for everyone, and the
+// pad's turn verbs (stick picker, hammer flick, ability cross, legal-only aiming, the bar).
+import { PoolWheel } from "./ui/PoolWheel.jsx";
+import { PadButtonBar } from "./ui/PadButtonBar.jsx";
+import { PadCross } from "./ui/PadCross.jsx";
+import { usePadMode, crossButton } from "./ui/padTurnUi.js";
+import { PAD_TURN } from "./input/padTurn.js";
 import { chordContext, contextClaim, classifyTrack } from "./music/context.js";
 import { readStack } from "./music/vocabularies.js";
 
@@ -346,26 +356,16 @@ import { readStack } from "./music/vocabularies.js";
 // track and a socket in a stack are the same object, and a stack-tinted socket
 // reads as a note that is already half-committed.
 const SOCKET_HUE = "#2a1a50";
-// 🎵 The step-1 stack-commit grid's chip. ⚠️ THIS IS A WRAP NUMBER, NOT A TASTE
-// NUMBER. MEASURED, not derived: the grid was rendered through SSR, forced to the
-// real 238px HUD column, and the rows counted — 11 chips (the Ronin's stock, the
-// biggest there is) at 34px with the grid's own gap of 2 come out **6 + 5, two
-// rows, 87px tall**, which is exactly the footprint the old 26px clip-path chip
-// had. 40px would break it to three rows, and each row also carries a ▲ preview
-// strip under it, so a third row costs more than a third of the height.
-// 📌 NoteHex draws its hexagon at 2R/VB = 56.7% of the box, so 34 here is a 19px
-// hexagon where the old chip drew 26 — SMALLER, and it still reads better,
-// because a stroked ring with a halo carries further than a filled slab. Do not
-// "fix" that by growing it without counting the rows again.
-const STACK_GRID_CHIP = 34;
+// 🪦 `STACK_GRID_CHIP` (34) LIVED HERE — the step-1 STOCK grid's chip size. The grid
+// came out 2026-10-14: the note pool is the wheel (`ui/PoolWheel.jsx`).
 /* 🎸 THE STEP-1 DRAWER'S OWN TWO SIZES — Alex's dial-in, 2026-09-12, off
    `.scratch/stack-commit-drawer.html`; he took the page's defaults.
    ⚠️ NOT `COMMIT_OVERLAY.stackChip` (72) AND NOT `dialSize` (72). Those are the
    BOARD panels' numbers, dialled against a 45%-of-1040px panel. This drawer
    lives in the 238px player pocket, where six 72px seats cannot even sit in one
    row — which is the whole reason it needs sizes of its own rather than
-   borrowing the board's. 📌 The stock grid below keeps `STACK_GRID_CHIP`; it was
-   already 34 and the preview put it within 2px, so it was left alone. */
+   borrowing the board's. (The stock grid's own `STACK_GRID_CHIP` went with the grid,
+   2026-10-14.) */
 // 🪦 `STACK_DRAWER_CHIP` (30) and `STACK_DRAWER_DIAL` (38) LIVED HERE. They sized
 // the committed notes and the gauge the Drive/Sustain rows used to carry; both
 // came out 2026-09-12c when those rows stopped repeating the stacks. See the
@@ -2209,6 +2209,91 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const openingNow = performance.now();
   const fansHeld = openingSched ? new Set(Object.entries(openingSched.seats)
     .filter(([, s]) => s.doneAt != null && openingNow < s.doneAt && !s.keepFans).map(([id]) => id)) : null;
+
+  // ════ 🎤 THE FAN MC — the intermission before each stage effect (Alex, 2026-10-15) ════
+  // *"announce standings/replay … before announcing stage effects … so it just doesn't
+  // 'randomly' come into being"* — and not the Rock God: *"He has a servant do the job"*.
+  // ⭐ THE RULES DO NOT WAIT. The engine drew the effect at the round's open
+  // (`checkStageFxSchedule`) and activated it, exactly as before — replays, peers and
+  // the bench are unchanged. What waits is the PICTURE: the board is held (keys,
+  // clicks, bots, the bot watchdog, the bat clock), the effect's views are VEILED,
+  // and its log lines and banner are said at his call (`fanMcCall`).
+  // ⭐ Read off the state (`stageFx.lastDraw`), so every screen — the acting client, a
+  // remote peer — plays it from the same draw. Same matches as the opening act
+  // (`config.openingAct`, no catch-up): the bench never sees him, and Testing Grounds
+  // only when you SUMMON him (🧪 panel → 🎤 THE FAN MC, `devSummonFanMc` below).
+  // Words, clock and look: `data/fanMc.js`; the arena: `board/fanMcStage.js`; the
+  // overlay: `ui/FanMcOverlay.jsx`; the sounds: `audio/fanMcSfx.js`.
+  const fanMcWanted = !!engineState.config?.openingAct && !gameState.catchUp;
+  const fxDraw = engineState.stageFx?.lastDraw;
+  const fxDrawKey = fxDraw?.round != null && fxDraw?.fxId ? `${fxDraw.round}:${fxDraw.fxId}` : null;
+  // A show already drawn when this screen mounts (a reload, a rejoin) is not replayed.
+  const [fanMcDone, setFanMcDone] = useState(fxDrawKey);
+  const [fanMcShow, setFanMcShow] = useState(null);
+  const [fanMcCalled, setFanMcCalled] = useState(null);   // the draw whose effect he has called
+  // ⚠️ DERIVED IN RENDER, not set by an effect: the very render that shows the draw
+  // already holds the board, so no bot or key can slip in between.
+  // 🧪 A Testing Grounds summon (Alex, 2026-10-16: *"can you make sure he can be summoned
+  // in the testing grounds?"*): `{ key, fxId, replay, best }`. The SAME show, the same
+  // hold, veil and deferral — only the source differs: the effect is fired by the
+  // summon itself (`devSummonFanMc`) instead of the round schedule. `testMode &&` is
+  // load-bearing: it never exists in a room.
+  const [fanMcTest, setFanMcTest] = useState(null);
+  const fanMcTestLive = testMode && !!fanMcTest && fanMcDone !== fanMcTest.key;
+  const fanMcKey = fanMcTestLive ? fanMcTest.key : fxDrawKey;
+  const fanMcLive = fanMcTestLive || (fanMcWanted && !!fxDrawKey && fxDraw.round === engineState.turn?.round && fanMcDone !== fxDrawKey);
+  const fanMcLiveRef = useRef(false); fanMcLiveRef.current = fanMcLive;
+  const fanMcVeil = fanMcLive && fanMcCalled !== fanMcKey;
+  const fanMcTimersRef = useRef([]);
+  const fanMcDeferredRef = useRef([]);   // the effect's own log lines + banner, said at his call
+  function fanMcClear() { for (const id of fanMcTimersRef.current) clearTimeout(id); fanMcTimersRef.current = []; }
+  function fanMcCall(key) {
+    setFanMcCalled(key);
+    const said = fanMcDeferredRef.current; fanMcDeferredRef.current = [];
+    for (const fn of said) { try { fn(); } catch { /* a log line must never stop the show */ } }
+  }
+  function fanMcFinish(key) {
+    fanMcCall(key); fanMcClear(); setFanMcShow(null); setFanMcDone(key);
+    setBotNudge(n => n + 1);   // 🤖 the step machine was holding; let it look again
+  }
+  function fanMcSchedule(show, fromT) {
+    fanMcClear();
+    const now = performance.now(), later = (t, fn) => fanMcTimersRef.current.push(setTimeout(fn, Math.max(0, show.startMs + t * 1000 - now)));
+    for (const snd of fanMcSoundTimes(show.timeline)) if (snd.at >= fromT - .05)
+      later(snd.at, () => { try { playFanMcSound(getAudioCtx(), snd.kind, { dur: snd.dur }); } catch { /* no audio is never a reason to stop the show */ } });
+    later(show.timeline.hit, () => fanMcCall(show.key));
+    later(show.timeline.T + .2, () => fanMcFinish(show.key));
+  }
+  // ⏭ Skip moves the show's clock (to his call by default, so the effect is still named).
+  function skipFanMc() {
+    const show = fanMcShow; if (!show) return;
+    const now = performance.now(), t = (now - show.startMs) / 1000, to = skipTarget(show.timeline, t, FAN_MC);
+    const next = { ...show, startMs: now - to * 1000 };
+    setFanMcShow(next); fanMcSchedule(next, to);
+    if (to >= show.timeline.hit) fanMcCall(show.key);
+  }
+  useEffect(() => {
+    if (!fanMcLive || fanMcShow?.key === fanMcKey) return;
+    const st = engineRef.current, test = fanMcTestLive ? fanMcTest : null;
+    // 🧪 a summon has no draw: this round (≥ 2, so he never says "round 0 is in the books"), no run length
+    const draw = test ? { round: Math.max(2, st.turn?.round ?? 2), fxId: test.fxId, untilRound: null } : st.stageFx?.lastDraw;
+    if (!draw?.fxId) return;
+    const players = st.spirits.map(s => ({ id: s.id, name: s.name, color: s.color ?? playerColor(s.corner),
+      fame: st.noteStates?.[s.id]?.fame ?? 0, fans: crowdSize(st.noteStates?.[s.id] ?? {}) }));
+    const fx = { id: draw.fxId, ...STAGE_FX_META[draw.fxId] };
+    const f = { players, round: draw.round, roundLimit, best: test ? (test.best ?? null) : st.bestRiff ?? null,
+      // 📺 Alex (10-15, widened 10-16): the replay at his LAST show of the match, whatever its length
+      replay: test ? !!test.replay : replayShow(roundLimit, draw.round),
+      fx, show: draw.untilRound != null ? { round: draw.round, untilRound: draw.untilRound } : null, seed: st.spirits.map(s => s.id).join('|') };
+    const timeline = compileIntermission(mcIntermission(f, FAN_MC), FAN_MC);
+    const show = { key: fanMcKey, startMs: performance.now() + 350, timeline, players, fx, round: draw.round, roundLimit,
+      mcColor: fanMcColor(FAN_MC, rankPlayers(players)[0]?.color),
+      spirits: st.spirits.map(s => ({ id: s.id, num: s.num, color: s.color, corner: s.corner, imageSrc: s.imageSrc })) };
+    setFanMcShow(show);
+    fanMcSchedule(show, 0);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [fanMcLive, fanMcKey]);
+  useEffect(() => () => fanMcClear(), []);   // eslint-disable-line react-hooks/exhaustive-deps
   // 🔥 The exorcism's moment on the Scale Wheel: `{ spiritId, key }` for a few
   // seconds after a melody lifts the Iwato curse (the wheel burns clean).
   const [exorciseFx, setExorciseFx] = useState(null);
@@ -2324,14 +2409,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // chains read engineRef.current.stageFx (synchronously fresh — the old
   // stageFxHazardRef mirror is gone). Only the activation marquee stays React.
   const { stageFxBanner, setStageFxBanner } = useStageEffects();
-  const smokeFx = engineState.stageFx.smoke;
-  const pyroFx = engineState.stageFx.pyro;
-  const animatronics = engineState.stageFx.animatronics;
-  const batsFx = engineState.stageFx.bats;
+  // 🎤 VEILED while the fan MC builds up to it (`fanMcVeil`): the effect is live in the
+  // rules, but the picture keeps it back until he calls it. Rules read engineRef.
+  const fxView = fanMcVeil ? {} : engineState.stageFx;
+  const smokeFx = fxView.smoke ?? null;
+  const pyroFx = fxView.pyro ?? null;
+  const animatronics = fanMcVeil ? [] : engineState.stageFx.animatronics;
+  const batsFx = fxView.bats ?? null;
   // `key` re-arms the beam CSS animation per pattern; roundsLeft is unique per
   // pattern within the one laser show a game can have (deck never repeats).
-  const laserFx = engineState.stageFx.laser
-    ? { ...engineState.stageFx.laser, key: engineState.stageFx.laser.roundsLeft } : null;
+  const laserFx = fxView.laser
+    ? { ...fxView.laser, key: fxView.laser.roundsLeft } : null;
 
   /** 🎇 True when at least one Stage Effect is active on the board. */
   function anyStageEffectActive() {
@@ -2537,11 +2625,12 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         { body: 'The DRIVE STACK — the red one — powers your attacks. Better chord, harder hit.', anchor: 'drive-stack', emote: 'drive' },
         { body: 'And the SUSTAIN STACK, the blue one, is your armor. How much can you *SUSTAIN* the hit?', anchor: 'sustain-stack', emote: 'sustain' },
         { body: `Each one holds ${STACK_CAP_MAX} notes total — ${STACK_CAP_BASE} to start, ${STACK_CAP_MAX - STACK_CAP_BASE} to upgrade. The better the chord they spell, the stronger the effect.`, anchor: 'chord-stack', emote: 'flex' },
-        // 🔴🔵 The little ▲s under the note grid are the whole chord-building
-        // system made visible, and nobody had ever pointed at them. A player who
-        // never learns to read them is guessing at every commit for the rest of
-        // the game — so this page exists purely to say "those mean something".
-        { body: ['See the little arrows under the notes? Those are me doing the theory for you.',
+        // 🔴🔵 The little ▲s on the notes are the whole chord-building system made
+        // visible, and nobody had ever pointed at them. A player who never learns to
+        // read them is guessing at every commit for the rest of the game — so this
+        // page exists purely to say "those mean something". 🎡 2026-10-14: the note
+        // pool is the wheel, and the ▲ is each note's own red/blue chevron there.
+        { body: ['See the little arrows on the notes in the wheel? Those are me doing the theory for you.',
                  'A 🔴 RED ▲ means that note makes the chord you\'re building STRONGER for Drive. A 🔵 BLUE ▲ means it feeds Sustain. Two arrows? Greedy. Take it.',
                  'Chase the arrows and you\'ll build better chords without knowing a lick of theory. Learn WHY later — the arrows work now.'], anchor: 'stack-note-grid' },
         // 🩶 SHOW, DON'T LIST — these two pages are why the gray pick exists.
@@ -4157,8 +4246,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // bot seat, and a stray key must never play a bot's hand.
   // The chip a note leaves from — handed to clickNoteStock as the "click" so a
   // typed or wheel-picked note still flies from its seat in the hand.
+  // 🎡 THE NOTE POOL IS THE WHEEL (2026-10-14), so a note leaves from its WHEEL SLOT:
+  // ⚠️ one slot holds every copy of a pitch, so it is looked up by pitch class, not by
+  // hand index. The `data-stock-idx` chip is the fallback (the Spirit sheet's drawer).
   function stockChipEvent(idx) {
-    const el = typeof document !== 'undefined' ? document.querySelector(`[data-stock-idx="${idx}"]`) : null;
+    if (typeof document === 'undefined') return null;
+    const pc = pitchIndex(noteStock[idx]);
+    const el = document.querySelector(`[data-pool-wheel] [data-wheel-pc="${pc}"] .notehex`)
+      ?? document.querySelector(`[data-stock-idx="${idx}"]`);
     return el ? { currentTarget: el } : null;
   }
 
@@ -4191,6 +4286,59 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (slot && POCKET_WHEEL.hoverSound) playNoteSound(slot.name, { holdTime: 0.12, fadeTime: 0.45, volume: 0.08 });
   }
 
+  // ── 🎡 THE NOTE POOL IS THE WHEEL — Alex, 2026-10-14 ────────────────────────
+  // *"I think this can totally replace the current 'note pool' … This totally brings
+  // sense and order to the note pool."* Ruled: everyone, centre of the arena, big, in
+  // Chord and Melody. The honeycomb and the step-1 STOCK grid are gone; a click on a
+  // slot, a typed a–g and the pad's A all land HERE, and here lands in clickNoteStock.
+  // 📌 `poolHidden` is W (and the pad's LB): put the pool away to look at the board.
+  const [poolHiddenKey, setPoolHiddenKey] = useState(null);
+  const poolStepKey = acting ? `${engineState.turn.count}:${acting.id}:${turnStep}` : null;
+  const poolHidden = poolHiddenKey != null && poolHiddenKey === poolStepKey;
+  const poolAvailable = i => !usedHas(usedStockIdx, i) && !staggeredSlots.includes(i);
+  const poolMixerReady = turnStep === 'melody' && !hasConfirmed && melodyLine.length < 8
+    && (actingNoteState?.unlockedSkills ?? []).includes('mixer') && !actingNoteState?.mixerUsedThisTurn;
+  /** Chord Stack: where the next note goes — the picked stack, else the first open one (the keyboard's rule). */
+  function poolChordDest() {
+    const budgetLeft = STACK_COMMIT_BUDGET - (actingNoteState?.stackCommitsThisTurn ?? 0);
+    const open = {
+      driveOpen:   budgetLeft > 0 && (actingNoteState?.driveStack   ?? []).length < actingStackCapDrive,
+      sustainOpen: budgetLeft > 0 && (actingNoteState?.sustainStack ?? []).length < actingStackCapSustain,
+    };
+    return stackCommitDest ?? nextStackDest(null, open) ?? 'drive';
+  }
+  /** A pick on the pool (a click, the pad's A): the first copy of that pitch you still hold. */
+  function poolPick(pc) {
+    if (!acting || !isMyTurn || netSync || isBot(acting) || hasConfirmed) return;
+    let idx = noteStock.findIndex((n, i) => poolAvailable(i) && pitchIndex(n) === pc);
+    if (turnStep === 'chord') {
+      if (idx < 0) return;
+      const dest = poolChordDest();
+      if (!stackCommitDest) setStackCommitDest(dest);
+      clickNoteStock(idx, stockChipEvent(idx), dest);
+      return;
+    }
+    if (turnStep !== 'melody') return;
+    // 🎚️ the Mixer: a note you already played can be layered once more (its ⟳ slot)
+    if (idx < 0 && poolMixerReady) idx = noteStock.findIndex((n, i) => usedHas(usedStockIdx, i) && !staggeredSlots.includes(i) && pitchIndex(n) === pc);
+    if (idx >= 0) clickNoteStock(idx, stockChipEvent(idx));
+  }
+  /** The hub (Chord Stack): Drive ⇄ Sustain — the Tab key's rule (`nextStackDest`). */
+  function poolSwitchDest() {
+    if (turnStep !== 'chord' || hasConfirmed) return;
+    const budgetLeft = STACK_COMMIT_BUDGET - (actingNoteState?.stackCommitsThisTurn ?? 0);
+    const next = nextStackDest(poolChordDest(), {
+      driveOpen:   budgetLeft > 0 && (actingNoteState?.driveStack   ?? []).length < actingStackCapDrive,
+      sustainOpen: budgetLeft > 0 && (actingNoteState?.sustainStack ?? []).length < actingStackCapSustain,
+    });
+    if (next) setStackCommitDest(next);
+  }
+  function poolHover(slot) {
+    wheelHoverNote(slot);
+    // the board's stack panel ghosts the hovered note into the destination (Chord Stack)
+    if (turnStep === 'chord') setHoverScale(slot ? { note: slot.name, x: 0, y: 0, pool: true } : null);
+  }
+
   const noteKeyHandlerRef = useRef(() => false);
   // ⏎ Chord Stack → Melody. One function for the button AND the Enter key
   // (2026-09-28), so the two can never gate differently.
@@ -4212,10 +4360,17 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (battleState || activeEvent) return false;
     // 🔓 The seat-unlock cinematic holds the board — keys are swallowed, not typed.
     if (seatUnlockFx && !seatUnlockFx.short) return true;
-    if (openingLive) return true;   // 🎸 the opening act holds the board too
+    if (openingLive || fanMcLive) return true;   // 🎸 the opening act (and 🎤 the fan MC) hold the board too
     // 🎡 W is not a note letter, so it is free to open / close the scale wheel —
     // in every step, since the wheel lives in the pocket now.
-    if (WHEEL_DEFAULTS.wKey && (e.key === 'w' || e.key === 'W')) { toggleWheel(); return true; }
+    if (WHEEL_DEFAULTS.wKey && (e.key === 'w' || e.key === 'W')) {
+      // 🎡 while the pool is the hand (Chord / Melody), W puts IT away to show the board
+      if (!hasConfirmed && (turnStep === 'chord' || turnStep === 'melody')) setPoolHiddenKey(k => k === poolStepKey ? null : poolStepKey);   // = togglePool
+      else toggleWheel();
+      return true;
+    }
+    // ⎋ Escape backs out of an aimed ability (the pad's B sends it) — CLAUDE.md's pad rule
+    if (e.key === 'Escape' && turnStep === 'move_act' && action && action !== 'move') { setAction(null); return true; }
     if (hasConfirmed) return false;
     if (turnStep !== 'chord' && turnStep !== 'melody') return false;
     const chipFor = stockChipEvent;
@@ -4293,7 +4448,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (battleState || activeEvent) return false;
     // 🔓 The seat-unlock cinematic holds the board — keys are swallowed.
     if (seatUnlockFx && !seatUnlockFx.short) return true;
-    if (openingLive) return true;   // 🎸 the opening act holds the board too
+    if (openingLive || fanMcLive) return true;   // 🎸 the opening act (and 🎤 the fan MC) hold the board too
     if (turnStep !== 'move_act') return false;
     if (action === 'move_shadow') {
       const to = numpadTarget(e.code, HEX_BY_NUM[shadowHex]);
@@ -4367,7 +4522,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     if (battleState || activeEvent) return false;
     // 🔓 The seat-unlock cinematic holds the board — keys are swallowed.
     if (seatUnlockFx && !seatUnlockFx.short) return true;
-    if (openingLive) return true;   // 🎸 the opening act holds the board too
+    if (openingLive || fanMcLive) return true;   // 🎸 the opening act (and 🎤 the fan MC) hold the board too
     if (turnStep !== 'move_act') return false;
     endTurn();
     return true;
@@ -5910,6 +6065,28 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     addLog(`🧪 TEST → ${meta.icon} ${meta.name.toUpperCase()}`);
     activateStageFx(fxId, { round: engineRef.current.turn?.round });
   }
+  // 🎤 Summon the fan MC from Testing Grounds (Alex, 2026-10-16). Exactly the real flow:
+  // the effect ACTIVATES in the rules now (its log lines and banner deferred to his call,
+  // its board views veiled by `fanMcVeil`), and he builds up to it and calls it.
+  // `replay`: his last-show version with the TV — the match's remembered duel, or, when
+  // the sandbox has none, a demo duel between the first two Spirits (`demoRiff`) so the
+  // TV can always be seen. 'none' plays the no-duel line instead. Client-only: the demo
+  // duel is a picture, never written into the engine's `bestRiff`.
+  const devMcFxRef = useRef(0);
+  function devSummonFanMc({ fxId = null, replay = false } = {}) {
+    if (fanMcLiveRef.current) { addLog('🧪 The MC is already on stage.'); return; }
+    if (battleState || activeEvent) { addLog('🧪 Finish the current battle / event before summoning the MC.'); return; }
+    // No effect picked → the next one in turn, so a tester meets them all (and no Math.random:
+    // test:determinism counts every call site, and this pick is not worth one).
+    const ids = Object.keys(STAGE_FX_META), st = engineRef.current;
+    const id = fxId && STAGE_FX_META[fxId] ? fxId : ids[devMcFxRef.current++ % ids.length];
+    const best = replay === 'none' ? null : st.bestRiff ?? demoRiff(st.spirits.filter(s => !s.knockedOut).map(s => s.id), st.turn?.round ?? 1);
+    const key = `test:${Date.now()}`;
+    addLog(`🧪 TEST → 🎤 the fan MC${replay ? ' + 📺 replay' : ''}, calling ${STAGE_FX_META[id].icon} ${STAGE_FX_META[id].name.toUpperCase()}`);
+    activateStageFx(id, { round: st.turn?.round }, fanMcDeferredRef.current);
+    setFanMcTest({ key, fxId: id, replay: !!replay, best });
+    setDevOpen(false);
+  }
   // Quick resource grants to the acting spirit. Add a case here + a button below
   // to expose a new lever for testing.
   function devGrant(kind) {
@@ -6076,7 +6253,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   // here is the drift §B1 is about.
   function checkStageFxSchedule(round) {
     const draw = dispatch(stageFxScheduled(round)).stageFx.lastDraw;
-    if (draw?.round === round) activateStageFx(draw.fxId, { round, rounds: draw.rounds, untilRound: draw.untilRound });
+    // 🎤 With the fan MC on, the effect's log lines and banner are said at HIS call.
+    if (draw?.round === round) activateStageFx(draw.fxId, { round, rounds: draw.rounds, untilRound: draw.untilRound },
+      fanMcWanted ? fanMcDeferredRef.current : null);
   }
 
   // Only the acting client advances this clock. Its elapsed time is an action
@@ -6088,6 +6267,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     const turnKey = `${st.acting}:${st.turn.count}`;
     if (clock.turnKey !== turnKey) Object.assign(clock, { turnKey, ms: 0, pendingMs: 0 });
     if (!canAct || st.winner || winnerRef.current || battleStateRef.current || activeEventRef.current || document.hidden) return;
+    if (fanMcLiveRef.current) return;   // 🎤 the bats wait for the fan MC to call them
     clock.ms += delta;
     if (!st.stageFx.bats) { clock.pendingMs = 0; return; }
     clock.pendingMs += delta;
@@ -6134,16 +6314,23 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
 
   // `show` = { round, rounds, untilRound } from a scheduled draw. The Testing
   // Grounds button passes no `rounds`, which gives each effect its old length.
-  function activateStageFx(fxId, show = {}) {
+  // `defer` (an array): the fan MC is building up to this — push the words and the
+  // banner onto it, to be said at his call (`fanMcCall`). The RULES still run now.
+  function activateStageFx(fxId, show = {}, defer = null) {
     const meta = STAGE_FX_META[fxId];
     if (!meta) return;
     const { round, rounds, untilRound } = show;
     const toBuzzer = rounds != null && roundLimit != null && untilRound === roundLimit;
     const howLong = (legacyRounds) => toBuzzer ? 'until the final buzzer'
       : `${rounds ?? legacyRounds} round${(rounds ?? legacyRounds) !== 1 ? 's' : ''}`;
-    addLog(`🎇 STAGE EFFECT${round != null ? ` — round ${round}` : ''}: ${meta.icon} ${meta.name.toUpperCase()}!`);
-    setStageFxBanner({ id: fxId, round, key: Date.now() });
-    setTimeout(() => setStageFxBanner(prev => (prev?.id === fxId ? null : prev)), 5300);
+    const say = defer ? fn => defer.push(fn) : fn => fn();
+    const log = line => say(() => addLog(line));
+    log(`🎇 STAGE EFFECT${round != null ? ` — round ${round}` : ''}: ${meta.icon} ${meta.name.toUpperCase()}!`);
+    // 🎤 When he NAMES it, his own banner is the announcement; the old pop only plays without him (or for a mystery).
+    if (!defer || FAN_MC.nameIt !== 'name') say(() => {
+      setStageFxBanner({ id: fxId, round, key: Date.now() });
+      setTimeout(() => setStageFxBanner(prev => (prev?.id === fxId ? null : prev)), 5300);
+    });
 
     // Phase 6b — the ENGINE creates the active effect (beam patterns / pyro
     // hexes / animatronic spawns roll on its seeded rng); the client plays the
@@ -6157,22 +6344,22 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // a replay recorded before them keeps the old round-clock cadence.
     const st = dispatch(stageFxActivated(fxId, occupied, rounds, { pyroVersion: PYRO_VERSION })).stageFx;
     if (fxId === 'smoke_machine') {
-      addLog(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${howLong(SMOKE_ROUNDS)}).`);
+      log(`💨 Smoke floods the centre stage — Spirits in the cloud vanish from view! It spreads each round (${howLong(SMOKE_ROUNDS)}).`);
     }
     if (fxId === 'laser_show') {
-      addLog(`🔺 Lasers rake the stage — they thread AROUND the Spirits, but crossing a beam costs ${LASER_DAMAGE} Vibe. New pattern every round (${howLong(LASER_ROUNDS)}).`);
+      log(`🔺 Lasers rake the stage — they thread AROUND the Spirits, but crossing a beam costs ${LASER_DAMAGE} Vibe. New pattern every round (${howLong(LASER_ROUNDS)}).`);
     }
     if (fxId === 'pyrotechnics') {
-      addLog(st.pyro?.v === PYRO_VERSION
+      log(st.pyro?.v === PYRO_VERSION
         ? `🎆 ${st.pyro.hexes.length} mortars rise from the stage — they FIRE at the end of every turn, and anyone shoved onto one stops there and takes ${PYRO_DAMAGE} Vibe + BURN! (${howLong(3)})`
         : `🎆 Pyro charges prime under ${st.pyro?.hexes.length ?? 0} empty hexes — they glow red and BLOW next round! (${rounds != null ? howLong() : `${PYRO_WAVES} waves`})`);
     }
     if (fxId === 'animatronics') {
-      addLog(`🤖 ${st.animatronics.length} animatronics wake on the stage edge — they stalk the nearest Spirit once a round (${howLong(ANIMATRONIC_ROUNDS)})!`);
+      log(`🤖 ${st.animatronics.length} animatronics wake on the stage edge — they stalk the nearest Spirit once a round (${howLong(ANIMATRONIC_ROUNDS)})!`);
     }
     if (fxId === 'bats') {
       batClockRef.current.pendingMs = 0;
-      addLog(`🦇 Four bats take flight — one hex every ${BAT_STEP_MS / 1000}s. FP first, slow turns next, distance last. Eat one for +${BAT_FAN_GAIN} fans; get caught for −${BAT_DAMAGE} Vibe. Four stay flying (${howLong(BAT_ROUNDS)}).`);
+      log(`🦇 Four bats take flight — one hex every ${BAT_STEP_MS / 1000}s. FP first, slow turns next, distance last. Eat one for +${BAT_FAN_GAIN} fans; get caught for −${BAT_DAMAGE} Vibe. Four stay flying (${howLong(BAT_ROUNDS)}).`);
     }
   }
 
@@ -10604,8 +10791,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // Never act in the middle of a battle/riff-off cinematic — those resolve via
     // their own bot hooks (auto-die-click / synthetic riff-off) below.
     if (battleState) return;
-    // 🎸 …nor while the Bardbarian has the board (the opening act's intro).
-    if (openingLive) return;
+    // 🎸 …nor while the Bardbarian has the board (the opening act's intro), or 🎤 the fan MC does.
+    if (openingLive || fanMcLive) return;
     {
       const hold = entranceHoldRef.current, wait = hold?.id === self.id ? hold.until - performance.now() : 0;
       if (wait > 0) { const t = setTimeout(() => setBotNudge(n => n + 1), wait + 30); return () => clearTimeout(t); }
@@ -10878,6 +11065,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   useEffect(() => {
     if (!isBot(acting) || winner) return;
     if (battleState) return; // a battle is animating — don't trip mid-cinematic
+    // 🎤 nor while the fan MC holds the board: his show (~25 s) would trip the 15 s net
+    // mid-sentence. Re-armed when he is done (`fanMcLive` is in the deps).
+    if (openingLive || fanMcLive) return;
     const myId = acting.id;
     const t = setTimeout(() => {
       // Still the same bot's turn, still no battle, still not resolved → bail it out.
@@ -10893,7 +11083,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
     // searcher turn is a melody line plus movement plus a shot, which at
     // BOT_TICK pacing is comfortably past 15s of wall clock and was tripping the
     // net rather than the stall it was written for.
-  }, [acting?.id, battleState?.phase, winner, botNudge, openingLive]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [acting?.id, battleState?.phase, winner, botNudge, openingLive, fanMcLive]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     const bs = battleState;
     if (!bs || bs.riffOff) return;
@@ -11873,13 +12063,193 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const [hammerHover, setHammerHover] = useState(false);
   const [hammerArrive, setHammerArrive] = useState(null);   // { seat, note } — the strike-in plays once
   const hammerHuman   = !!acting && hasHammerOn(acting.id) && !isBot(acting);
+  // 🎮 WHERE THE PAD'S RING STARTS, step by step (Alex, 2026-10-14: *"The start of
+  // any turn is the chord selection so those boxes should immediately light up"*).
+  // Each step marks one element `data-pad-default={key}` and `input/padFocus.js`
+  // jumps the ring there whenever the KEY changes. ⚠️ The key carries the turn
+  // count and seat, so the next human turn's chord step is a NEW key even though
+  // it reads the same — and it never changes between two notes of one step, so a
+  // player who walked the ring somewhere is not yanked back after each commit.
+  // 📌 Human turns only: a bot's or a rival's turn names no default.
+  const padTurnKey    = canAct && acting && !isBot(acting) ? `${engineState.turn.count}:${acting.id}` : null;
   const hammerCharges = actingNoteState?.hammerCharges ?? 0;
   const hammerCand    = hammerHuman && canAct && turnStep === 'melody' && !hasConfirmed
     ? hammerCandidate(acting.id, melodyLine, currentScale, { charges: hammerCharges })
     : NO_HAMMER;
   const hammerColor   = hammerHue(HAMMER_LOOK, acting?.color);
 
-  const stockGrid = (acting && (turnStep === 'melody' || turnStep === 'move_act'))
+  // ── 🎮🎡 THE POOL ON THE ARENA, AND THE PAD'S TURN (the pad-turn port, 2026-10-14) ──
+  // ⚠️ Unconditional hooks, like the two above: the step gates the ANSWER, never the hook.
+  const padMode = usePadMode();
+  const [padPick, setPadPick] = useState(null);          // the pad's lit wheel slot (a pitch class)
+  const [padHudKey, setPadHudKey] = useState(null);      // View: the D-pad walks the HUD instead
+  const padStepKey = padTurnKey ? `${padTurnKey}:${turnStep}:${hasConfirmed ? 1 : 0}` : null;
+  const padHud = padHudKey != null && padHudKey === padStepKey;
+  const padToggleHud = () => setPadHudKey(k => k === padStepKey ? null : padStepKey);
+  // 🎡 Up for the acting HUMAN while they compose — a rival's or a bot's hand is theirs.
+  const poolComposing = !!padTurnKey && isMyTurn && !netSync && !hasConfirmed
+    && (turnStep === 'chord' || turnStep === 'melody') && !engineState.battle?.arenaVersion;
+  const poolUp = poolComposing && !poolHidden;
+  const togglePool = () => setPoolHiddenKey(k => k === poolStepKey ? null : poolStepKey);
+  const poolSlots = poolUp ? wheelModel({ spiritId: acting.id, root: rootNote, hand: noteStock, available: poolAvailable,
+    line: melodyLine, opts: WHEEL_DEFAULTS }).slots : [];
+  // 🎡 WHAT THE CHIPS USED TO SAY, ON THE WHEEL — every mark from the game's own readers.
+  const poolMarks = (() => {
+    if (!poolUp) return null;
+    const marks = {};
+    const mark = (pc, k, v) => { (marks[pc] ??= {})[k] = v; };
+    // Chord Stack: the old grid's ▲ "this note makes the stack you are building
+    // stronger" (Drive red / Sustain blue / both), now the note's own chevron.
+    const dest = turnStep === 'chord' ? poolChordDest() : null;
+    const tStack = dest === 'sustain' ? actingSustainStack : actingDriveStack;
+    const tCh = dest ? spiritChord(acting.id, tStack) : null;
+    const tFull = !dest || tStack.length >= (dest === 'sustain' ? actingStackCapSustain : actingStackCapDrive);
+    const seen = new Set();
+    noteStock.forEach((note, i) => {
+      const pc = pitchIndex(note), used = usedHas(usedStockIdx, i), stag = staggeredSlots.includes(i);
+      if (used) return;
+      if (stag) { mark(pc, 'staggered', (marks[pc]?.staggered ?? 0) + 1); return; }   // ⚡ those copies cannot be played
+      const coach = crowdMarks.get(i);                     // 🎤 the crowd's ask (Melody) / chord glow (Chord)
+      if (coach) mark(pc, 'coach', coach);
+      if (freshNoteIdx?.spiritId === acting.id && freshNoteIdx.indices.has(i)) mark(pc, 'fresh', true);
+      if (seen.has(pc)) return;
+      seen.add(pc);
+      if (turnStep === 'melody') {                         // ⌃ a clean stack-root ending (the honeycomb's caret)
+        const sup = endingStackSupport(note);
+        if (sup) mark(pc, 'support', sup);
+      } else if (!tFull) {
+        const next = spiritChord(acting.id, [...tStack, note]);
+        const up = next.drive > tCh.drive, us = next.sustain > tCh.sustain;
+        if (up || us) mark(pc, 'support', up && us ? 'both' : up ? 'drive' : 'sustain');
+      }
+    });
+    // 🎚️ the Mixer: a note you have already played stays pickable with its ⟳
+    if (poolMixerReady) noteStock.forEach((note, i) => {
+      const pc = pitchIndex(note);
+      if (usedHas(usedStockIdx, i) && !staggeredSlots.includes(i) && !noteStock.some((n, j) => poolAvailable(j) && pitchIndex(n) === pc)) mark(pc, 'mixer', true);
+    });
+    return marks;
+  })();
+  const poolCurse = (() => {
+    if (!poolUp) return null;
+    const curse = actingNoteState?.iwatoCurse;
+    const exorcising = exorciseFx?.spiritId === acting.id;
+    if (!isCursed(actingNoteState) && !exorcising) return null;
+    return { roninRoot: curse ? curseRoot(curse) : (exorciseFx?.roninRoot ?? 'C'),
+      haunted: exorcising ? (exorciseFx.haunted ?? []) : hauntedNotes(acting.id, actingNoteState),
+      phase: exorcising ? 'exorcised' : 'cursed', turnsLeft: curse?.turnsLeft ?? 0,
+      since: exorcising ? exorciseFx.key : (curse?.key ?? 0), roninColor: seatColor(curse?.by ?? exorciseFx?.by) };
+  })();
+  const poolBudgetLeft = STACK_COMMIT_BUDGET - (actingNoteState?.stackCommitsThisTurn ?? 0);
+  const poolDest = turnStep === 'chord' ? poolChordDest() : null;
+
+  /** The pad's A: play the lit note (the same `poolPick` a click makes). */
+  function padCommit() {
+    if (padPick == null) return;
+    const slot = poolSlots.find(x => x.pc === padPick);
+    if (!slot?.held.length && !poolMarks?.[padPick]?.mixer) { addLog('🎮 Point the stick at a note you hold.'); return; }
+    poolPick(padPick);
+  }
+  /** 🎸 The right-stick flick: ↑ hammer-on, ↓ pull-off — the wrong way says which it is. */
+  function padHammer(dir) {
+    if (!hammerCand.ok) { addLog(`🔨 Hammer-on — ${HAMMER_DARK_WHY[hammerCand.reason] ?? 'not now'}.`); return; }
+    if (dir && dir !== hammerCand.dir) {
+      addLog(hammerCand.dir === 'up' ? '🔨 That one is a HAMMER-ON — flick the right stick ↑' : '🔨 That one is a PULL-OFF — flick the right stick ↓');
+      return;
+    }
+    hammerOn();
+  }
+  /** ✚ The cross: CLICK the rail button that direction stands for — every gate the mouse meets. */
+  function padCrossPress(dir) {
+    if (typeof document === 'undefined') return;
+    const el = crossButton(document, dir);
+    if (!el) { addLog(`✚ ${dir} — no ability there this turn.`); return; }
+    if (el.disabled) { addLog(`✚ ${el.textContent.replace(/\s+/g, ' ').trim()} — ${el.title || 'not available right now'}`); return; }
+    el.click();
+  }
+  // 🎯 LEGAL-ONLY AIMING: the hexes an armed action's click would ACCEPT — each set is
+  // the one `onHexClick` checks (or `attackReachFor`'s targets, built from the same
+  // cones and beams), so the ring can never land where the click would refuse.
+  const padAim = (() => {
+    if (!acting || turnStep !== 'move_act' || !action) return null;
+    switch (action) {
+      case 'move': { const s = new Set(reachable); if (slideHex != null) s.add(slideHex); return s; }
+      case 'move_shadow': return shadowReachable;
+      case 'displace': return displaceTargets;
+      case 'gravity_control': return gravityTargets;
+      case 'shukuchi': return shukuchiTargets;
+      case 'psycho_bushido': return getPsychoBushidoTargets();
+      case 'tentacle': return new Set([...tentacleAim.keys()].filter(n => spirits.some(sp => sp.num === n && sp.id !== acting.id && !sp.knockedOut)));
+      case 'cursed_shamisen': return new Set(boardTokens.map(t => t.num));
+      case 'face': { const h = HEX_BY_NUM[acting.num]; return new Set(h ? getFlatTopNeighborSlots(h).map(n => n.num) : []); }
+      case 'swing': case 'sonic': case 'blaster': return new Set(attackReachFor(action)?.targets ?? []);
+      default: return null;
+    }
+  })();
+  // 💡 where the ring lands when an ability is armed: a Rival first, else the nearest legal hex
+  const padAimDefault = (() => {
+    if (!padAim?.size || action === 'move') return null;
+    const me = HEX_BY_NUM[acting.num];
+    const rival = n => spirits.some(sp => sp.num === n && sp.id !== acting.id && !sp.knockedOut) ? 1 : 0;
+    const d = n => { const h = HEX_BY_NUM[n]; return h && me ? axialDist(h.q, h.r, me.q, me.r) : 99; };
+    return [...padAim].sort((a, b) => rival(b) - rival(a) || d(a) - d(b) || a - b)[0];
+  })();
+  const hexCentre = n => {
+    const el = typeof document !== 'undefined' ? document.querySelector(`[data-hex-num="${n}"]`) : null;
+    const r = el?.getBoundingClientRect?.();
+    return r && r.width ? { id: n, x: r.left + r.width / 2, y: r.top + r.height / 2, el } : null;
+  };
+  // 🎮 WHAT THE PAD IS DOING NOW (`input/gamepad.js` `providePadTurn`), read every poll.
+  const padCtxRef = useRef(null);
+  padCtxRef.current = () => {
+    if (!padTurnKey || battleState || activeEvent || activeTip || openingLive || fanMcLive || (seatUnlockFx && !seatUnlockFx.short)) return null;
+    if (padHud) return { mode: null, hud: padToggleHud };
+    if (poolUp) return { mode: 'wheel', slots: () => poolSlots, pick: padPick, setPick: setPadPick, commit: padCommit,
+      canHammer: hammerHuman && turnStep === 'melody', hammer: padHammer, hud: padToggleHud };
+    if (turnStep === 'move_act' && hasConfirmed) {
+      if (!action || action === 'move') return { mode: 'cross', cross: padCrossPress, hud: padToggleHud };
+      if (padAim?.size) return { mode: 'aim', hud: padToggleHud,
+        targets: () => [...padAim].map(hexCentre).filter(Boolean), centre: () => hexCentre(acting.num),
+        first: () => (padAimDefault != null ? hexCentre(padAimDefault) : null) };
+    }
+    return null;
+  };
+  useEffect(() => providePadTurn(() => padCtxRef.current?.() ?? null), []);
+  const readPadStick = useCallback(() => padSticks().ls, []);
+  // 🧭 THE BAR: what each button does now (`ui/PadButtonBar.jsx`; keys in mouse mode)
+  const padVerbs = (() => {
+    if (!padTurnKey || battleState || activeEvent || openingLive || fanMcLive) return [];
+    if (padHud) return [['Dpad', 'Walk the HUD', 'Dpad', false], ['A', 'Press'], ['View', 'Back to the board', null, false]];
+    const picked = poolSlots.find(x => x.pc === padPick);
+    const pickName = picked?.held.length ? ` ${prettyNote(picked.name)}` : '';
+    if (turnStep === 'chord' && !hasConfirmed) {
+      if (poolHidden) return [['LB', 'Show the wheel', 'LB'], ['Y', 'Continue to Melody']];
+      if (poolBudgetLeft <= 0) return [['Y', 'Continue to Melody'], ['LB', 'Hide the wheel', 'LB']];
+      const dn = poolDest === 'sustain' ? 'Sustain' : 'Drive';
+      return [['LS', 'Pick a note', 'LS'], ['A', `Add${pickName} to ${dn}`], ['RB', `Switch to ${dn === 'Drive' ? 'Sustain' : 'Drive'}`],
+        ['Y', 'Continue'], ['LB', 'Hide the wheel', 'LB']];
+    }
+    if (turnStep === 'melody' && !hasConfirmed) {
+      const n = melodyLine.length;
+      const commit = ['Y', n ? `Commit (${n} → ${Math.min(n, actingSpeed)} hex)` : 'Commit'];
+      if (poolHidden) return [['LB', 'Show the wheel', 'LB'], ...(n ? [['X', 'Take back']] : []), commit];
+      return [['LS', 'Pick a note', 'LS'], ['A', `Play${pickName}`], ...(n ? [['X', 'Take back']] : []),
+        ...(hammerCand.ok ? [[PAD_TURN.hammerInput === 'rt' ? 'RT' : 'RS',
+          `${hammerCand.label === 'hammer' ? 'Hammer-on ↑' : 'Pull-off ↓'} ${prettyNote(hammerCand.note)}${hammerCand.pays > 0 ? ` · +${hammerCand.pays} fan` : ''}`, 'RS']] : []),
+        commit];
+    }
+    if (turnStep === 'move_act' && hasConfirmed) {
+      if (action && action !== 'move' && padAim) {
+        const words = { swing: 'Thrash', sonic: 'Sonic', blaster: 'Blaster of Ra', tentacle: 'Tentacle', psycho_bushido: 'Psycho Bushido',
+          shukuchi: 'Leap', displace: 'Warp', gravity_control: 'Open the vortex', cursed_shamisen: 'Curse it', move_shadow: 'Move the Shadow', face: 'Face' }[action] ?? 'Go';
+        return [['LS', 'Aim', 'LSaim', false], ...(PAD_TURN.targetCycle ? [['RB', 'Next target', null, false]] : []),
+          ['A', `${words}!`], ['B', 'Cancel']];
+      }
+      return [['LS', `Walk (${moveStepsLeft} AP)`, 'LSwalk'], ['Dpad', 'Abilities', 'Dpad'], ['View', 'HUD', null, false], ['Y', 'End turn']];
+    }
+    return [];
+  })();
+  const stockGrid = (acting && turnStep === 'move_act')
     ? (() => {
                       return (
                     /* 🍯 THE POOL IS A HONEYCOMB, 2026-09-12 — absolutely
@@ -12397,8 +12767,29 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           driveRef: immersiveDriveRef,
           sustainRef: immersiveSustainRef,
         } : null}
-        scaleOpen={wheelOpen} onScaleToggle={toggleWheel}
-        scale={acting ? (() => {
+        // 🎡 While you compose, the big pool IS your scale wheel: the Scale chip (and W)
+        // shows / hides THAT, and the small card under the chips stands down — two copies
+        // of one wheel on one screen would be the duplicate this HUD keeps retiring.
+        scaleOpen={poolComposing ? !poolHidden : wheelOpen} onScaleToggle={poolComposing ? togglePool : toggleWheel}
+        // 🎡 THE NOTE POOL, CENTRE OF THE ARENA (Alex, 2026-10-14): the wheel IS the hand in
+        // Chord and Melody, for everyone. A click, a typed a–g and the pad's A all reach
+        // `poolPick` → clickNoteStock. ⚠️ The nav wheel above stays the reference card.
+        pool={poolUp ? <PoolWheel spiritId={acting.id} root={rootNote} hand={noteStock} available={poolAvailable}
+          line={melodyLine} marks={poolMarks} curse={poolCurse}
+          hub={!poolCurse && turnStep === 'chord' && PAD_TURN.poolHub ? { dest: poolDest, left: Math.max(0, poolBudgetLeft), total: STACK_COMMIT_BUDGET } : null}
+          onHub={turnStep === 'chord' ? poolSwitchDest : null}
+          onPick={poolPick} onHoverNote={poolHover}
+          anchor={turnStep === 'chord' ? 'stack-note-grid' : 'note-stock'}
+          padOn={padMode === 'pad'} pick={padPick} readStick={readPadStick}
+          hammer={turnStep === 'melody' ? hammerCand : null} /> : null}
+        poolDim={PAD_TURN.poolDim} poolDimHole={PAD_TURN.poolDimHole} poolDimReach={PAD_TURN.poolDimReach}
+        // 🧭 the button bar + ✚ the cross round your Spirit (pad mode)
+        overlay={<>
+          <PadButtonBar verbs={padVerbs} mode={padMode} />
+          {padMode === 'pad' && PAD_TURN.crossPlace === 'standee' && padTurnKey && turnStep === 'move_act' && hasConfirmed
+            && !padHud && (!action || action === 'move') && acting && <PadCross hexNum={acting.num} accent={seatColor(acting.id)} />}
+        </>}
+        scale={acting && !poolComposing ? (() => {
           // 🎡 THE SCALE WHEEL — dropped under Turn · Scale · Rivals by the middle
           // chip (Alex, 2026-09-25). ⚠️ Your hand only on YOUR turn: a rival's (or
           // a bot's) hand is theirs. Picks only while composing — in step 1 a bare
@@ -12625,6 +13016,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
         STAGE_FX_META={STAGE_FX_META}
         devCurrentSpiritId={devCurrentSpiritId}
         devFireStageFx={devFireStageFx}
+        devSummonFanMc={devSummonFanMc}
+        fanMcLive={fanMcLive}
         devFireSignature={devFireSignature}
         devGrant={devGrant}
         devExportLog={devExportLog}
@@ -12781,6 +13174,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
           <ActionRail immersive={board3D} stack={board3D}
             universal={<>
             <RailBtn className={`btn${action==="move"?" on":""}`}
+              data-pad-default={padTurnKey && hasConfirmed ? `move:${padTurnKey}` : undefined}
               onClick={() => {
                 if (action === "move") { setAction(null); }
                 else if (moveStepsLeft > 0) { setAction("move"); addLog(`🚶 ${acting?.name} enters move mode — ${moveStepsLeft} hex${moveStepsLeft!==1?"es":""} available`); }
@@ -12882,7 +13276,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview('swing')}
                   onMouseLeave={() => setHoverPreview(p => p === 'swing' ? null : p)}>
-                  <RailBtn className={canSwing ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="swing" className={canSwing ? 'btn active' : 'btn'}
                     style={grayed
                       ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6, position:'relative'}
                       : {borderColor:'#ff4444', color:'#ff6666',
@@ -12936,7 +13330,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview(mode)}
                   onMouseLeave={() => setHoverPreview(p => p === mode ? null : p)}>
-                  <RailBtn className={canFire ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="sig:blaster" className={canFire ? 'btn active' : 'btn'}
                     style={grayed
                       ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
                       : {borderColor:'#ff33aa', color:'#ff66cc', opacity: canFire ? 1 : 0.4}}
@@ -12990,7 +13384,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 <div style={{position:'relative',display:'inline-block'}}
                   onMouseEnter={() => setHoverPreview('sonic')}
                   onMouseLeave={() => setHoverPreview(p => p === 'sonic' ? null : p)}>
-                  <RailBtn className={canSonic ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="sonic" className={canSonic ? 'btn active' : 'btn'}
                     style={grayed
                       ? {borderColor:'#555560', color:'#8a8a95', opacity:0.6}
                       : {borderColor:'#44aaff', color:'#66ccff',
@@ -13066,7 +13460,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const already = !!engineState.turn?.slimingId;
               const canCall = hasConfirmed && !already && moveStepsLeft >= SLIME_AP_COST;
               return (
-                <RailBtn className={canCall ? 'btn active' : 'btn'}
+                <RailBtn data-pad-ability="sig:slime" className={canCall ? 'btn active' : 'btn'}
                   style={{borderColor:'#44ff44', color:'#8dffa0', opacity: canCall ? 1 : 0.45}}
                   disabled={!canCall}
                   title={already
@@ -13093,7 +13487,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const canFire = !grayed && inReach.length > 0;
               return (
                 <div style={{position:'relative',display:'inline-block'}} {...reachHover('tentacle')}>
-                <RailBtn className={canFire ? 'btn active' : 'btn'}
+                <RailBtn data-pad-ability="sig:tentacle" className={canFire ? 'btn active' : 'btn'}
                   style={{borderColor:'#5cff6a', color:'#8dffa0', opacity: canFire ? 1 : 0.45}}
                   disabled={!canFire}
                   title={grayed
@@ -13130,7 +13524,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const canMosh = !used && !running && pool.total >= MOSH_FAN_COST && canFire(actingNoteState, 'master_moshpits');
               const standing = actingNoteState?.moshDrive ?? 0;
               return (
-                <RailBtn className={canMosh ? 'btn active' : 'btn'}
+                <RailBtn data-pad-ability="sig:master_moshpits" className={canMosh ? 'btn active' : 'btn'}
                   style={{borderColor: canMosh ? actingHue : actingHueDim, color: canMosh ? actingHue : actingHueDim}}
                   disabled={!canMosh}
                   title={used
@@ -13165,7 +13559,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const quieter = asIs > ELEVEN_DRIVE;
 
               return (
-                <RailBtn className={canCall || cranked ? 'btn active' : 'btn'}
+                <RailBtn data-pad-ability="sig:goes_to_11" className={canCall || cranked ? 'btn active' : 'btn'}
                   style={cranked
                     ? {borderColor:'#ff2200', color:'#ff6644',
                        animation:'moshpit-shudder 0.3s steps(2) infinite',
@@ -13202,7 +13596,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...reachHover('displace')}>
-                  <RailBtn className={canWarp ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="sig:displace" className={canWarp ? 'btn active' : 'btn'}
                     cooldown={{left:warpCd, max:ABILITY_CD.displace, color:actingHue}}
                     style={{borderColor: canWarp ? actingHue : actingHueDim, color: canWarp ? actingHueLight : actingHueDim}}
                     disabled={!canWarp}
@@ -13233,7 +13627,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...reachHover('gravity_control')}>
-                  <RailBtn className={canOpen ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="sig:gravity_control" className={canOpen ? 'btn active' : 'btn'}
                     cooldown={{left:gravCd, max:ABILITY_CD.gravity_control, color:actingHue}}
                     style={{borderColor: canOpen ? actingHue : actingHueDim, color: canOpen ? actingHueLight : actingHueDim}}
                     disabled={!canOpen}
@@ -13271,7 +13665,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               const hackCd  = cooldownLeft(actingNoteState, 'code_injection');
               const canHack = canFire(actingNoteState, 'code_injection') && !armed;
               return (
-                <RailBtn className={canHack ? 'btn active' : 'btn'}
+                <RailBtn data-pad-ability="sig:code_injection" className={canHack ? 'btn active' : 'btn'}
                   cooldown={{left:hackCd, max:ABILITY_CD.code_injection, color:'#44ffaa'}}
                   style={{borderColor: canHack ? '#44ffaa' : armed ? '#1d5c44' : '#12301f',
                           color: canHack ? '#88ffcc' : armed ? '#44ffaa' : '#12301f'}}
@@ -13304,7 +13698,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...reachHover('shukuchi')}>
-                  <RailBtn className={live ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="sig:shukuchi" className={live ? 'btn active' : 'btn'}
                     cooldown={{left:cd, max:ABILITY_CD[SHUKUCHI_SKILL], color:actingHue}}
                     style={{borderColor: live ? actingHue : actingHueDim,
                             color: live ? actingHueLight : actingHueDim}}
@@ -13342,7 +13736,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...reachHover('psycho_bushido')}>
-                  <RailBtn className={canDash ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="sig:psycho_bushido" className={canDash ? 'btn active' : 'btn'}
                     cooldown={{left:cd, max:ABILITY_CD.psycho_bushido, color:actingHue}}
                     style={{borderColor: canDash ? actingHue : actingHueDim, color: canDash ? actingHueLight : actingHueDim}}
                     disabled={!canDash}
@@ -13377,7 +13771,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               // No hex to pick any more — the double is born on top of the
               // Ronin, so this is a single-click action.
               return (
-                <RailBtn className={canSummon ? 'btn active' : 'btn'}
+                <RailBtn data-pad-ability="sig:shadow_illusion" className={canSummon ? 'btn active' : 'btn'}
                   cooldown={{left:cd, max:ABILITY_CD.shadow_illusion, color:actingHue}}
                   style={{borderColor: canSummon ? actingHue : actingHueDim, color: canSummon ? actingHueLight : actingHueDim}}
                   disabled={!canSummon}
@@ -13414,7 +13808,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               return (
                 <>
                   <div style={{position:'relative',display:'inline-block'}} {...(live ? reachHover('cursed_shamisen') : {})}>
-                  <RailBtn className={live ? 'btn active' : 'btn'}
+                  <RailBtn data-pad-ability="sig:cursed_shamisen" className={live ? 'btn active' : 'btn'}
                     cooldown={{left:cd, max:ABILITY_CD[SHAMISEN_SKILL], color:hue}}
                     style={{borderColor: live ? hue : actingHueDim, color: live ? '#d9c2ff' : actingHueDim}}
                     disabled={!live && !armed}
@@ -13495,7 +13889,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               it for exactly that span. See the drawer's ⚠️ for why a duplicate
               breaks Pickles silently rather than loudly. */}
           {acting && (
-            <div data-tip-anchor={turnStep === 'move_act' ? undefined : "note-stock"}
+            <div data-tip-anchor={turnStep === 'move_act' || (poolUp && turnStep === 'melody') ? undefined : "note-stock"}
               className={`match-note-stock card${turnStep === 'melody' ? ' step-active' : ''}`}
               style={{'--step-glow-color': turnStep === 'chord' ? '#ff66cc' : '#4488ff',
                 borderLeft:`2px solid ${turnStep === 'melody' ? '#4488ff' : '#4488ff66'}`,
@@ -13797,12 +14191,15 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 (() => {
                   const dStack = actingNoteState?.driveStack ?? [];
                   const sStack = actingNoteState?.sustainStack ?? [];
-                  const dCh = spiritChord(acting?.id, dStack);
-                  const sCh = spiritChord(acting?.id, sStack);
                   const commitsUsed = actingNoteState?.stackCommitsThisTurn ?? 0;
                   const budgetLeft = STACK_COMMIT_BUDGET - commitsUsed;
                   const dFull = dStack.length >= actingStackCapDrive;
                   const sFull = sStack.length >= actingStackCapSustain;
+                  // 🎮 the ring (View = the HUD, now the pool is the wheel): the destination
+                  // stack while the budget lasts → Continue
+                  const padChord = !padTurnKey ? null
+                    : budgetLeft > 0 && !(dFull && sFull) ? { at: 'stack', side: poolDest === 'sustain' || dFull ? 'sustain' : 'drive', key: `chord:pick:${padTurnKey}` }
+                    : { at: 'go', key: `chord:go:${padTurnKey}` };
                   return (
                     <div style={{marginBottom:5}}>
                       {/* ⌐ THE STEP-1 DRAWER JOINED THE BRACKET SYSTEM, 2026-09-12.
@@ -13837,7 +14234,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                       <div style={{padding:"11px 11px 9px"}}>
                         <div style={{fontSize:7,color:"#6a8a9a",marginBottom:7}}>
                           {budgetLeft <= 0 ? `✓ budget spent (${STACK_COMMIT_BUDGET}/${STACK_COMMIT_BUDGET}) — continue below`
-                           : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — pick a stack then tap a note, or type it (Shift = ♯/♭ · Tab = switch stack · Enter = continue)`}
+                           : `${budgetLeft} commit${budgetLeft !== 1 ? 's' : ''} left — tap a note on the wheel, or type it (Shift = ♯/♭ · Tab or the wheel's hub = switch stack · Enter = continue)`}
                         </div>
                         {/* 🔴🔵 ONE ROW PER STACK, each in its own bracket wearing
                             its own stat's colour — the same job the colour does on
@@ -13863,6 +14260,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                                     not throw, it silently re-centres the tip. */}
                                 <button type="button" className="stack-chip"
                                   data-tip-anchor={isD ? 'drive-btn' : 'sustain-btn'}
+                                  data-pad-default={padChord?.at === 'stack' && padChord.side === side ? padChord.key : undefined}
                                   disabled={dis}
                                   aria-pressed={on}
                                   onClick={()=>setStackCommitDest(side)}
@@ -13895,89 +14293,14 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                             </Bracket>
                           );
                         })}
-                        {/* Note stock for stack editing — visible when a dest is selected and budget remains */}
-                        {stackCommitDest && budgetLeft > 0 && (
-                          <Bracket corner="sm" color="#8daee5" plate="STOCK"
-                            data-tip-anchor="stack-note-grid"
-                            plateRight={`${noteStock.filter((_, i) => !usedHas(usedStockIdx, i)).length} left`}
-                            style={{marginBottom:7}}>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:2,padding:"8px 8px 7px"}}>
-                              {noteStock.map((note,idx)=>{
-                                const used = usedHas(usedStockIdx, idx);
-                                /* Interval-based colors — same as melody step */
-                                const notePC         = pitchIndex(note);
-                                const isTritone      = notePC === pitchIndex(tritoneNote);
-                                const isMajorThird   = notePC === pitchIndex(majorThirdNote);
-                                const isMinorSeventh = notePC === pitchIndex(minorSeventhNote);
-                                const isFourth       = notePC === pitchIndex(fourthNote);
-                                const isFifth        = notePC === pitchIndex(fifthNote);
-                                const intervalKey    = isTritone ? 'tritone' : isMajorThird ? 'majorThird' : isMinorSeventh ? 'minorSeventh' : isFourth ? 'fourth' : isFifth ? 'fifth' : null;
-                                const isIntervalNote = intervalKey !== null;
-                                const isUnlocked     = isIntervalNote && unlockedIntervalKeys.has(intervalKey);
-                                const inScaleNote    = currentScale.includes(note);
-                                const showTritoneColor      = isTritone      && discordUnlocks.includes('discord_3');
-                                const showMinorSeventhColor = isMinorSeventh && discordUnlocks.includes('discord_1') && scaleMode === 'major';
-                                const showMajorThirdColor   = isMajorThird   && discordUnlocks.includes('discord_2') && scaleMode === 'minor';
-                                const showAsDiscord  = isIntervalNote && !isUnlocked && !inScaleNote;
-                                /* Same demotion as the melody-step stock (see UNLOCKED_DISCORD).
-                                   No context colouring here on purpose: this grid is for BUILDING
-                                   the stacks, so "which stack pays this note" isn't a question yet
-                                   — the answer changes with the very click you're about to make. */
-                                const showUnlockedD = showTritoneColor || showMinorSeventhColor || showMajorThirdColor;
-                                const hexBorder = showAsDiscord ? "#444455" : showUnlockedD ? UNLOCKED_DISCORD.border : isFifth ? "#ff55aa" : isFourth ? "#cc55ff" : inScaleNote ? "#c0c8d8" : "#444455";
-                                // 🎨 ONE HUE, as everywhere else now. `hexText` and `hexBg`
-                                // are gone with the clip-path chip that needed three values
-                                // to say one thing; a NoteHex derives the rest from the hue.
-                                /* Benefit preview for the targeted stack */
-                                const targetStack = stackCommitDest === 'sustain' ? sStack : dStack;
-                                const targetCh = stackCommitDest === 'sustain' ? sCh : dCh;
-                                const targetFull = stackCommitDest === 'sustain' ? sFull : dFull;
-                                const previewChord = !used && !targetFull ? spiritChord(acting?.id, [...targetStack, note]) : null;
-                                const dDrive   = previewChord ? previewChord.drive   - targetCh.drive   : 0;
-                                const dSustain = previewChord ? previewChord.sustain - targetCh.sustain : 0;
-                                return (
-                                  <div key={idx} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:0}}
-                                    onMouseEnter={(e)=>{ if (!used) { const x=e.clientX, y=e.clientY; clearTimeout(hoverScaleTimerRef.current); hoverScaleTimerRef.current=setTimeout(()=>setHoverScale({note,x,y}),1500); }}}
-                                    onMouseLeave={()=>{ clearTimeout(hoverScaleTimerRef.current); setHoverScale(cur=>cur?.note===note?null:cur); }}>
-                                    {/* 🎸 ⚠️ THE EVENT IS THE FLIGHT. This passed
-                                        `undefined` where clickNoteStock expects the
-                                        click, which is the ONLY way it learns where
-                                        the note is flying FROM — so every stack commit
-                                        made from this grid landed with no animation at
-                                        all, while the same commit made from the big
-                                        hand flew. And this grid is the only
-                                        stack-commit control there is during step 1, so
-                                        in practice that meant the chord flight never
-                                        ran. 🎆 Now that these are real NoteHexes the
-                                        DEPARTURE flare fires here too, so the chain
-                                        from click → flare → flight → landing flare is
-                                        unbroken for the first time. */}
-                                    <div data-stock-idx={idx} data-coach={!used ? crowdMarks.get(idx) : undefined}
-                                      onClick={(e)=>{ if (!used) clickNoteStock(idx, e, true); }}
-                                      style={{width:STACK_GRID_CHIP,height:STACK_GRID_CHIP,flexShrink:0,
-                                        display:"flex",alignItems:"center",justifyContent:"center",
-                                        cursor:used?"default":"pointer",opacity:used?0.5:1,
-                                        transition:"opacity .1s"}}>
-                                      {/* 🕳️ A spent slot keeps the BIG HAND's empty colour, not the
-                                          seats' socket violet — this is a hand going empty, not a
-                                          socket waiting to be filled, and they must not look alike. */}
-                                      <NoteHex size={STACK_GRID_CHIP}
-                                        hue={used ? "#232b3a" : hexBorder}
-                                        letter={used ? "" : note} dull={used}
-                                        burst={burstOut?.seat === `hand:${idx}` ? { ...burstOut, hue: hexBorder } : null} />
-                                    </div>
-                                    {previewChord && (dDrive > 0 || dSustain > 0) && (
-                                      <div style={{display:"flex",gap:1,marginTop:1}}>
-                                        {dDrive > 0 && <span style={{fontSize:6,color:"#ff6644",fontWeight:700,lineHeight:1}}>▲</span>}
-                                        {dSustain > 0 && <span style={{fontSize:6,color:"#44aaff",fontWeight:700,lineHeight:1}}>▲</span>}
-                                      </div>
-                                    )}
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          </Bracket>
-                        )}
+                        {/* 🪦 THE STEP-1 STOCK GRID CAME OUT HERE, 2026-10-14 — the note pool IS
+                            the wheel now (Alex: *"this can totally replace the current 'note
+                            pool'"*), centred over the arena (`ui/PoolWheel.jsx`). What it said
+                            moved onto the wheel: the ▲ "this note makes the stack you are
+                            building stronger" is the note's own red/blue chevron (`poolMarks`),
+                            the destination is the wheel's hub (a click on it switches stacks),
+                            and a note still flies from where it sat (`stockChipEvent` finds its
+                            slot). ⚠️ The `stack-note-grid` tutorial anchor moved WITH it. */}
                         {/* N13: canAct guard — this button only moves LOCAL HUD
                             state, which is exactly why it was dangerous: it was
                             the one control on the acting panel that changed
@@ -13990,6 +14313,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                             `text-transform`, which does not touch `textContent` —
                             so do not "tidy" these strings to match what is drawn. */}
                         <button type="button" className="stack-chip is-go"
+                          data-pad-default={padChord?.at === 'go' ? padChord.key : undefined}
                           onClick={continueToMelody}
                           style={{width:"100%"}}>
                           {budgetLeft <= 0 ? '✓ Stacks set — Continue to Melody ->' : 'Continue to Melody ->'}
@@ -14001,12 +14325,13 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 })()
               ) : turnStep === 'melody' || turnStep === 'move_act' ? (
                 <>
-                {/* Note stock grid — STEP 3: MELODY BUILDING */}
-                {stockGrid}
+                {/* 🪦 THE HONEYCOMB CAME OUT HERE, 2026-10-14: the note pool is the wheel over
+                    the arena (`ui/PoolWheel.jsx`). `stockGrid` lives on only in the Spirit
+                    sheet's step-3 drawer ("what is left for next turn"). */}
                 {/* ⌨️ The keyboard route (keyboardNoteCommit) — said once, quietly. */}
                 {turnStep === 'melody' && !hasConfirmed && canAct && !isBot(acting) && (
                   <div style={{fontSize:7,color:"#6a8a9a",margin:"0 0 5px"}}>
-                    ⌨️ Type a–g to play a note · Shift = ♯/♭ · Backspace takes the last one back · Enter = commit · W = scale wheel
+                    ⌨️ Click a note on the wheel or type a–g · Shift = ♯/♭ · Backspace takes the last one back · Enter = commit · W = hide / show the wheel
                     {hammerHuman && <> · <b style={{color:hammerColor}}>H = {hammerCand.ok && hammerCand.label === 'pull' ? 'pull-off' : 'hammer-on'}</b></>}
                   </div>
                 )}
@@ -14035,7 +14360,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                   );
                 })()}
                 {/* 🎼 SCALE PEEK — fixed popup, 1.5s hover delay (no longer inline to avoid HUD jitter) */}
-                {hoverScale && !stackCommitDest && (() => {
+                {hoverScale && !hoverScale.pool && !stackCommitDest && (() => {
                   const maj = buildScale(hoverScale.note, 'major');
                   const min = buildScale(hoverScale.note, 'minor');
                   return (
@@ -14099,6 +14424,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 )}
                 <div className="match-commit-row" style={{display:"flex",gap:3}}>
                   <button className="btn" style={{flex:1,borderColor:"#44ff88",color:"#44ff88",fontSize:8}}
+                    data-pad-default={padTurnKey && turnStep === 'melody' && !hasConfirmed ? `melody:${padTurnKey}` : undefined}
                     onClick={confirmNoteTrack}
                     disabled={melodyLine.length===0}>
                     ✓ Commit ({melodyLine.length} notes → {Math.min(melodyLine.length, actingSpeed)} hex · SPD {actingSpeed})
@@ -14742,6 +15068,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               onPick={pickCard} onCancel={() => closeCardPick()} />}
             <SonicBarrageRecord battle={battleState} />
             <SeatUnlockBurst fx={seatUnlockFx} />
+            {fanMcLive && fanMcShow && <FanMcOverlay show={fanMcShow} onSkip={skipFanMc} />}
             {openingLive && <OpeningActOverlay schedule={openingSched} onSkip={skipOpening}
               firstName={spirits.find(s => s.id === engineState.turnQueue?.[0])?.name ?? spirits[0]?.name} />}
             <BoardViewport enabled={board3D} immersive={board3D} autoCamera={autoCamera} topView={topView} onTopView={setTopView}
@@ -14779,6 +15106,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 // 🎸 The opening act's clock, and the stands that stay empty until
                 // their Spirit's entrance lands (board/openingAct.js).
                 opening:openingSched, fansHeld,
+                // 🎤 The fan MC's show — his clock, timeline and cast (board/fanMcStage.js).
+                fanMc:fanMcLive ? fanMcShow : null,
                 // 🎸 The Iwato curse, read off the sheets alone (`iwatoCurse.js` curseScene).
                 // 🪤 + this seat's OWN armed trap (`myTrap`) — the noroi card is thrown only here.
                 shamisen:{ ...curseScene(spirits, noteStates), trap: myTrap },
@@ -15381,7 +15710,11 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                     // ARMED (a walk, a Thrash, a Sonic, a curse…) — then any hex
                     // is a target. Otherwise ~40 hexes would sit between the HUD
                     // and the rail on every D-pad press; the stick walks instead.
-                    data-pad-hex={action ? '' : undefined}
+                    // ⭐ …and ONLY THE LEGAL ONES (the pad-turn port, 2026-10-14): `padAim` is
+                    // the set the click would accept, so the ring cannot rest on a hex the
+                    // armed ability would refuse. `data-pad-default` puts it on the best one.
+                    data-pad-hex={padAim?.has(hex.num) ? '' : undefined}
+                    data-pad-default={padTurnKey && padAimDefault === hex.num ? `aim:${action}:${acting?.num}:${padTurnKey}` : undefined}
                     onClick={() => onHexClick(hex.num)}
                     onMouseEnter={() => setHovered(hex.num)}
                     onMouseLeave={() => setHovered(null)}>

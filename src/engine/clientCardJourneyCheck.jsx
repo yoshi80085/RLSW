@@ -37,7 +37,7 @@ await act(async()=>root.render(<Game gameState={config} onReturnToLobby={()=>{}}
 const me=state.acting;
 const driveBefore=state.noteStates[me].driveStack.length;
 await click([...document.querySelectorAll('button.stack-chip')].find(b=>b.textContent.trim()==='Drive'));
-await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
+await click(document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held'));
 ok(state.noteStates[me].driveStack.length===driveBefore+1,'a second note went onto the Drive stack');
 await click(button('Continue to Melody'));
 
@@ -49,7 +49,7 @@ assert.deepEqual(handOf(state.noteStates[me]),['fullStack','loaded5','loaded6'],
 await click(document.querySelector('button[title="Testing Grounds"]'));
 
 // 2 · A Swing. The attacker's ROLL carries "Use a card" above it.
-for(let i=0;i<3;i++)await click([...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(e=>e.parentElement).find(e=>e.style.cursor==='pointer'));
+for(let i=0;i<3;i++)await click(document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held'));
 await click(button('Commit (3 notes'));
 ok(document.querySelector('[data-marquee-hand]')?.dataset.marqueeHand==='3','the rail shows the hand');
 await click(button('Thrash'));await click(document.querySelector(`[data-hex-num="${b.num}"]`));

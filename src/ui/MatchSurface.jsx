@@ -6,6 +6,7 @@ import NoteHex from './NoteHex.jsx';
 // here: `.match-surface` renders in BOTH layouts and is always an ancestor of
 // them, so the arena keeps ONE stylesheet instead of three.
 import { COMMIT_CSS } from './NoteCommitOverlay.jsx';
+import { poolScrimGradient } from './padTurnUi.js';
 // 📱 The phone layout (`phoneLayout.js`) is ARCHIVED, 2026-09-29 (Alex: not
 // now) — docs/archive/phone-play-2026-09-29/README.md says how to put it back.
 
@@ -105,7 +106,7 @@ const ACTION_LABELS = {
 // Keep these wrappers mounted in both views: conditional trees/portals here would
 // remount note controls and the live SVG while a player is composing or targeting.
 export function MatchSurface({ immersive, riffArena = false, spirit, turnNumber, step, canAct, ap, tutorial, hud,
-  scale = null, scaleOpen = false, onScaleToggle, children }) {
+  scale = null, scaleOpen = false, onScaleToggle, pool = null, poolDim = 0, poolDimHole = .55, poolDimReach = 340, overlay = null, children }) {
   const [selection, setSelection] = useState(null);
   const id = useId();
   // A new turn always brings its controls back, without remounting any content.
@@ -219,6 +220,12 @@ export function MatchSurface({ immersive, riffArena = false, spirit, turnNumber,
         </div>
       </>}
       {children}
+      {/* 🎡 the note pool, centre of the arena (Chord / Melody) — `ui/PoolWheel.jsx` */}
+      {/* 🪟 …and while it is up the arena around it dims (Alex: "perhaps it needs its own window") */}
+      {pool && poolDim > 0 && <div className="match-pool-scrim" aria-hidden="true" style={{ '--pool-dim': poolDim, '--pool-hole': poolDimHole, '--pool-reach': `${poolDimReach}px` }} />}
+      {pool && <div className="match-pool">{pool}</div>}
+      {/* 🧭 the button bar and ✚ the cross — `ui/PadButtonBar.jsx`, `ui/PadCross.jsx` */}
+      {overlay}
     </div>
   </SurfaceContext.Provider>;
 }
@@ -248,7 +255,29 @@ const SURFACE_CSS = `
   [data-riff-duel] .match-hud-bar,
   [data-riff-duel] [data-hud-region],
   [data-riff-duel] .match-note-stock,
-  [data-riff-duel] .immersive-arail { visibility:hidden; pointer-events:none; }
+  [data-riff-duel] .immersive-arail,
+  [data-riff-duel] .match-pool,
+  [data-riff-duel] .match-pool-scrim,
+  [data-riff-duel] .pb-bar { visibility:hidden; pointer-events:none; }
+  /* 🎡 THE NOTE POOL, CENTRE OF THE ARENA (Alex, 2026-10-14). The wrapper lets the
+     board's clicks through; only the wheel itself takes them. Below the phase rail
+     (41) and the pocket (42), so a HUD panel always wins an overlap. */
+  /* 📐 CENTRED ON THE ARENA'S FREE MIDDLE, not the page: left of it the pocket and the
+     turn drawer (≈492px), right of it the nav dock (≈262px) — so +115px — and above the
+     floating MELODY track at the bottom (−48px). It shrinks before it would reach either
+     (a 720p screen keeps the full 370; a narrow one gives way). */
+  /* 🪟 The dim: over the arena (and the board's own stack panels, z 10) but under every HUD
+     panel (41+) and the pool (40), lightest at the wheel. Never takes the mouse. */
+  .match-pool-scrim { position:absolute; inset:0; z-index:39; pointer-events:none;
+    background:${poolScrimGradient('calc(50% + 115px) calc(50% - 48px)')};
+    animation:pool-scrim-in .25s ease-out; }
+  @keyframes pool-scrim-in { from { opacity:0 } }
+  .match-pool { position:absolute; left:calc(50% + 115px); top:calc(50% - 48px); transform:translate(-50%,-50%); z-index:40; pointer-events:none; }
+  .match-pool .pw-box { max-width:min(calc(100dvh - 330px), calc(100vw - 800px)); min-width:240px; }
+  /* ⚠️ ONLY THE NOTES (and the hub) TAKE THE MOUSE: the wheel's square box sits on the
+     middle of the arena, and a drag there must still turn the lens. */
+  .match-pool * { pointer-events:none; }
+  .match-pool .sw-slot, .match-pool .sw-slot *, .match-pool [data-wheel-hub] { pointer-events:auto; }
   .match-surface { display:grid; grid-template-columns:minmax(430px,480px) minmax(0,1fr); gap:12px; align-items:start; flex:1; min-width:0; }
   .match-hud-column { display:flex; flex-direction:column; gap:0; min-width:0; }
   [data-hud-region] { min-width:0; }
@@ -522,6 +551,10 @@ const SURFACE_CSS = `
     [data-match-layout="immersive"] [data-hud-region] { position:relative; inset:auto; width:100%; max-width:none; max-height:50dvh; margin-bottom:8px; }
     [data-match-layout="immersive"][data-match-step] [data-hud-region] { left:auto; right:auto; top:auto; bottom:auto; width:100%; max-width:none; transform:none; }
     [data-match-layout="immersive"] .match-board-preparation { inset:12px 16px 68px; }
+    /* the board is the 620px column under 108px of header here: the pool sits on it */
+    .match-pool { left:50%; top:418px; }
+    .match-pool-scrim { background:rgba(3,6,16,var(--pool-dim)); }
+    .match-pool .pw-box { max-width:340px; }
     .match-player-pocket { top:43px; left:12px; width:208px; }
     [data-match-layout="immersive"] { --root-hex:44px }
     .match-sound-readout { grid-template-columns:1fr 1fr 44px; }

@@ -37,6 +37,7 @@ import { createKnockdownHelpers } from './knockdownHelpers.js';
 import { FAN_STYLES } from './arenaCrowd.js';
 import { padPoint } from './openingAct.js';
 import { createLostChordLayer } from './lostChords.js';
+import { createFanMcStage } from './fanMcStage.js';
 
 export function arenaPoint(num, height=.18) {
   const h=HEX_BY_NUM[num];return h?new THREE.Vector3((h.px-3255)/200,height,(h.py-2415)/200):null;
@@ -132,7 +133,7 @@ export const SEAT_UNLOCK=Object.freeze({
   lines:.7, linesFor:.55,    // speed lines on the cut
 });
 
-export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}={}) {
+export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null,mcScene=null}={}) {
   const root=new THREE.Group();root.name='Live match effects';scene.add(root);
   const bats=createBatStage(root,{pointFor:arenaPoint,release:releaseArenaObject});
   // 🔊 The Sonic's beam, shield and shards go to their own layer when the
@@ -152,6 +153,12 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
   // pads, the crash landings and the hop onto the home hex. Owns a pawn only
   // while its seat waits, falls or steps on — `pose` below, like the pyro reaction.
   const opening=createOpeningActStage(root);
+  // 🎤 THE FAN MC (fanMcStage.js): before a stage effect, the wallpaper's fan on his
+  // floating hex with a mic — and, at his last show, the replay TV. Reads `frame.fanMc`.
+  // 🔝 He, his spotlight and the TV live on the renderer's MC layer (`mcScene`), drawn
+  // LAST over everything (Alex 10-16: "doesn't get obscured by anything"); without one
+  // (the headless checks) they stay in the arena, as before. The board wash stays here.
+  const fanMc=createFanMcStage(root,{pointFor:arenaPoint,floatRoot:mcScene??root});
   // 🤕 THE KNOCKDOWN (knockdownHelpers.js, Alex 2026-10-07): he falls on the spot
   // and a few of his fans run out of his stand and help him back up.
   const koHelpers=createKnockdownHelpers(root,{pointFor:arenaPoint,release:o=>releaseArenaObject(o)});
@@ -634,6 +641,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
     updatePawns(frame);
     pyro.update(frame);
     opening.update(frame.opening,frame.spirits);
+    fanMc.update(frame.fanMc??null);
     bats.update(frame.bats);
     shamisen.update(frame.shamisen??{});
     headDials.update(frame.spirits,clock*1000,{reduced:reducedMotion});
@@ -759,6 +767,7 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       bats.tick(time,{reduced});
       const openNow=performance.now();
       opening.tick(openNow,{reduced});
+      fanMc.tick(openNow,{reduced,camera,clock:time});
       koHelpers.tick(openNow,{reduced});
       for(const [pawnId,pawn] of pawns) {
         const target=pawn.userData.target;
@@ -965,12 +974,20 @@ export function createArenaVisuals(scene, {foregroundScene=scene,beamScene=null}
       const amount=Math.min(1,since/.6)*Math.min(1,Math.max(0,(AFTERMATH_SECONDS+.6-since)/.6))*BATTLE_DIRECTOR.cheer;
       return {winnerId:w==null?null:st.ids[w],loserId:w==null?null:st.ids[1-w],tie:w==null,amount};
     },
-    diagnostics:()=>({koHelpers:koHelpers.live,rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0)+koHelpers.live,shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),lostChords:lostChords.active(),lostChordHexes:lostChords.diagnostics().tokens,marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics(),opening:opening.diagnostics(),openingBusy:opening.busy(performance.now())}),
+    diagnostics:()=>({koHelpers:koHelpers.live,rigStations:rigs.size,liveCabinets:[...rigs.values()].reduce((n,r)=>n+r.levels.filter(o=>o.visible).length,0),effects:effects.length+(sonic?1:0)+(swing?1:0)+(unlockState?1:0)+(shamisen.busy?1:0)+koHelpers.live,shamisen:shamisen.diagnostics(),unlock:unlockState?{id:unlockState.id,role:unlockState.role,slot:unlockState.slot,short:unlockState.short,hasRig:!!unlockState.rig}:null,sonicPhase:sonic?.phase??null,hazards:hazards.children.length+lasers.diagnostics().lanes,laserBusy:lasers.diagnostics().busy,laserDetail:lasers.diagnostics(),headDials:headDials.active(clock*1000),standeeSteps:standeeSteps.live,pyro:pyro.live,pyroBusy:pyro.busy,moveTiles:moveTiles.active(),attackTiles:attackTiles.active(),attackTileDetail:attackTiles.diagnostics(),marquees:marqueeMarkers.active(),lostChords:lostChords.active(),lostChordHexes:lostChords.diagnostics().tokens,marqueeDetail:marqueeMarkers.diagnostics(),moveTileDetail:moveTiles.diagnostics(),opening:opening.diagnostics(),openingBusy:opening.busy(performance.now()),fanMc:fanMc.diagnostics(),fanMcBusy:fanMc.busy(performance.now())}),
     /** 🎸 The opening act's lens — the intro, or an entrance close-up — else null (openingActStage.camera). */
     openingCamera:(now,aspect,opts)=>opening.camera(now,aspect,opts),
+    /** 🎤 The fan MC's lens while he has the stage, else null (fanMcStage.camera). */
+    fanMcCamera:(now,aspect,opts)=>fanMc.camera(now,aspect,opts),
+    /** 🎤 His tease's dim and the call's flash — the renderer's exposure. */
+    fanMcLight:now=>fanMc.light(now),
+    /** 🎤📺 Draw the replay TV's picture before the frame (it is a render target). */
+    fanMcPrerender:renderer=>fanMc.prerender(renderer),
+    /** 🎤 Where he (and the TV) are on the page, for the overlay's bubble. */
+    fanMcScreen:(camera,rect)=>fanMc.screen(camera,rect),
     /** 🎸 0..1 — how much of the intro's own look (bloom, exposure) is on. */
     openingEnvelope:()=>opening.envelope,
-    dispose(){disposed=true;opening.dispose();koHelpers.dispose();bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lostChords.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
+    dispose(){disposed=true;opening.dispose();fanMc.dispose();koHelpers.dispose();bats.dispose();shamisen.dispose();pyro.dispose();standeeSteps.dispose();clearRiff();clearSwing();clearSonic();clearEffects();headDials.dispose();moveTiles.dispose();attackTiles.dispose();marqueeMarkers.dispose();lostChords.dispose();lasers.dispose();for(const pawn of pawns.values())releaseArenaObject(pawn);pawns.clear();},
     // 🎆 The hit's share of the lens (shake + zoom punch) and the mortars' sprite scale.
     pyroCamera:reduced=>pyro.camera(reduced),
     resize:h=>pyro.resize(h),

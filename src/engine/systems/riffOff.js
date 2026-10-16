@@ -403,10 +403,58 @@ export function applyRiffRound2Started(state, _action, rng) {
   };
 }
 
-/** RIFF_CLOSED — duel over (or aborted): clear the battle slice. */
+// ── 🎤 THE RIFF OF THE NIGHT ─────────────────────────────────────────────────
+// Alex, 2026-10-15: *"it would be most efficient to simply 'remember' the 'best
+// one' to play? Forget everything else - if a riff off comes around that plays
+// better than the previous remembered one, remember *that* one, forget the old one"*.
+// The match keeps ONE duel (`state.bestRiff`); the fan MC replays it on his last
+// visit of any match — 7 of 10, 12 of 15, 17 of 20 (data/fanMc.js replayShow). Decided HERE, at RIFF_CLOSED, so every
+// peer and every replay remembers the same duel — a client-side pick would be a
+// second copy of the rule (SEQUENCING §B, the ⭐18 lesson).
+
+/** How good a duel was to WATCH: the winner's quality and perfect notes, a loser who
+ *  pushed them, a second exchange, both sides paid. Ties are never remembered. */
+export function riffMomentScore(m) {
+  if (!m?.winnerId) return -Infinity;
+  const w = m.winnerId === m.attackerId ? m.atk : m.def, l = m.winnerId === m.attackerId ? m.def : m.atk;
+  return w.quality * .6 + w.perfects * 4 + l.quality * .25 + (m.exchanges >= 2 ? 18 : 0) + (m.bothStrong ? 12 : 0);
+}
+
+/** The record of the duel being closed, or null (no verdict, or a tie). Pure. */
+export function riffMoment(state) {
+  const b = state.battle, v = b?.verdict;
+  if (b?.kind !== "riffOff" || !v || v.tie || !b.atkResults || !b.defResults) return null;
+  const side = i => {
+    const results = i === 0 ? b.atkResults : b.defResults, st = riffStats(results);
+    const chart = i === 0 ? b.atkRiff : b.defRiff;
+    const arenaNotes = b.arenaExchange?.runs?.[i]?.notes ?? null;
+    const keys = arenaNotes ? null : (chart?.degrees ? riffDegreesToNotes(chart.degrees, chart.sharps) : []);
+    // in PLAY order: the arena submits a result per note with its noteIdx
+    const ordered = [...results].map((r, k) => ({ r, idx: r.noteIdx ?? k })).sort((a, c) => a.idx - c.idx);
+    return {
+      quality: st.quality, perfects: st.perfects, avgRt: st.avgRt,
+      // 💥 what the riff ball was made of: every earlier exchange plus this one (riffArenaVisuals energy)
+      energy: Math.round(((b.arenaEnergy?.[i] ?? 0) + st.score) * 100) / 100,
+      notes: ordered.map(({ r, idx }) => ({ grade: r.grade, key: arenaNotes?.[idx]?.key ?? keys?.[idx] ?? null,
+        string: arenaNotes?.[idx]?.pos?.[0] ?? null })),
+    };
+  };
+  return {
+    round: state.turn?.round ?? null, turn: state.turn?.count ?? null,
+    attackerId: b.attackerId, defenderId: b.defenderId,
+    winnerId: v.attackerWon ? b.attackerId : b.defenderId,
+    margin: v.margin, exchanges: v.round ?? b.round ?? 1, decidedBy: v.decidedBy, bothStrong: !!v.bothStrong,
+    atk: side(0), def: side(1),
+  };
+}
+
+/** RIFF_CLOSED — duel over (or aborted): remember it if it's the best yet, clear the battle slice. */
 export function applyRiffClosed(state) {
   if (state.battle?.kind !== "riffOff") return state;
-  return { ...state, battle: null };
+  const m = riffMoment(state), best = state.bestRiff ?? null;
+  // ⚠️ STRICTLY better replaces: an equal duel later in the match does not knock the first one out.
+  const bestRiff = m && riffMomentScore(m) > riffMomentScore(best) ? m : best;
+  return { ...state, battle: null, bestRiff };
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

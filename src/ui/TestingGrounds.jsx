@@ -8,17 +8,25 @@
 // then click any hex), and 🆓 FREE PLAY (the acting Spirit is kept topped up,
 // plus a turn-step jump). The rules behind them live in the monolith's dev
 // helpers and `engine/systems/sandbox.js`; this file only draws the buttons.
+//
+// 🎤 2026-10-16 — THE FAN MC ON DEMAND (Alex: *"can you make sure he can be summoned
+// in the testing grounds?"*): summon him calling a chosen (or random) stage effect,
+// with or without his last-show replay TV. The monolith's `devSummonFanMc` runs the
+// real show. While he is on stage this whole layer steps aside (`fanMcLive`), so the
+// 🧪 button never sits on top of him.
 // =============================================================================
-import React from "react";
+import React, { useState } from "react";
 
 const STEPS = [['chord','🎸 Chord'],['melody','🎵 Melody'],['move_act','⚔️ Move & Act']];
 const smallBtn = {background:'#0a0814',border:'1px solid #4a2a60',color:'#d0c0e0',borderRadius:5,fontSize:9,padding:'4px 7px',cursor:'pointer',fontFamily:'inherit'};
 
 export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiritId, devFireStageFx, devFireSignature, devGrant, devDamage, devOpen, devUnlockSkill, noteStates, setDevOpen, spiritById, spirits, testMode, devExportLog,
-  actingId = null, devTakeControl, devPlaceId = null, devArmPlace, devFreePlay = false, setDevFreePlay, turnStep, devJumpStep }) {
+  actingId = null, devTakeControl, devPlaceId = null, devArmPlace, devFreePlay = false, setDevFreePlay, turnStep, devJumpStep,
+  devSummonFanMc = null, fanMcLive = false }) {
   const placing = devPlaceId ? spiritById[devPlaceId] : null;
+  const [mcFx, setMcFx] = useState(null);   // null = each effect in turn, one per summon
   return (<>
-      {testMode && (
+      {testMode && !fanMcLive && (
         <>
           {/* 📍 The drop banner lives OUTSIDE the panel on purpose: you close the
               panel to see the board, and the instruction must survive that. */}
@@ -98,6 +106,27 @@ export function TestingGrounds({ SIGNATURE_TESTS, STAGE_FX_META, devCurrentSpiri
                   </button>
                 ))}
               </div>
+
+              {devSummonFanMc && (<>
+                <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>🎤 THE FAN MC</div>
+                <div style={{fontSize:7,color:'#6a5a85',marginBottom:5,lineHeight:1.4}}>He calls this effect:</div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:4,marginBottom:6}}>
+                  <button onClick={()=>setMcFx(null)} data-tg-mcfx="random"
+                    style={{...smallBtn,...(mcFx === null ? {border:'1px solid #cc66ff',color:'#f0c0ff'} : {})}}>🔁 Each in turn</button>
+                  {Object.entries(STAGE_FX_META).map(([fxId, meta]) => (
+                    <button key={fxId} onClick={()=>setMcFx(fxId)} data-tg-mcfx={fxId} title={meta.name}
+                      style={{...smallBtn,...(mcFx === fxId ? {border:`1px solid ${meta.color}`,color:meta.color} : {})}}>{meta.icon}</button>
+                  ))}
+                </div>
+                <div style={{display:'flex',flexWrap:'wrap',gap:5,marginBottom:11}}>
+                  {[[false,'🎤 Summon','The normal show: standings, then the call'],
+                    [true,'🎤📺 + Replay','His last-show version: the TV replays the best riff-off (a demo duel if this sandbox has none)'],
+                    ['none','🎤 No-duel line','His last show when nobody had a riff-off worth replaying']].map(([replay, lbl, tip]) => (
+                    <button key={String(replay)} onClick={()=>devSummonFanMc({ fxId: mcFx, replay })} title={tip} data-tg-fanmc={String(replay)}
+                      style={{background:'#0a0814',border:'1px solid #dfe8ff',color:'#dfe8ff',borderRadius:5,fontSize:9,padding:'5px 8px',cursor:'pointer',fontFamily:'inherit'}}>{lbl}</button>
+                  ))}
+                </div>
+              </>)}
 
               <div style={{fontSize:8,color:'#7a6a95',letterSpacing:1,marginBottom:4}}>GRANT TO ACTING SPIRIT</div>
               <div style={{display:'flex',flexWrap:'wrap',gap:5}}>

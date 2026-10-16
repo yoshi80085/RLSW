@@ -171,11 +171,13 @@ A controller is a first-class input now (`src/input/`; *"when I think of games I
 - **Make clickable things real buttons** (or give them `role="button"`, `[data-pad]` or an inline `cursor: pointer`). A bare `<div onClick>` with its cursor set in a stylesheet is invisible to the pad.
 - **Nothing that only appears on hover.** A tip or preview behind `onMouseEnter` is fine (the highlight sends mouseover), but one behind CSS `:hover` alone or the native `title=` never shows on a pad.
 - **B / Escape always backs out** of an overlay or modal you add.
+- **Name where the ring starts**: put `data-pad-default="<key>"` on ONE element of a new screen or step (the primary action). The ring jumps there when the KEY changes, so give it a key that changes when the screen's stage does (see `padTurnKey` in the monolith) and stays the same while the player is working in it.
 - **A new key binding gets its pad button in the same pass**, in `input/padMap.js` `TURN_LAYOUT`. Never on a second code path: the pad sends the key.
 - **A new full-screen input mode** (like the Riff-Off) claims its own layer with `claimPadLayer(name)` for exactly as long as its keys are bound.
+- **A new ability** (2026-10-14, the pad turn): its arming rail button gets `data-pad-ability="sig:<id>"` (so the D-pad cross can reach it), and a new armed `action` gets its LEGAL hexes in the monolith's `padAim` (the same set its `onHexClick` branch accepts) — otherwise the pad cannot aim it.
 - ⚠️ Decoration that must not be a target gets `[data-pad="skip"]` or `pointer-events: none`.
 
-📌 Older screens get converted as they are touched; `SEQUENCING.md` §A `70-controller` lists what is still mouse-first.
+📌 Older screens get converted as they are touched; `SEQUENCING.md` §C `70-controller` (archived) lists what is still mouse-first. In pad mode the mouse arrow hides and a shield covers the page (`input/padFocus.js`) — don't test a pad screen with the mouse resting on it and expect `:hover`.
 
 ## Visual changes get a preview first
 

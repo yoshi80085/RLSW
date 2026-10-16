@@ -50,7 +50,7 @@ await act(async()=>root.render(<Game gameState={config} onReturnToLobby={()=>{}}
 }}/>));
 await click(button('Continue to Melody'));
 for(let i=0;i<3;i++){
-  const note=[...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(svg=>svg.parentElement).find(el=>el.style.cursor==='pointer');
+  const note=document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held');
   await click(note);
 }
 await click(button('Commit (3 notes'));

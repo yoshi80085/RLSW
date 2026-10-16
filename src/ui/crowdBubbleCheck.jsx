@@ -155,7 +155,9 @@ console.log('§4 the client gates it and wires it');
   const firstReturn = c.indexOf('\n  return (', gameStart);
   ok(hookAt > gameStart && hookAt < firstReturn, 'the hook sits before Game\'s render return');
   ok(/crowdCoachOn && turnStep === 'melody' && !activeTip && \(\s*<CrowdBubble/.test(c), 'the bubble renders in the melody step only, and never over a Pickles tip');
-  ok((c.match(/data-coach=\{/g) ?? []).length === 2, 'both stock grids carry the coach mark (melody pool + chord grid)');
+  // 🎡 2026-10-14: the note pool is the wheel — the crowd's ask rides on it as the `coach` mark
+  ok(/const coach = crowdMarks\.get\(i\);[\s\S]{0,120}mark\(pc, 'coach', coach\)/.test(c), 'the pool wheel carries the coach mark (Melody: the fans\' ask · Chord: the glow)');
+  ok(/marks=\{poolMarks\}/.test(c), '…and hands it to the wheel');
   ok(/data-crowd-speaker=\{s\.id === acting\?\.id && i === 0 \? '' : undefined\}/.test(c), 'the acting Spirit\'s front-row fan is the speaker');
   ok(/goals: turnStep === 'melody' \? \['fans'\] : \['drive', 'sustain'\]/.test(c), 'melody asks fans (🪦 no db since 2026-10-02); chord asks drive+sustain');
   const worker = read('src/engine/policies/playFinder.worker.js');

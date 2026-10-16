@@ -43,8 +43,8 @@ try {
  assert.equal(document.querySelector('[aria-label="Skill upgrades, coming soon"]'),null,'🪦 no upgrade shop button (Db cut 2026-10-02)');
  assert.equal(document.querySelectorAll('[data-tip-anchor="ability-wallet"] .draft-info-button').length,2);
  await click(button('Continue to Melody'));
- const notes=[...document.querySelectorAll('[data-tip-anchor="note-stock"] svg')].map(svg=>svg.parentElement).filter(el=>el.style.cursor==='pointer');
- for(const el of notes.slice(0,3))await click(el);
+ // 🎡 the note pool is the wheel (2026-10-14)
+ for(let i=0;i<3;i++)await click(document.querySelector('[data-pool-wheel] [data-wheel-pc].is-held'));
  await click(button('Commit (3 notes'));
  const otherBefore=structuredClone(observed.noteStates[b]);
  await click(button('👤 Shadow'));

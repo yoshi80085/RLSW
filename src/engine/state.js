@@ -293,6 +293,9 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     boardCards: null,
     unsurePool: null,
     battle: null,
+    // 🎤 The riff of the night (`systems/riffOff.js` riffMoment): the ONE best duel so far,
+    // replaced only by a better one. The fan MC replays it (data/fanMc.js). Absent in old saves = null.
+    bestRiff: null,
     // Phase 6b: stage FX (fully engine-owned)
     stageFx: {
       deck: stageFxDeck,

@@ -3,6 +3,7 @@
 // Zero props, no app references. Extracted verbatim from the Game render.
 // =============================================================================
 import React from "react";
+import { POOL_WHEEL_CSS, PAD_BAR_CSS, PAD_CROSS_CSS } from "./padTurnUi.js";
 
 export function GameStyles() {
   // This is a public asset and the app's Vite base is fixed at /RLSW/. Keeping
@@ -739,13 +740,20 @@ export function GameStyles() {
         .sw-slot.is-held:hover { filter:brightness(1.15); }
         .sw-phrase, .sw-last { animation:sw-pulse 1.2s ease-in-out infinite; }
         @keyframes sw-pulse { 0%,100% { opacity:1; } 50% { opacity:.35; } }
+        .sw-coach { animation:sw-pulse .9s ease-in-out infinite; }
+        .sw-fresh { transform-box:fill-box; transform-origin:center; animation:sw-pop .5s ease-out; }
+        /* 🎮🎡 the pad-turn port (2026-10-14): the pool's pad layer, the button bar, the cross */
+        ${POOL_WHEEL_CSS}
+        ${PAD_BAR_CSS}
+        ${PAD_CROSS_CSS}
+        @keyframes sw-pop { 0% { transform:scale(.2); opacity:0; } 70% { transform:scale(1.25); opacity:1; } 100% { transform:scale(1); } }
         .sw-spin { transform-origin:180px 180px; animation:sw-rot 60s linear infinite; }
         .sw-spin-rev { transform-origin:180px 180px; animation:sw-rot 90s linear infinite reverse; }
         @keyframes sw-rot { to { transform:rotate(360deg); } }
         .sw-twinkle { animation:sw-tw 2.4s ease-in-out infinite; }
         @keyframes sw-tw { 0%,100% { opacity:.2; transform:scale(.6); } 50% { opacity:1; transform:scale(1.1); } }
         @media (prefers-reduced-motion: reduce) {
-          .sw-spin, .sw-spin-rev, .sw-twinkle, .sw-phrase, .sw-last { animation:none; }
+          .sw-spin, .sw-spin-rev, .sw-twinkle, .sw-phrase, .sw-last, .sw-coach, .sw-fresh { animation:none; }
         }
       `}</style>
   );

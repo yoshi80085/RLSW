@@ -9,7 +9,7 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
   bots = [], bats = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null,
-  opening = null, fansHeld = null, lostChords = null }) {
+  opening = null, fansHeld = null, lostChords = null, fanMc = null }) {
   spirits=spirits.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   shadowDecoys=shadowDecoys.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   const visible = new Set(spirits.map(s => s.id));
@@ -48,6 +48,8 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
     // 🎸 The opening act's clock (openingAct.openingSchedule) — wall-clock stamps
     // only, no rules. Copied so the arena never holds the client's object.
     opening:opening ? { ...opening, seats:{ ...opening.seats } } : null,
+    // 🎤 The fan MC's show (data/fanMc.js + board/fanMcStage.js): its clock, timeline and cast — or null.
+    fanMc,
     // 🟪 Where the acting Spirit (or its Shadow) can step — moveTiles.js. Board
     // geometry the SVG already shows, so nothing new is revealed; dropped when the
     // owner is smoke-hidden, or the Shadow's decoy is not in the frame.

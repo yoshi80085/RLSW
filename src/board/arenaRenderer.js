@@ -51,6 +51,17 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const foregroundScene=new THREE.Scene();
     foregroundScene.add(new THREE.HemisphereLight(0xddeaff,0x34314f,2.5));
     const actorLight=new THREE.DirectionalLight(0xffffff,2);actorLight.position.set(5,12,7);foregroundScene.add(actorLight);
+    // 🎤🔝 THE FAN MC'S OWN LAYER (Alex, 2026-10-16: "make sure that he doesn't get
+    // obscured by anything when he comes out"). He, his spotlight and the replay TV
+    // live here (fanMcStage.js `floatRoot`) and are drawn LAST on the foreground
+    // canvas after a depth clear — over the hex tints, the amps, the fans, both
+    // standees, the smoke he may have just called and the Sonic's rings. In the arena
+    // scene every one of those painted over him (the 10-15 screenshot). Lit by its
+    // own pair, like the standees' layer; his spotlight joins it.
+    const mcScene=new THREE.Scene();mcScene.name='Fan MC layer';
+    mcScene.add(new THREE.HemisphereLight(0xddeaff,0x34314f,2.2));
+    {const l=new THREE.DirectionalLight(0xffffff,1.6);l.position.set(5,12,7);mcScene.add(l);}
+    cleanups.push(()=>releaseArenaObject(mcScene));
     const camera=new THREE.PerspectiveCamera(43,1,.1,500);
     const renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
     cleanups.push(()=>{releaseArenaObject(scene);renderer.dispose();renderer.forceContextLoss();renderer.domElement.remove();});
@@ -104,7 +115,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const environment=createArenaEnvironment(scene,{overlay:foregroundScene,classicScenery:false});cleanups.push(()=>environment.dispose());
     environment.setPlanetDistance(RIVEN_WORLD.planetDistance);
     const rivenWorld=createRivenWorld(scene,camera);cleanups.push(()=>rivenWorld.dispose());
-    const visuals=createArenaVisuals(scene,{foregroundScene,beamScene:beams.scene});cleanups.push(()=>visuals.dispose());
+    const visuals=createArenaVisuals(scene,{foregroundScene,beamScene:beams.scene,mcScene});cleanups.push(()=>visuals.dispose());
     const smoke=createArenaSmoke({foreground,scene,center:arenaPoint(LIMELIGHT_HEX,.1)});cleanups.push(()=>smoke.dispose());
     const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
     const crowdSpeaker=document.createElement('div');
@@ -281,6 +292,13 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // 🎯 Each Spirit's entrance close-up rides the same path (openingActStage.camera);
       // `follow` is the ☰ Auto camera switch, and `from` the lens it eases in from.
       let introShot=topView?null:visuals.openingCamera(performance.now(),camera.aspect,{reduced,follow:autoCamera,from:{position:camera.position,target:controls.target}});   // the opening's clock is performance.now(), like its stage
+      // 🎤 THE FAN MC holds the lens the same way while he has the stage (fanMcStage.camera):
+      // it eases in from wherever the player left it and ends on the ◈ Arena view.
+      // ⚠️ At .6 of frameView('arena')'s distance — the wide Alex dialled on the preview
+      // (its ARENA_CAM). The full preset leaves the board a speck for his call (seen live, 10-15).
+      if(!introShot&&!topView){const f=fit(Math.max(camera.aspect,.25))*.6,target=new THREE.Vector3(1,-2.8,0);
+        introShot=visuals.fanMcCamera(performance.now(),camera.aspect,{reduced,follow:autoCamera,from:{position:camera.position,target:controls.target},
+          wide:{position:new THREE.Vector3(27,20.8,37).multiplyScalar(f).add(target),target}});}
       if(introShot?.key&&introShot.key===lensDropped)introShot=null;
       // ⏭ A skipped intro hands back a WIDE lens; frame the arena then, rather
       // than leaving the board a speck until the auto camera's resume runs out.
@@ -337,7 +355,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
-      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.lostChords>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus||!!northSwing;
+      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.lostChords>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||stats.fanMcBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus||!!northSwing;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
@@ -363,8 +381,9 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         // together and nothing in the rig has to be found and put back.
         // 🎸 …and the opening act's own look (Alex's dial-in: bloom, exposure) rides
         // the Bardbarian's envelope, so it eases back to the arena's as he fades.
-        {const cl=visuals.curseLight(),open=visuals.openingEnvelope();
-         renderer.toneMappingExposure=(1+(OPENING_ACT.exposure-1)*open)*(1-.6*Math.min(1,cl.dim));
+        // 🎤 …and the fan MC's tease dims it, his call flashes it (fanMcStage.light).
+        {const cl=visuals.curseLight(),open=visuals.openingEnvelope(),mc=visuals.fanMcLight(performance.now());
+         renderer.toneMappingExposure=(1+(OPENING_ACT.exposure-1)*open)*(1-.6*Math.min(1,cl.dim))*(1-mc.dim)*(1+mc.flash);
          bloom.strength=RIVEN_WORLD.bloom+(OPENING_ACT.bloom-RIVEN_WORLD.bloom)*open;
          // The preview hid the arena's own transient bolts under the storm (it has its own).
          const bolts=scene.getObjectByName('Transient branching lightning');if(bolts)bolts.visible=open<.01;}
@@ -373,11 +392,16 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         // back after it, so the camera director and OrbitControls never see it.
         const pyroLens=visuals.pyroCamera?.(reduced),fov0=camera.fov;
         if(pyroLens){camera.position.x+=pyroLens.x;camera.position.y+=pyroLens.y;camera.fov=fov0*pyroLens.fov;camera.updateProjectionMatrix();}
+        // 🎤📺 The replay TV's screen is a render target: draw its little stage first —
+        // with the FOREGROUND renderer, the one that draws the TV (fanMcStage.prerender).
+        if(stats.fanMcBusy){visuals.fanMcPrerender(foreground);visuals.fanMcScreen(camera,host.getBoundingClientRect());}
         renderer.info.reset();composer.render();overlay.render(overlayScene,camera);
         smoke.begin();foreground.clear();markSolid([smoke.vent,crowd.group,...visuals.solidRoots()]);solid.render(scene,camera);foreground.render(foregroundScene,camera);
         smoke.composite();
         beams.render(camera,{occluderScene:foregroundScene,occluders:visuals.beamOccluders(),bloom:bloom.enabled});
         smoke.drawSelf(camera,foregroundScene,visuals.pawnFor(frame.smoke?.selfId));dirty=false;
+        // 🎤🔝 …and the fan MC over ALL of it: depth cleared, so nothing drawn before can hide him.
+        if(stats.fanMcBusy){foreground.clearDepth();foreground.render(mcScene,camera);}
         if(pyroLens){camera.position.x-=pyroLens.x;camera.position.y-=pyroLens.y;camera.fov=fov0;camera.updateProjectionMatrix();}
         host.dataset.arenaSmokeAmount=smokeState.opacity.toFixed(3);host.dataset.arenaSmokeExtent=smokeState.extent.toFixed(3);
         host.dataset.arenaSmokeSelf=frame.smoke?.selfId??'';

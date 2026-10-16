@@ -222,6 +222,8 @@ export default function TitleMenu({
             const dim = it.locked;
             return (
               <div key={it.id} className="tm-item"
+                // 🎮 the pad's ring starts on the first option you can take (input/padFocus.js)
+                data-pad-default={i === ITEMS.findIndex(x => !x.locked) ? 'title' : undefined}
                 onMouseEnter={() => !leaving && setCursor(i)}
                 onClick={() => choose(i)}
                 title={it.locked ? `${it.label} — not built out yet.` : it.blurb}
