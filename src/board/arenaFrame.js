@@ -9,7 +9,7 @@ const SPOT_CORNERS = ['blue', 'purple', 'yellow', 'red'];
 export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=actingId, turn, battle,
   slides = {}, flashes = [], thump, laser, pyro, smoke, slime = [], fire, vortex,
   bots = [], bats = [], spotlight, spotlights = null, tentacle, shadowDecoy = null, shadowDecoys = shadowDecoy ? [shadowDecoy] : [], vortices = vortex ? [vortex] : [], lite = false, stats = {}, reach = null, attack = null, crowdSpirits = spirits, unlock = null, marquees = [], shamisen = null,
-  opening = null, fansHeld = null, lostChords = null, fanMc = null }) {
+  opening = null, fansHeld = null, lostChords = null, fanMc = null, well = null }) {
   spirits=spirits.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   shadowDecoys=shadowDecoys.filter(s=>!isSmokeHidden(s,smoke,actingId,viewerId));
   const visible = new Set(spirits.map(s => s.id));
@@ -180,6 +180,16 @@ export function arenaFrame({ spirits = [], noteStates = {}, actingId, viewerId=a
       // 🪦 a trap that caught no one burns in public (rule 18)
       ashes:(shamisen.ashes ?? []).filter(a => a?.key && Number.isFinite(a.hexNum))
         .map(a => ({ key:a.key, trapKey:a.trapKey ?? null, hexNum:a.hexNum, roninId:a.roninId ?? null, how:a.how ?? null })),
+    } : null,
+    // 🌀 THE WELLSPRING (board/centreWell.js). `lastTap.seq` is the event (a new
+    // seq = someone just stepped on); `gift` is whether the well had anything for
+    // them. `charged` = the Spirits whose tap is live — the CLIENT asks the engine
+    // (`isWellLive`), so this file stays free of rules. A smoke-hidden Spirit keeps
+    // its seq (the well still answers) but loses its name, and wears no aura.
+    well:well ? {
+      lastTap:well.lastTap && Number.isFinite(well.lastTap.seq) ? { seq:well.lastTap.seq,
+        spiritId:visible.has(well.lastTap.spiritId) ? well.lastTap.spiritId : null, gift:well.lastTap.kind != null } : null,
+      charged:(well.charged ?? []).filter(id => visible.has(id)),
     } : null,
     // The arm's visible trail is already public board geometry.
     tentacle:tentacle ? {key:tentacle.key, pts:tentacle.pts.map(p=>({x:p.x,y:p.y}))} : null,

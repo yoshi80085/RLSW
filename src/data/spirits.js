@@ -2,7 +2,10 @@
 // STAT TRIO (locked): Drive = attack · Sustain = defense · Vibe = health.
 // vibe / maxVibe = current / max health (damage capacity before Knocked Down).
 // Style: Shred = high Drive | Flair = high Sustain | Groove = balanced lean-Sustain.
-// Speed: 4–6 — max hexes of movement per turn.
+// Speed: the AP ceiling — max hexes of movement per turn. ⭐ EVERY SPIRIT IS 4
+// (Alex, 2026-10-16: "normal characters, including him will start with the 4
+// AP"). The Ronin's 5th comes from the centre hex now, not from this sheet —
+// `engine/systems/wellspring.js` `WELL_TAPS`. Read it through `apCeilingFor`.
 import glamarchy from "../standees/Glamarchy.png";
 import cosmic_ronin from "../standees/Cosmic_Ronin.png";
 import intergalactic_0 from "../standees/Intergalactic_0.png";
@@ -17,10 +20,10 @@ import metalness_monster from "../standees/Metalness_monster.png";
 // four defaults happened to equal the four corner colours, so a P2 Ronin still
 // wore P1's blue on the picker and every effect named after him.
 export const SPIRIT_DEFS = {
-  "cosmic_ronin":      { id:"cosmic_ronin",      name:"Shredding Ronin",      imageSrc:cosmic_ronin,      vibe:15, maxVibe:15, knockedOut:false, style:"Shred",  drive:8, sustain:5, speed:5 },
+  "cosmic_ronin":      { id:"cosmic_ronin",      name:"Shredding Ronin",      imageSrc:cosmic_ronin,      vibe:15, maxVibe:15, knockedOut:false, style:"Shred",  drive:8, sustain:5, speed:4 },
   "intergalactic_0":   { id:"intergalactic_0",   name:"Intergalactic 0",   imageSrc:intergalactic_0,   vibe:12, maxVibe:12, knockedOut:false, style:"Groove", drive:6, sustain:7, speed:4 },
   "Metalness_Monster": { id:"Metalness_Monster", name:"Metalness Monster", imageSrc:metalness_monster, vibe:15, maxVibe:15, knockedOut:false, style:"Shred",  drive:7, sustain:6, speed:4 },
-  "Glamarchy":         { id:"Glamarchy",         name:"Glamarchy",         imageSrc:glamarchy,         vibe:12, maxVibe:12, knockedOut:false, style:"Flair",  drive:5, sustain:8, speed:5 },
+  "Glamarchy":         { id:"Glamarchy",         name:"Glamarchy",         imageSrc:glamarchy,         vibe:12, maxVibe:12, knockedOut:false, style:"Flair",  drive:5, sustain:8, speed:4 },
 };
 
 export const SPIRIT_OPTIONS = Object.values(SPIRIT_DEFS);

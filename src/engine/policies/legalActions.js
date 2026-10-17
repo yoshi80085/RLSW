@@ -1,3 +1,4 @@
+import { apCeilingFor } from "../systems/wellspring.js";
 import { characterId } from "../../data/spiritIdentity.js";
 import { bushidoLane, bushidoBlockers } from "../systems/bushido.js";
 // ─── LEGAL ACTIONS ──────────────────────────────────────────────────────────
@@ -249,7 +250,8 @@ export function legalActions(state, spiritId, view = {}) {
       out.push({
         kind: 'confirmMelody',
         apCost: 0,
-        apGranted: Math.min(track.length, def.speed ?? 5),
+        // 🌀 the same ceiling the kernel grants under (systems/wellspring.js)
+        apGranted: Math.min(track.length, apCeilingFor(state, spiritId, self)),
       });
     }
     return out;

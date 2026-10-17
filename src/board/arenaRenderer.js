@@ -25,6 +25,8 @@ import { createSonicCamera } from './sonicCamera.js';
 import { createArenaCrowd } from './arenaCrowd.js';
 import { CAMERA_DIRECTOR, createCameraDirector, createCameraSubjects } from './cameraDirector.js';
 import { OPENING_ACT } from './openingAct.js';
+import { createCentreWell } from './centreWell.js';
+import { STANDEE_Y } from './standee.js';
 
 // The SVG remains the only gameplay input surface. WebGL consumes a filtered,
 // read-only presentation frame; neither camera nor effects can dispatch actions.
@@ -117,6 +119,19 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     const rivenWorld=createRivenWorld(scene,camera);cleanups.push(()=>rivenWorld.dispose());
     const visuals=createArenaVisuals(scene,{foregroundScene,beamScene:beams.scene,mcScene});cleanups.push(()=>visuals.dispose());
     const smoke=createArenaSmoke({foreground,scene,center:arenaPoint(LIMELIGHT_HEX,.1)});cleanups.push(()=>smoke.dispose());
+    // 🌀 THE WELLSPRING (centreWell.js — Alex's dial-in 2026-10-16, `CENTRE_WELL`).
+    // The stone glows up from under the floor in the arena scene; the rise (the
+    // swirl, the glitter, the haze) and the charged Spirit's aura go on the
+    // foreground, over the tactical SVG, like the spotlight beams.
+    const well=createCentreWell(scene,{pointFor:arenaPoint,hexNum:LIMELIGHT_HEX,riseScene:foregroundScene});cleanups.push(()=>well.dispose());
+    const wellCentre=arenaPoint(LIMELIGHT_HEX,STANDEE_Y);
+    // `seenWellSeq` skips the mount (a resumed match replays no tap); `wellTap`
+    // waits for the stepper's standee to LAND before the well answers it.
+    let seenWellSeq,wellTap=null;
+    const wellBody=id=>{const pawn=visuals.pawnFor(id);if(!pawn)return null;
+      const p=pawn.getWorldPosition(new THREE.Vector3());
+      return {at:new THREE.Vector3(p.x,STANDEE_Y,p.z),height:pawn.userData.standee?.height??1.6,
+        color:frame.spirits?.find(s=>s.id===id)?.color??null,pawn:p};};
     const crowd=createArenaCrowd(scene);crowd.group.visible=false;cleanups.push(()=>crowd.dispose());
     const crowdSpeaker=document.createElement('div');
     Object.assign(crowdSpeaker.style,{position:'fixed',width:'2px',height:'2px',pointerEvents:'none',opacity:'0'});
@@ -355,13 +370,20 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // A head dial mid-change is motion too: under reduced motion the loop only
       // draws when something moves, and a dial that appears must also DISAPPEAR.
       const smokeState=smoke.update(frame.smoke,elapsed,camera,{reduced});
-      const stats=visuals.diagnostics(),moving=smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.lostChords>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||stats.fanMcBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus||!!northSwing;
+      const stats=visuals.diagnostics(),moving=!!wellTap||well.diagnostics().tapping||smokeState.busy||stats.laserBusy||stats.effects>0||stats.headDials>0||stats.moveTiles>0||stats.attackTiles>0||stats.marquees>0||stats.lostChords>0||stats.standeeSteps>0||stats.pyroBusy||stats.openingBusy||stats.fanMcBusy||sonicCamera.active||!!cameraShot?.driving||!!refocus||!!northSwing;
       if(reduced&&!dirty&&!moving)return;
       if(now-lastDraw<(lite?1000/30:1000/60)-1)return;
       lastDraw=now;
       try {
         environment.update(elapsed,{lite,reduced,spotlights:frame.spotlights});
         rivenWorld.update(elapsed,{reduced});
+        // 🌀 The tap fires once the stepper is ON the centre (its walk animates in
+        // after the frame lands), or after 1.5 s whatever happens.
+        if(wellTap){const b=wellBody(wellTap.id);
+          if(!b||b.pawn.distanceToSquared(wellCentre)-(b.pawn.y-wellCentre.y)**2<.0625||now-wellTap.t0>1500){
+            well.tapIn({at:wellCentre.clone(),height:b?.height??2.8,color:b?.color??null},{gift:wellTap.gift});wellTap=null;}}
+        well.update(elapsed,{reduced,pixelRatio:renderer.getPixelRatio(),
+          charged:(frame.well?.charged??[]).map(wellBody).filter(Boolean)});
         crowd.tick(elapsed,{reduced});
         // 👏 The bout's crowd reaction rides on top of the idle tick.
         crowd.react(elapsed,visuals.crowdReaction()??{amount:0},{reduced});
@@ -489,6 +511,9 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
         // 🎯 A turn changing hands (TURN_FOCUS_MS above). The first acting Spirit the
         // arena ever sees is not a change: mounting frames the arena, the intro its own.
         if(frame.actingId!==seenActing){if(seenActing!==undefined&&frame.actingId!=null)turnFocus=true;seenActing=frame.actingId;}
+        // 🌀 A NEW `lastTap.seq` is the event (engine/systems/wellspring.js).
+        {const tap=frame.well?.lastTap,seq=tap?.seq??null;
+         if(seq!==seenWellSeq){if(seenWellSeq!==undefined&&tap)wellTap={id:tap.spiritId,gift:tap.gift,t0:performance.now()};seenWellSeq=seq;}}
 applyQuality();visuals.update(frame);crowd.update(frame.crowds);dirty=true;},
       quality(value){if(value===quality)return;quality=value;autoLite=false;applyQuality();dirty=true;},
       // 🎮 THE RIGHT STICK (input/gamepad.js). `grab` is a mouse drag's start/end

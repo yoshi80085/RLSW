@@ -17,6 +17,7 @@ import { openingActOn, openingActSeats, applySpiritEntered, homeHexOf } from "./
 import { makeRng } from "./rng.js";
 import { makeInitialNoteState } from "./systems/economy.js";
 import { makeLimelightState } from "./systems/limelight.js";
+import { makeWellState } from "./systems/wellspring.js";
 import { shuffledStageFxDeck } from "../data/stageEffects.js";
 import { makeBoardToken } from "../board/boardHelpers.js";
 import { seatedCorners, openingMarquees, rollMarqueeKind } from "./systems/marqueeSpaces.js";
@@ -242,6 +243,11 @@ export function makeInitialState(gameConfig, seed = Date.now() >>> 0) {
     // resets — being shoved out of the middle costs you the tempo, not the
     // reputation.
     limelight: makeLimelightState(),
+
+    // 🌀 THE WELLSPRING (2026-10-16) — the centre hex's per-Spirit tap: who has
+    // charge banked and whose tap is live this turn. See systems/wellspring.js.
+    // Absent on older states; every reader goes through `slice()` with a default.
+    well: makeWellState(),
 
     // Phase 6a: board state (engine-owned, seeded)
     board: {

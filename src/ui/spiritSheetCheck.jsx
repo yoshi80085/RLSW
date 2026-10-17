@@ -41,7 +41,10 @@ const base = (x = {}) => ({ spirit: { ...SPIRIT_DEFS.cosmic_ronin, color: '#4488
   ok(m.fame.fp === 0 && m.fame.lead === 0 && !m.fame.danger && !m.fame.capped, '§1 no Fame, level, not contested');
   ok(m.statuses.length === 0, '§1 nothing on a fresh Spirit');
   ok(m.abilities.length === 2 && m.abilities.every(a => a.ready && a.cd === 0), '§1 both drafted abilities READY');
-  ok(m.body.vibe === 15 && m.body.maxVibe === 15 && m.body.lives === 3 && m.body.speed === 5 && m.body.hex === 7, '§1 body numbers');
+  ok(m.body.vibe === 15 && m.body.maxVibe === 15 && m.body.lives === 3 && m.body.speed === 4 && m.body.hex === 7, '§1 body numbers (everyone is 4 AP, 2026-10-16)');
+  // 🌀 the Wellspring: the caller hands the live ceiling (apCeilingFor) and the sheet shows it
+  const tapped = sheetModel(base({ apCeiling: 5, wellLive: true }));
+  ok(tapped.body.speed === 5 && tapped.body.wellLive === true, '§1 a live Wellspring tap shows as SPEED 5');
   ok(m.sound.drive.value === 1 && m.sound.drive.cap === 3 && m.sound.drive.chord === 'Single note', '§1 Drive = one note, three seats');
   ok(m.sound.drive.next?.label === 'Power chord' && m.sound.drive.next.notes.join() === 'B', '§1 next Drive step: add B → Power chord (E root)');
   ok(m.body.fans === 2, '§1 two Diehards');

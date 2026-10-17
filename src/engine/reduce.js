@@ -73,6 +73,7 @@ import { applyElevenCalled } from "./systems/eleven.js";
 import { applyPoseSet, applyPoseRoundBanked } from "./systems/limelight.js";
 import { enforceSpotPoses } from "./systems/spotlights.js";
 import { applySandboxSeatTaken, applySandboxRefilled } from "./systems/sandbox.js";
+import { wakeWell, sleepWell, collectWellTaps } from "./systems/wellspring.js";
 
 /**
  * @param {object} state   plain-JSON GameState (never mutated)
@@ -87,6 +88,16 @@ export function applyAction(state, action, rng = restoreRng(state.rng)) {
   if ([MOVE_STEP, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRIT_PATCHED, SPIRIT_SLID].includes(action.type)) {
     next = collectBatEntries(state, next, rng);
   }
+  // 🌀 THE WELLSPRING — the acting Spirit arriving on the centre taps it, and a
+  // turn starting spends one turn of charge (systems/wellspring.js). Here, after
+  // the reducer, so EVERY way of moving is covered by one check — a new movement
+  // action only has to join this list. ⚠️ SPIRIT_PATCHED is deliberately not in
+  // it: a patch is a correction or a shove, never the Spirit stepping.
+  if ([MOVE_STEP, SPIRIT_WARPED, SHUKUCHI_HOPPED, SPIRIT_SLID].includes(action.type)) {
+    next = collectWellTaps(state, next);
+  }
+  if (action.type === TURN_STARTED) next = wakeWell(next, action.spiritId);
+  if (action.type === TURN_ENDED || action.type === TURN_SKIPPED) next = sleepWell(next, state.acting);
   // Persist rng position so the next applyAction resumes the same stream.
   return { ...next, rng: rng.state() };
 }

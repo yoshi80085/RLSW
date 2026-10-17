@@ -211,6 +211,7 @@ import {
 // (here, `evaluate.js`, and whatever the turn clock actually billed) and they
 // agreed only by convention — see engine/systems/limelight.js.
 import { posePayout } from "./engine/systems/limelight.js";
+import { apCeilingFor, isWellLive, wellChargeOf, wellTapFor } from "./engine/systems/wellspring.js";
 import { startTurnNotes, refillDrawCount } from "./engine/systems/turnFlow.js";
 // 🎼 THE COMMIT'S ECONOMY — the single source of truth for what a melody is
 // worth. `confirmNoteTrack` is a shell over this; see the header there.
@@ -2387,6 +2388,39 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
       }
     }
   }, [engineState]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── 🌀 THE WELLSPRING — theatre only ─────────────────────────────────────
+  // The rule is engine-side (`engine/systems/wellspring.js`): stepping onto the
+  // centre on your own turn charges your tap; each following turn spends one.
+  // Same idiom as the spotlights above: a NEW `lastTap` object is the event, and
+  // the ref skips the mount so a resumed match replays nothing.
+  // This is the log and the flash; the swirl the Spirit draws in is the arena's
+  // (board/centreWell.js, fed `well` through arenaFrame — 2026-10-17).
+  const wellNewsRef = useRef(null);
+  useEffect(() => {
+    const W = engineState.well ?? {};
+    const actingId = engineState.acting;
+    const now = { tap: W.lastTap, liveKey: actingId && isWellLive(engineState, actingId) ? `${engineState.turn.count}:${actingId}` : null };
+    const was = wellNewsRef.current;
+    wellNewsRef.current = now;
+    if (!was) return;
+    const nm = id => engineState.spirits.find(x => x.id === id)?.name ?? 'Someone';
+    if (now.tap && now.tap !== was.tap) {
+      const t = now.tap;
+      if (t.kind === 'ap') {
+        addLog(`🌀 ${nm(t.spiritId)} taps the Wellspring — ancient sound floods in: ${t.label ?? `+${t.amount} AP`} on their next ${t.turns} turns.`);
+        triggerEffectFlash(t.spiritId, '🌀', `+${t.amount} AP · ${t.turns} TURNS`, seatColor(t.spiritId));
+      } else {
+        addLog(`🌀 ${nm(t.spiritId)} steps into the Wellspring — it stirs, but has no gift for them yet.`);
+      }
+    }
+    if (now.liveKey && now.liveKey !== was.liveKey) {
+      const tap = wellTapFor(actingId), left = wellChargeOf(engineState, actingId);
+      if (tap?.kind === 'ap') {
+        addLog(`🌀 The Wellspring still sings in ${nm(actingId)} — up to ${apCeilingFor(engineState, actingId)} AP this turn${left > 0 ? ` (${left} more turn${left === 1 ? '' : 's'} after this)` : ' (the last one)'}.`);
+      }
+    }
+  }, [engineState]); // eslint-disable-line react-hooks/exhaustive-deps
   // 💥 Floating combat numbers (e.g. −2 ❤️) that drift up over an affected hex.
   const [damageFx, setDamageFx] = useState([]); // [{ key, hexNum, text, color }]
   // turnCount lives in the engine now (engineState.turn.count)
@@ -3072,7 +3106,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   const discordCount  = actingNoteState?.discordCount  ?? 0;
   const hasConfirmed  = actingNoteState?.hasConfirmed  ?? false;
   // Speed, banking, discord unlocks
-  const actingSpeed     = Math.min(5, acting?.speed ?? 5); // Speed caps at 5
+  // 🌀 The AP ceiling — speed (4 for everyone) plus a live Wellspring tap, capped
+  // at 5. The SAME function the kernel grants under (engine/systems/wellspring.js).
+  const actingSpeed     = acting ? apCeilingFor(engineState, acting.id, acting) : 4;
   const bankedNote      = actingNoteState?.bankedNote ?? null;
   const discordUnlocks  = actingNoteState?.discordUnlocks ?? [];
   // Which interval keys are currently unlocked for this spirit
@@ -11567,7 +11603,7 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
   function hexFill(hex) {
     // hovering a HUD attack button previews its range like the live mode
     const previewAction = action ?? hoverPreview;
-    if (hex.num === LIMELIGHT_HEX) return "#ff44ff18";
+    // 🌀 The centre's own colour is the Wellspring now (board/centreWell.js), drawn in the arena.
     const sp = spiritByNum[hex.num];
     // 💨 Smoke-hidden spirits are invisible — don't colour their hex
     if (sp && !isHiddenBySmoke(sp)) return sp.color + "44";
@@ -13082,6 +13118,9 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
               fameBanked: fameThisTurnRef.current?.[s.id] ?? 0,
               rivalBestFame: Math.max(0, ...spirits.filter(o => o.id !== s.id).map(o => noteStates?.[o.id]?.fame ?? 0)),
               edgeHex: !!HEX_BY_NUM[s.num]?.edge,
+              // 🌀 the AP ceiling with a live Wellspring tap (engine/systems/wellspring.js)
+              apCeiling: apCeilingFor(engineState, s.id, s),
+              wellLive: isWellLive(engineState, s.id),
               headliner: engineRef.current.headliner === s.id,
               respawn: !!respawnFlashes[s.id],
               keyIsNext: nextKey,
@@ -15108,6 +15147,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 opening:openingSched, fansHeld,
                 // 🎤 The fan MC's show — his clock, timeline and cast (board/fanMcStage.js).
                 fanMc:fanMcLive ? fanMcShow : null,
+                // 🌀 The Wellspring (board/centreWell.js): the engine's tap report, and who has a live tap.
+                well:{ lastTap:engineState.well?.lastTap ?? null, charged:spirits.filter(s => isWellLive(engineState, s.id)).map(s => s.id) },
                 // 🎸 The Iwato curse, read off the sheets alone (`iwatoCurse.js` curseScene).
                 // 🪤 + this seat's OWN armed trap (`myTrap`) — the noroi card is thrown only here.
                 shamisen:{ ...curseScene(spirits, noteStates), trap: myTrap },
@@ -15324,71 +15365,8 @@ export function Game({ gameState, onReturnToLobby, onEngineState }) {
                 );
               })()}
 
-              {/* ── 🎤 CENTRE STAGE ENERGY ── the dark middle lights up as the arena fills ── */}
-              {(() => {
-                const hub = HEX_BY_NUM[LIMELIGHT_HEX]; if (!hub) return null;
-                const cx = hub.px * SCALE, cy = hub.py * SCALE;
-                const energy = Math.min(1, arenaFans() / 50);   // 0..1 as the crowd swells
-                const glowO  = 0.10 + 0.42 * energy;
-                const ringO  = 0.28 + 0.55 * energy;
-                const pit = ALL_HEXES.filter(h => hexRingFromCenter(h.num) === 'pit');
-                return (
-                  <g style={{pointerEvents:"none"}}>
-                    <defs>
-                      <radialGradient id="stage-glow-grad" cx="50%" cy="50%" r="50%">
-                        <stop offset="0%"   stopColor="#ff66cc" stopOpacity={glowO}/>
-                        <stop offset="45%"  stopColor="#ff3399" stopOpacity={glowO * 0.5}/>
-                        <stop offset="100%" stopColor="#ff3399" stopOpacity={0}/>
-                      </radialGradient>
-                    </defs>
-                    <style>{`
-                      @keyframes stage-breathe   { 0%,100%{transform:scale(1)} 50%{transform:scale(1.12)} }
-                      @keyframes stage-rays-spin { from{transform:rotate(0deg)} to{transform:rotate(360deg)} }
-                      @keyframes stage-halo-spin { from{transform:rotate(0deg)} to{transform:rotate(-360deg)} }
-                    `}</style>
-                    {/* Breathing bloom — two layers pulsing out of phase (intensity = energy) */}
-                    <ellipse cx={cx} cy={cy} rx={HS * 3.4} ry={HS * 3.0} fill="url(#stage-glow-grad)"
-                      style={{animation:"stage-breathe 4.2s ease-in-out infinite",
-                        transformOrigin:`${cx}px ${cy}px`}}/>
-                    <ellipse cx={cx} cy={cy} rx={HS * 1.9} ry={HS * 1.65} fill="url(#stage-glow-grad)"
-                      style={{animation:"stage-breathe 2.7s ease-in-out 0.6s infinite",
-                        transformOrigin:`${cx}px ${cy}px`}}/>
-                    {/* Rotating light rays — the house rig wakes up as the crowd swells */}
-                    <g opacity={0.10 + 0.30 * energy}
-                      style={{animation:"stage-rays-spin 26s linear infinite",
-                        transformOrigin:`${cx}px ${cy}px`}}>
-                      {[0, 1, 2, 3, 4, 5].map(k => {
-                        const a  = (Math.PI * 2 * k) / 6;
-                        const rx = Math.cos(a), ry = Math.sin(a);
-                        const R1 = HS * 1.1, R2 = HS * 3.6, W = HS * 0.5;
-                        const qx = -ry, qy = rx;
-                        return (
-                          <polygon key={k}
-                            points={`${cx + rx * R1},${cy + ry * R1} ${cx + rx * R2 + qx * W},${cy + ry * R2 + qy * W} ${cx + rx * R2 - qx * W},${cy + ry * R2 - qy * W}`}
-                            fill="#ff66cc" opacity={0.35} style={{mixBlendMode:"screen"}}/>
-                        );
-                      })}
-                    </g>
-                    {/* The Pit — contested apron around the stage */}
-                    {pit.map(h => (
-                      <polygon key={`pit-${h.num}`}
-                        points={pointyCorners(h.px * SCALE, h.py * SCALE, HS * 0.98)}
-                        fill="none" stroke="#ff66cc" strokeWidth={1.1} opacity={ringO * 0.7}
-                        style={{animation:`stage-throb ${3.0 + (h.num % 3) * 0.4}s ease-in-out infinite`}}/>
-                    ))}
-                    {/* The Mainstage hex itself — neon ring + counter-rotating dashed halo */}
-                    <polygon points={pointyCorners(cx, cy, HS * 1.02)}
-                      fill="none" stroke="#ff99dd" strokeWidth={1.6} opacity={ringO}
-                      style={{animation:"stage-throb 2.4s ease-in-out infinite",
-                        filter:"drop-shadow(0 0 5px #ff66cc)"}}/>
-                    <g style={{animation:"stage-halo-spin 14s linear infinite",
-                        transformOrigin:`${cx}px ${cy}px`}}>
-                      <circle cx={cx} cy={cy} r={HS * 1.35} fill="none" stroke="#ff99dd"
-                        strokeWidth={1} strokeDasharray="10 14" opacity={ringO * 0.55}/>
-                    </g>
-                  </g>
-                );
-              })()}
+              {/* ── 🌀 The centre: the old pink CENTRE STAGE ENERGY glow came out 2026-10-17 —
+                  the middle is the Wellspring now, drawn in the arena (board/centreWell.js). */}
 
               {/* ── 🤘 MASTER OF MOSHPITS — the walk-on ──────────────────────────
                   Three fans have left their seats (the grandstand count already

@@ -175,7 +175,10 @@ export function sheetModel(a) {
       vibe: spirit.vibe ?? 0, maxVibe: spirit.maxVibe ?? 0,
       lives, startingLives: Math.max(a.startingLives ?? 3, lives),
       lastLife: lives === 1,
-      speed: Math.min(5, spirit.speed ?? 5),
+      // 🌀 `apCeiling` from the caller (`apCeilingFor`) so a live Wellspring tap shows;
+      // without one the old reading of the sheet's own speed.
+      speed: a.apCeiling ?? Math.min(5, spirit.speed ?? 4),
+      wellLive: !!a.wellLive,
       hex: spirit.num ?? null, edge: !!a.edgeHex, ko: !!spirit.knockedOut,
       fans: (ns.casuals ?? 0) + (ns.diehards ?? 0),
     },

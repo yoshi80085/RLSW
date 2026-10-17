@@ -45,6 +45,7 @@ import {
 import { melodyModeFor } from "../../music/melodyIdentity.js";
 import { melodyPayoutFor } from "../../music/melodyPayout.js";
 import { livePalette, liftOutcome } from "./iwatoCurse.js";
+import { apCeilingFor } from "./wellspring.js";
 import { playedNotes } from "../../music/noteTechniques.js";
 import { SPIRIT_DEFS } from "../../data/spirits.js";
 import {
@@ -215,7 +216,9 @@ export function commitMelodyEconomy(state, spiritId, ctx = {}) {
   const newRootRaw    = ENHARMONIC_RESPELL[lastNote] ?? lastNote;
 
   // ── SPEED & BANKING — §1's spine ──────────────────────────────────────────
-  const speed        = Math.min(SPEED_CAP, spirit.speed ?? SPIRIT_DEFS[characterId(spiritId)]?.speed ?? 5);
+  // 🌀 Through `apCeilingFor`: the Spirit's speed, plus a live Wellspring tap
+  // (the Ronin's 5th AP), under SPEED_CAP — systems/wellspring.js.
+  const speed        = Math.min(SPEED_CAP, apCeilingFor(state, spiritId, spirit));
   const totalNotes   = melodyLine.length;
   const usableMoves  = Math.min(totalNotes, speed);
   const overflow     = totalNotes - usableMoves;

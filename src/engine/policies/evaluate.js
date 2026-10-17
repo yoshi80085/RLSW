@@ -1,3 +1,4 @@
+import { apCeilingFor } from "../systems/wellspring.js";
 import { characterId } from "../../data/spiritIdentity.js";
 // ─── BOT EVALUATION ─────────────────────────────────────────────────────────
 // `evaluate(state, spiritId, view) -> { score, terms }` — BOT_STRATEGY_HANDOFF §5.
@@ -931,7 +932,7 @@ export function evaluate(state, spiritId, view = {}) {
   // 7. AP BANKED — only the acting Spirit has a live pool. For everyone else
   //    this is unknowable, not zero, so it is neutralised rather than guessed.
   const acting = state?.acting === spiritId;
-  const speed  = def.speed ?? 5;
+  const speed  = acting ? apCeilingFor(state, spiritId) : (def.speed ?? 5);   // 🌀 a live tap raises the pool's ceiling
   terms.apBanked = acting ? clamp01((state?.turn?.moveStepsLeft ?? 0) / speed) : 0;
 
   // 8. INSIDE OWN RIG RADIUS — §3.1's worst square on the board is being

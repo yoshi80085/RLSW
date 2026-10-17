@@ -133,7 +133,10 @@ function readHand(spiritId, ns, opts) {
   const prefix = [...(ns.melodyLine ?? [])];
   const confirmed = !!ns.hasConfirmed;
   const budget = confirmed ? 0 : Math.max(0, STACK_COMMIT_BUDGET - (ns.stackCommitsThisTurn ?? 0));
-  const speed = Math.min(SPEED_CAP, SPIRIT_DEFS[characterId(spiritId)]?.speed ?? 5);
+  // 🌀 `opts.apCeiling` — a caller holding the game state passes
+  // `apCeilingFor(state, id)` so a live Wellspring tap counts. Informational only
+  // (`result.moves`); the search itself never reads it.
+  const speed = Math.min(SPEED_CAP, opts.apCeiling ?? SPIRIT_DEFS[characterId(spiritId)]?.speed ?? 5);
   // 🎸 Charges the search may spend (0 unless asked for, and only the Ronin).
   const hammers = opts.techniques && !confirmed && hasHammerOn(spiritId)
     ? Math.max(0, Math.min(HAMMER_ON.bank, ns.hammerCharges ?? 0)) : 0;
