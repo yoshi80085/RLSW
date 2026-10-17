@@ -54,12 +54,14 @@ claims.
 ## Boot flow
 
 ```
-index.html
-  └─ main.jsx                  React root, StrictMode, imports index.css
-       └─ App.jsx              thin wrapper, renders <RLSWSimulator/>
-            └─ rlsw-simulator-v3_8_1.jsx
-                 ├─ app/RLSWSimulator.jsx   app shell: Title → Lobby → Game
-                 └─ Game()            the gameplay component (~15,700 lines)
+index.html                     (a build: disguised as a 502 while the gate is on)
+  └─ main.jsx                  the front door: runGate(() => import('./boot.jsx'))
+       ├─ app/gate.js          🚪 fake 502 + hidden code (builds only, while GATE.on)
+       └─ boot.jsx             React root, StrictMode, imports index.css  (lazy chunk)
+            └─ App.jsx         thin wrapper, renders <RLSWSimulator/>
+                 └─ rlsw-simulator-v3_8_1.jsx
+                      ├─ app/RLSWSimulator.jsx   app shell: Title → Lobby → Game
+                      └─ Game()            the gameplay component (~15,700 lines)
 ```
 
 ⚠️ **THE ENGINE IS NOT IN THAT CHAIN, AND THAT IS THE SINGLE MOST IMPORTANT FACT
@@ -68,6 +70,27 @@ and are reached by `dispatch(action)`; `Game` reads the resulting state and draw
 it. A rule implemented inside `Game` is a rule the headless harness, the bot bench
 and the determinism replay cannot see — which is how the marquee quiz sat
 client-only until 2026-08-20 and did nothing at all in every bench match ever run.
+
+
+### 🚪 The front gate — a fake "502" while the game is not public (2026-10-17)
+
+Alex: *"make it seem like 'there's nothing but something broken in here' for anyone
+who may be looking for the moment."* A **built** copy (GitHub Pages, `vite preview`)
+opens on nginx's stock *502 Bad Gateway*; the hidden code — arrow keys / WASD, or a
+pad's D-pad / left stick — brings the real game in. `npm run dev` never sees it.
+⚠️ **A curtain, not a lock**: it all ships to the browser, and the repo itself is
+public. ✅ **To go public: `GATE.on = false` in `app/gateConfig.js` and rebuild** —
+the HTML half reads the same flag. 🔑 New code: `npm run gate:code -- up left …`.
+
+| File | Lines | Exports | Purpose |
+|------|------:|---------|---------|
+| `main.jsx` | 8 | — | The front door: statically imports ONLY `app/gate.js`, and reaches the game through `import('./boot.jsx')`, so a gated page downloads none of it. ⚠️ A static import of the game here puts it back on the 502's download list (`test:gate` §6). |
+| `boot.jsx` | 16 | — | What `main.jsx` used to be: `createRoot` → `<App/>` under StrictMode, plus `index.css`. A separate lazy chunk. |
+| `gate.js` | 137 | `runGate`, `gateActive`, `padDirections`, `KEY_TOKENS` | Browser half: decides if the gate is up (never in dev; never again in a tab once opened — `sessionStorage`), listens for the code on keys (capture phase, no repeats) and on every pad (rAF poll; D-pad 12–15, left stick with 0.6/0.3 hysteresis on its dominant axis), and on the code removes the fake page, restores the title, favicon and fonts, then boots. Wrong input does nothing visible, by design. |
+| `gateCode.js` | 61 | `hashCode`, `createCodeListener`, `GATE_TOKENS` | Pure. The code is stored as a cyrb53 hash (sync — `crypto.subtle` needs a secure origin and LAN play is `http://`). The listener is a sliding window over the last N presses, forgotten after a `gapMs` pause. |
+| `gateConfig.js` | 34 | `GATE` | **The one switch** (`on`), the disguise title, the real title and fonts href (pinned to index.html by `test:gate` §5), `codeHash` / `codeLength` (written by **scripts/gate-code.mjs** (repo root), never by hand), `gapMs`, `rememberInTab`. Also imported by **vite.config.js** (repo root). |
+| `gateDisguise.js` | 39 | `disguiseIndexHtml`, `FAKE_ERROR_HTML` | Pure HTML transform run by the `rlsw-gate-disguise` plugin in **vite.config.js** (repo root) (build only): 502 title + `noindex`, no favicon, no Google Fonts, the 502 body baked in before `#root` so view-source agrees. **Throws if any replacement misses**, so an index.html edit can never ship the game's name on the "broken" page. |
+| `gateCheck.mjs` | 156 | — | `npm run test:gate` (first in `test:all`): the hash, the listener (strays, fumbles, pauses), the pad reader, the disguise on the real index.html, the config, main.jsx's imports, who sees the gate. |
 
 ---
 
@@ -87,7 +110,7 @@ client-only until 2026-08-20 and did nothing at all in every bench match ever ru
 | `net/` | 522 | 🌐 The multiplayer client and the Ear Spy riff wire. |
 | `input/` | 713 | 🎮 The controller (2026-10-14): the button map, the poll, the on-screen highlight. A pad press becomes the key press or click that already does the job. |
 | `hooks/` | 144 | Six thin React state slices. ⚠️ Nearly empty by design — see `hooks/` below. |
-| `App.jsx`, `main.jsx` | 20 | Vite/React entry wiring. |
+| `App.jsx`, `main.jsx`, `boot.jsx` | 40 | Vite/React entry wiring; `main.jsx` is the front gate's door (see 🚪 above). |
 | `standees/`, `music/`, `sfx/` | — | Character PNGs (normal + `_mirror`), music, sound effects. ⚠️ `music/` holds BOTH the theory modules and the `.mp3` files as of 2026-09-14; `bgm/` is gone. |
 
 📌 **156 source modules.** `ui/` being the second-largest directory is the shape of

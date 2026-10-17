@@ -1,10 +1,8 @@
-import { StrictMode } from 'react'
-import { createRoot } from 'react-dom/client'
-import './index.css'
-import App from './App.jsx'
+// 🚪 The front door. While the gate is on (app/gateConfig.js), a BUILT copy of
+// the game opens on a fake "502 Bad Gateway" page and only downloads the real
+// game (boot.jsx) after the hidden code. `npm run dev` goes straight in.
+// ⚠️ Keep this file tiny and keep boot.jsx behind the dynamic import — see
+//    boot.jsx's header for why.
+import { runGate } from './app/gate.js'
 
-createRoot(document.getElementById('root')).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+runGate(() => import('./boot.jsx'))
