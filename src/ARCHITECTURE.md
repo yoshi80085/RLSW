@@ -898,8 +898,15 @@ launch, follows live projectile positions and then frames contacts/aftermath.
 
 | Module | Responsibility |
 |---|---|
-| `board/idleFlow.js` | `IDLE_FLOW`, `createIdleFlow`: approved speed 1.2, sway 1.3, idle delay 6500 ms. Renderer overlays smooth orbit, elevation, distance and target drift on quiet idle shots. Action, manual and scripted battle cameras retain priority; reduced motion suppresses wandering. This supersedes the older idle shot cycle in live rendering once the quiet delay elapses. |
+| `board/idleFlow.js` | `IDLE_FLOW`, `createIdleFlow`: ⚠️ no longer mounted (2026-10-17) — `idleReel.js` runs the idle camera and keeps this file as the source of the wide drift's numbers (`IDLE_FLOW`). Approved speed 1.2, sway 1.3, idle delay 10000 ms (was 6500). Renderer overlays smooth orbit, elevation, distance and target drift on quiet idle shots. Action, manual and scripted battle cameras retain priority; reduced motion suppresses wandering. This supersedes the older idle shot cycle in live rendering once the quiet delay elapses. |
 | `board/idleFlowCheck.mjs` | Included in `test:cameradirector`: quiet delay, smooth entry, sustained movement, click reset, action/manual priority, reduced motion and approved values. |
+
+### Idle camera reel — 2026-10-17
+
+| Module | Responsibility |
+|---|---|
+| `board/idleReel.js` | `IDLE_REEL`, `IDLE_REEL_DIALLED`, `REEL_KINDS`, `REEL_LABELS`, `createIdleReel`, `blendPose`, `refocusPose`, `toSph`, `fromSph`, `mulberry32`: the idle camera since 2026-10-17, a drop-in for `idleFlow` (same call, same 10 s wait, same priorities). Once idle it plays a random reel — today's wide drift (idleFlow's maths verbatim), floor level, eye level, close-up, over the shoulder, overhead fly-by, crane reveal, and the ☰ Top-down / Spirit views — gliding between shots. Pure; the renderer supplies the footprint, `groundAt` and `yawOf`. Defaults are Alex's dial-in on `.scratch/idle-reel-preview.html`. |
+| `board/idleReelCheck.mjs` | `test:idlereel`: the dial-in pins, idleFlow's priorities, ten minutes of reel (every kind, no repeats, back to wide every 3, never under the floor, no jumps), each shot's framing and front-of-print rule, options (`only`, weights, fade, seed, 🔁 order), a mid-glide request, the break's tilt fix, and the renderer wiring. |
 
 ### Previously unlisted loadout modules
 

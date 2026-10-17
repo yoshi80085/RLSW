@@ -1,4 +1,5 @@
-import { createIdleFlow } from './idleFlow.js';
+import { createIdleReel } from './idleReel.js';
+import { HEX_BY_NUM } from './hexMap.js';
 import { createArenaSmoke } from './arenaSmoke.js';
 import { LIMELIGHT_HEX } from '../data/gameConstants.js';
 import * as THREE from 'three';
@@ -149,7 +150,35 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
     // never holds a live Vector3 the renderer might mutate under it.
     const plain=v=>v&&{x:v.x,y:v.y,z:v.z};
     const subjects=createCameraSubjects({pointFor:num=>plain(arenaPoint(num,.34)),pointXY:(x,y)=>plain(pointXY(x,y))});
-    const idleFlow=createIdleFlow();
+    // 🎬 THE IDLE CAMERA IS A REEL (idleReel.js, Alex 2026-10-17: *"when it's idle, it
+    // zooms out and stays zoomed out. I'd like for it to zoom in sometimes as well"*).
+    // It replaced idleFlow, which was one shot (the wide drift) forever; the wide drift
+    // is now one shot among floor-level, eye-level, close-up, over-the-shoulder, fly-by,
+    // crane and the ☰ Top-down / Spirit views, picked at random. Same 10 s wait, same
+    // priorities: an action shot, the player's hands or reduced motion stop it.
+    // 📌 Three things only the renderer knows: the board's footprint (low shots keep
+    // their path over it), the floor under the lens (`groundAt`, a cached ray down into
+    // the arena model, so a floor shot never dips under a tile) and which way each
+    // print faces (`yawOf`, standeeYaw — the back of every standee is the nebula).
+    const idleReel=createIdleReel({seed:(Math.random()*2**31)|0,footprint:Object.values(HEX_BY_NUM).map(h=>{const p=arenaPoint(h.num);return {x:p.x,z:p.z};})});
+    // ⚠️ From y = 6 down, so an overhead rig never counts as "the floor"; a cabinet the
+    // lens passes over does, which keeps a low shot out of it. Hidden parents (the old
+    // modelled Stands) are skipped. Before the model loads, the deck is at .18.
+    const groundCache=new Map(),groundRay=new THREE.Raycaster(),groundFrom=new THREE.Vector3(),groundDown=new THREE.Vector3(0,-1,0);
+    const shownInScene=o=>{for(let x=o;x;x=x.parent)if(!x.visible)return false;return true;};
+    const groundAt=(x,z)=>{
+      if(!model)return .18;
+      const qx=Math.round(x*4)/4,qz=Math.round(z*4)/4,key=`${qx},${qz}`;
+      if(groundCache.has(key))return groundCache.get(key);
+      groundFrom.set(qx,6,qz);groundRay.set(groundFrom,groundDown);groundRay.far=40;
+      const hit=groundRay.intersectObject(model,true).find(h=>h.object.isMesh&&shownInScene(h.object));
+      const y=hit?hit.point.y:-Infinity;groundCache.set(key,y);return y;
+    };
+    // 🌑 The reel's "dip to black" between shots (transition 'fade'; Alex's default is
+    // the glide, so this normally stays at 0). Above the foreground, never clickable.
+    const reelFade=document.createElement('div');let reelFadeAt=0;
+    Object.assign(reelFade.style,{position:'absolute',inset:'0',background:'#000',opacity:'0',pointerEvents:'none',zIndex:'3'});
+    reelFade.setAttribute('aria-hidden','true');host.appendChild(reelFade);cleanups.push(()=>reelFade.remove());
     let director=createCameraDirector(),autoCamera=true,cameraShot=null,cameraReport='';
     // ⌗ THE TOP-DOWN VIEW HOLDS ITS AXIS (Alex, 2026-09-24: "If the camera is
     // set to top-down view, don't let the camera wander … keep it as is
@@ -220,11 +249,17 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       controls._sphericalDelta?.set(0,0,0);controls._panOffset?.set(0,0,0);if('_scale' in controls)controls._scale=1;
       refocus={start:now,ms,t0:controls.target.clone(),goal:new THREE.Vector3(p.x,p.y+CAMERA_DIRECTOR.lookHeight,p.z),
         dir:dir.divideScalar(r0),r0,r1:CAMERA_DIRECTOR.idleDistance*fit(Math.max(camera.aspect,.25))};
+      // 🎬 …AND THE TILT COMES BACK INSIDE THE CONTROLS' RANGE (2026-10-17). The idle
+      // reel's floor and eye-level shots look UP (polar past 90°; OrbitControls stops
+      // at .43π), so keeping the angle exactly would leave the first controls.update()
+      // after the ease to snap it. The ease swings the tilt in as it pulls back.
+      const pol0=Math.acos(THREE.MathUtils.clamp(refocus.dir.y,-1,1));
+      Object.assign(refocus,{az:Math.atan2(refocus.dir.x,refocus.dir.z),pol0,pol1:Math.min(controls.maxPolarAngle,Math.max(controls.minPolarAngle,pol0))});
       dirty=true;
     }
     const noteActivity=()=>{const now=performance.now();
       const broke=autoCamera&&!topView&&!sonicCamera.active&&!!cameraShot?.driving&&!refocus;
-      director.userNudge(now);idleFlow.activity(now);
+      director.userNudge(now);idleReel.activity(now);
       if(broke)startRefocus(now);};
     // 🎮 PAD_ACTIVITY_EVENT: a controller's sticks send no DOM input at all, so
     // without it the 10 s idle camera would take the lens from a player mid-turn.
@@ -299,7 +334,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // during the volley would be missed and the hex bookkeeping go stale.
       const cameraSubjects=subjects.read(frame,now);
       cameraShot=null;
-      if(sonicCamera.active)idleFlow.activity(now);
+      if(sonicCamera.active)idleReel.activity(now);
       // 🎸 THE OPENING ACT HOLDS THE LENS while the Bardbarian introduces the
       // Spirits (openingActStage.camera) — except under ⌗ top-down, which is a
       // lock the player chose. The intro counts as activity, so the auto camera
@@ -326,14 +361,15 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       lastIntro=introShot;
       if(introShot){
         introBlend=introShot.blend;turnFocus=false;
-        refocus=null;director.userNudge(now);idleFlow.activity(now);
+        refocus=null;director.userNudge(now);idleReel.activity(now);
         controls.target.copy(introShot.target);camera.position.copy(introShot.position);
         camera.lookAt(controls.target);dirty=true;
       } else if(!sonicCamera.update(frame,model,dt,reduced,visuals.battleShot())) {
         // wallDt, not the 50 ms-capped dt: the director caps at 100 ms itself, and a
         // slow machine must not also get a camera that crawls at a fraction of speed.
         cameraShot=autoCamera&&!topView?director.update({dtMs:wallDt*1000,now,subjects:cameraSubjects,camera:{position:camera.position,target:controls.target},reduced}):null;
-        cameraShot=idleFlow.update({shot:cameraShot,camera:{position:camera.position,target:controls.target},now,dtMs:wallDt*1000,center:cameraSubjects.center,scale:fit(Math.max(camera.aspect,.25)),reduced});
+        cameraShot=idleReel.update({shot:cameraShot,camera:{position:camera.position,target:controls.target},now,dtMs:wallDt*1000,subjects:cameraSubjects,center:cameraSubjects.center,scale:fit(Math.max(camera.aspect,.25)),reduced,
+          groundAt,yawOf:id=>visuals.pawnFor(id)?.userData.targetFacing});
         // 🎯 the new turn's ease onto its Spirit (TURN_FOCUS_MS) — once the battle shot has let go.
         if(turnFocus){turnFocus=false;if(autoCamera&&!topView&&!dragging&&!cameraShot?.driving)startRefocus(now,TURN_FOCUS_MS);}
         if(cameraShot?.driving) {
@@ -349,11 +385,14 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
           // controls.update() here either: damping would pull against the ease.
           const k=reduced?1:Math.min(1,(now-refocus.start)/refocus.ms),e=k*k*(3-2*k);
           controls.target.lerpVectors(refocus.t0,refocus.goal,e);
-          camera.position.copy(refocus.dir).multiplyScalar(refocus.r0+(refocus.r1-refocus.r0)*e).add(controls.target);
+          const pol=refocus.pol0+(refocus.pol1-refocus.pol0)*e,sp=Math.sin(pol);
+          camera.position.set(sp*Math.sin(refocus.az),Math.cos(pol),sp*Math.cos(refocus.az)).multiplyScalar(refocus.r0+(refocus.r1-refocus.r0)*e).add(controls.target);
           camera.lookAt(controls.target);dirty=true;
           if(k>=1)refocus=null;
         } else controls.update();
       }
+      // 🌑 the reel's dip to black (0 unless it is flying the lens with transition 'fade')
+      {const f=cameraShot?.driving?(cameraShot.fade??0):0;if(f!==reelFadeAt){reelFadeAt=f;reelFade.style.opacity=f.toFixed(3);}}
       // 💨 Only while the director is flying the lens — a player who grabbed the
       // camera has taken the drama back, lines and all.
       {const directedShot=visuals.battleShot();
@@ -494,7 +533,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // ⌗ Top locks the lens; ◈ Arena / ◎ Spirit unlock it and start a fresh
       // director, which waits out the usual resume before it drives again.
       view(name){const top=name==='tactical';
-        if(top!==topView){topView=top;syncBattleCamera();if(!top){director=createCameraDirector();tuneDirector();idleFlow.activity(performance.now());}}
+        if(top!==topView){topView=top;syncBattleCamera();if(!top){director=createCameraDirector();tuneDirector();idleReel.activity(performance.now());}}
         refocus=null;northSwing=null;sonicCamera.userNudge();frameView(name);director.userNudge(performance.now());},
       // 🧭 Face north: turn only — zoom, tilt and aim are kept (topDownView `northLens`).
       // It is the player choosing a shot, so it counts as taking over, exactly as
@@ -502,7 +541,7 @@ export function mountArena(host, tacticalElement, { onReady, onError, onQuality,
       // ⚠️ ⌗ Top already faces north (TOP_OFFSET has x = 0), so under top-down this
       // is a no-op and can never tilt the lens off the axis and drop the lock.
       north(){if(disposed||failed)return;const now=performance.now();
-        refocus=null;sonicCamera.userNudge();director.userNudge(now);idleFlow.activity(now);
+        refocus=null;sonicCamera.userNudge();director.userNudge(now);idleReel.activity(now);
         controls._sphericalDelta?.set(0,0,0);controls._panOffset?.set(0,0,0);if('_scale' in controls)controls._scale=1;
         if(facesNorth(camera.position,controls.target)){northSwing=null;return;}
         northSwing={start:now,from:camera.position.clone(),turn:-lensHeading(camera.position,controls.target)};dirty=true;},
